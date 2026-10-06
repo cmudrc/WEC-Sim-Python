@@ -1,9 +1,9 @@
 # WEC-Sim-Python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
-> wave energy converter simulator. Focused linear heave solvers cover Sphere
-> free decay and the RM3 regular-wave heave subsystem; the original general
-> runner still has no dynamics stage.
+> wave energy converter simulator. Focused solvers cover Sphere free decay,
+> RM3 regular-wave heave, and a forced OSWEC hinge-pitch response; the
+> original general runner still has no dynamics stage.
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
@@ -58,6 +58,21 @@ response = solve_two_body_regular_heave(
 This calculation includes only vertical translation, a linear relative-motion
 PTO, and frequency-dependent hydrodynamic coefficients at the incident wave
 frequency. It does not predict the RM3 surge or pitch response.
+The OSWEC hinge-pitch solver accepts a six-component excitation history:
+
+```python
+from source.objects.hingePitch import solve_hinged_pitch_from_excitation
+
+response = solve_hinged_pitch_from_excitation(
+    "path/to/oswec.h5", excitation_force, hinge_z=-8.9,
+    body_mass=127_000, pitch_inertia=1.85e6, pto_damping=12_000,
+)
+# excitation_force has shape (time_steps, 6); response.angle is in radians.
+```
+
+It models pitch about a fixed hinge and the radiation-memory force. Irregular
+wave excitation is supplied by the caller; the repository has not yet
+independently reproduced the current MATLAB OSWEC wave realization.
 The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.

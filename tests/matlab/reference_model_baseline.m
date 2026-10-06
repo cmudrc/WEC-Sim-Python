@@ -36,7 +36,7 @@ for iCase = 1:numel(cases)
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
     end
-    if isstruct(output.ptos)
+    if isstruct(output.ptos) && isfield(output.ptos, 'time')
         for iPto = 1:numel(output.ptos)
             response = output.ptos(iPto);
             values = [response.time(:), response.position, response.velocity, ...

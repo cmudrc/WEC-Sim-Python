@@ -43,3 +43,16 @@ def test_rm3_regular_wave_heave_against_matlab(response, body_number):
     np.testing.assert_allclose(
         response.excitation_force[:, index], expected[:, 21], rtol=0, atol=1e-5,
     )
+
+
+def test_rm3_heave_pto_against_matlab(response):
+    expected = np.loadtxt(
+        Path(REFERENCE) / "RM3_RM3_pto1.csv", delimiter=",",
+    )
+    relative_displacement = response.displacement[:, 0] - response.displacement[:, 1]
+    relative_velocity = response.velocity[:, 0] - response.velocity[:, 1]
+    np.testing.assert_allclose(response.time, expected[:, 0], rtol=0, atol=1e-10)
+    assert np.max(np.abs(relative_displacement - expected[:, 3])) < 0.009
+    assert np.max(np.abs(relative_velocity - expected[:, 9])) < 0.0075
+    assert np.max(np.abs(response.pto_force - expected[:, 15])) < 9_000
+    assert np.max(np.abs(response.pto_force * relative_velocity - expected[:, 21])) < 12_000
