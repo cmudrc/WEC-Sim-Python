@@ -5,6 +5,7 @@ import subprocess
 import sys
 
 import numpy as np
+import pytest
 import scipy.io
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -145,6 +146,86 @@ def test_rm3_irregular_preprocessing_matches_matlab_fixture():
     for component in ("re", "im", "md"):
         np.testing.assert_allclose(
             body.hydroForce["fExt"][component], mat(component), rtol=1e-10, atol=1e-8,
+        )
+
+
+@pytest.mark.parametrize("case_number,b2b", [(4, 0), (5, 1)])
+@pytest.mark.parametrize("body_number", [1, 2])
+def test_rm3_body_interaction_regular_preprocessing(case_number, b2b, body_number):
+    fixture = ROOT / "tests/test_objects/test_bodyclass/testData"
+    case = fixture / f"body_{case_number}_test"
+
+    def mat(name):
+        values = scipy.io.loadmat(case / f"{name}.mat")
+        return next(value for key, value in values.items() if not key.startswith("__"))
+
+    body = BodyClass(str(fixture / "hydroData/rm3.h5"))
+    body.bodyNumber = body_number
+    body.bodyTotal = [2]
+    body.readH5file()
+    body.hydroStiffness = np.zeros((6, 6))
+    body.viscDrag = {
+        "Drag": np.zeros((6, 6)),
+        "cd": np.zeros(6),
+        "characteristicArea": np.zeros(6),
+    }
+    body.linearDamping = np.zeros((6, 6))
+    body.mass = "equilibrium"
+    body.hydroForcePre(
+        mat("w").T, [0], 601, mat("CTTime")[0], [],
+        0.1, 1000, 9.81, "regular", mat("waveAmpTime").T,
+        body_number, [], 0, 0, b2b,
+    )
+    prefix = f"body{body_number}_"
+    for field in ("linearHydroRestCoef", "fAddedMass", "fDamping", "totDOF"):
+        np.testing.assert_allclose(
+            body.hydroForce[field], mat(prefix + field), rtol=1e-10, atol=1e-8,
+        )
+    for component in ("re", "im", "md"):
+        np.testing.assert_allclose(
+            body.hydroForce["fExt"][component], mat(prefix + component).ravel(),
+            rtol=1e-10, atol=1e-8,
+        )
+
+
+@pytest.mark.parametrize("case_number,b2b,ss_calc", [
+    (6, 0, 0), (7, 1, 0), (8, 0, 1), (9, 1, 1),
+])
+@pytest.mark.parametrize("body_number", [1, 2])
+def test_rm3_body_interaction_cic_preprocessing(case_number, b2b, ss_calc, body_number):
+    fixture = ROOT / "tests/test_objects/test_bodyclass/testData"
+    case = fixture / f"body_{case_number}_test"
+
+    def mat(name):
+        values = scipy.io.loadmat(case / f"{name}.mat")
+        return next(value for key, value in values.items() if not key.startswith("__"))
+
+    body = BodyClass(str(fixture / "hydroData/rm3.h5"))
+    body.bodyNumber = body_number
+    body.bodyTotal = [2]
+    body.readH5file()
+    body.hydroStiffness = np.zeros((6, 6))
+    body.viscDrag = {
+        "Drag": np.zeros((6, 6)),
+        "cd": np.zeros(6),
+        "characteristicArea": np.zeros(6),
+    }
+    body.linearDamping = np.zeros((6, 6))
+    body.mass = "equilibrium"
+    body.hydroForcePre(
+        mat("w").T, [0], 601, mat("CTTime")[0], [],
+        0.1, 1000, 9.81, "regularCIC", mat("waveAmpTime").T,
+        body_number, [], ss_calc, 0, b2b,
+    )
+    prefix = f"body{body_number}_"
+    for field in ("linearHydroRestCoef", "fAddedMass", "irkb"):
+        np.testing.assert_allclose(
+            body.hydroForce[field], mat(prefix + field), rtol=1e-10, atol=1e-8,
+        )
+    for component in ("re", "im", "md"):
+        np.testing.assert_allclose(
+            body.hydroForce["fExt"][component], mat(prefix + component).ravel(),
+            rtol=1e-10, atol=1e-8,
         )
 
 

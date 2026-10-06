@@ -508,12 +508,13 @@ class BodyClass:
                 self.hydroForce['fExt']['md'][ii] = _directional_interp(x, y, np.squeeze(md[ii]), w, waveDir).item()
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 x = self.hydroData['simulation_parameters']['w'][0]
+                frequency = np.asarray(w).item()
                 s1 = interpolate.CubicSpline(x, np.squeeze(re[ii][0]))# interpolate using CubicSline to get interpolation of spline 3d space
                 s2 = interpolate.CubicSpline(x, np.squeeze(im[ii][0]))
                 s3 = interpolate.CubicSpline(x, np.squeeze(md[ii][0]))
-                self.hydroForce['fExt']['re'][ii] = s1(w)
-                self.hydroForce['fExt']['im'][ii] = s2(w)
-                self.hydroForce['fExt']['md'][ii] = s3(w)
+                self.hydroForce['fExt']['re'][ii] = s1(frequency)
+                self.hydroForce['fExt']['im'][ii] = s2(frequency)
+                self.hydroForce['fExt']['md'][ii] = s3(frequency)
 
     def irrExcitation(self,wv,numFreq,waveDir,rho,g):
         """
@@ -577,6 +578,7 @@ class BodyClass:
         Used by hydroForcePre
         
         """
+        frequency = np.asarray(w).item()
         am = self.hydroData['hydro_coeffs']['added_mass']['all']*rho
         rd = self.hydroData['hydro_coeffs']['radiation_damping']['all']*rho
         for i in range(len(self.hydroData['simulation_parameters']['w'][0])):
@@ -590,9 +592,9 @@ class BodyClass:
             for ii in range(6):
                 for jj in range(lenJ):
                     s1 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(am[ii,jj,:]))
-                    self.hydroForce['fAddedMass'][ii,jj] = s1(w)
+                    self.hydroForce['fAddedMass'][ii,jj] = s1(frequency)
                     s2 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(rd[ii,jj,:]))
-                    self.hydroForce['fDamping'][ii,jj] = s2(w)
+                    self.hydroForce['fDamping'][ii,jj] = s2(frequency)
         else: #B2B =2
             nDOF = int(self.dof[0])
             self.hydroForce['fAddedMass'] = np.zeros((nDOF,nDOF))
@@ -602,9 +604,9 @@ class BodyClass:
                 for jj in range(nDOF):
                     jjj = int(self.dof_start[0])-1+jj
                     s1 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(am[ii,jjj,:]))
-                    self.hydroForce['fAddedMass'][ii,jj] = s1(w)
+                    self.hydroForce['fAddedMass'][ii,jj] = s1(frequency)
                     s2 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(rd[ii,jjj,:]))
-                    self.hydroForce['fDamping'][ii,jj] = s2(w)
+                    self.hydroForce['fDamping'][ii,jj] = s2(frequency)
     
     
     def irfInfAddedMassAndDamping(self,CIkt,CTTime,ssCalc,rho,B2B):

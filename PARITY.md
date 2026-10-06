@@ -20,6 +20,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 HDF5 hydrodynamic input | Original `rm3.h5` | Both bodies load, including their names and water depth, under NumPy 2. |
 | RM3 regular-wave force preprocessing | Original MATLAB-generated `body_1_test` constants and files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF; the RM3 runner now completes preprocessing. |
 | RM3 irregular-wave force preprocessing | Original MATLAB-generated `body_2_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF. |
+| RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, and available radiation terms. |
 | OSWEC directional irregular force preprocessing | Original MATLAB-generated `body_3_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, radiation IRF, and three-direction excitation after replacing removed SciPy `interp2d`. |
 | End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. |
 
@@ -41,6 +42,12 @@ examples and all five Sphere free-decay cases from the Applications suite.
 It records time, position, velocity, total force, and excitation force for
 each body as CSV artifacts. The Applications source is pinned to
 [`d53d4d4c9eda2581f04204f5d394a6ef84bb099e`](https://github.com/WEC-Sim/WEC-Sim_Applications/tree/d53d4d4c9eda2581f04204f5d394a6ef84bb099e).
+The first run [passed all three model jobs](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37471757955),
+producing nine finite body trajectories with 4,001 samples each (two RM3,
+two OSWEC, and five Sphere). The `1m-ME` and `1m` Sphere trajectories were
+identical in the saved motion and force signals: the Morison element in that
+published case has nonzero coefficients only in x while the free-decay motion
+is in heave.
 The MATLAB baselines do not establish Python dynamics parity; the Python
 runner still has no dynamics solver. Expanded application cases remain
 inventoried. The `MATLAB reference application regression` workflow runs
