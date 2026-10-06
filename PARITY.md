@@ -25,8 +25,9 @@ the production Python code. The live wave comparison passed on 6 October
 | OSWEC directional irregular force preprocessing | Original MATLAB-generated `body_3_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, radiation IRF, and three-direction excitation after replacing removed SciPy `interp2d`. |
 | Sphere `noWaveCIC` heave free decay (0 m, 1 m, 1 m with Morison elements, 3 m, 5 m) | Current MATLAB WEC-Sim and MATLAB-generated Sphere HDF5 | The focused Python linear heave solver agrees over 40 s to maximum differences of 0.45 mm position, 0.64 mm/s velocity, and 363 N total force in the 5 m case. The Morison element has only x-direction coefficients in the published 1 m case, so it does not affect heave. |
 | RM3 regular-wave heave, excitation, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A focused two-body linear heave solver with relative-motion PTO damping agrees locally over 400 s within 5.9 mm position and 6.1 mm/s velocity for both bodies. Heave excitation matches to less than `1e-5` N; PTO internal force differs by at most 8.2 kN over a 1.63 MN range. This reduced model does not cover surge, pitch, or full Simscape joint mechanics. |
+| RM3 coupled surge, heave, pitch, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A four-coordinate two-body model uses the published joint geometry, body inertias, regular-wave forcing, and nonlinear rotation kinematics. Over 400 s, the two body surge positions differ by at most 36.3 mm, heaves by 4.2 mm, shared pitch by 0.00086 rad, and PTO force by 4.7 kN. It covers the canonical active DOFs but not general Simscape joint mechanics or other RM3 cases. |
 | OSWEC PM equal-energy waves, directional excitation, pitch, and PTO | Current MATLAB OSWEC example and current OSWEC HDF5 | Python recreates all 500 PM equal-energy bins from the HDF5 range, then synthesizes wave elevation and six-component excitation using the saved MATLAB phase matrix. Local component differences are below `6e-15`, elevation below `2e-13` m, and excitation below `1e-7` N. The fixed-hinge solver's pitch differs by at most 0.0021 rad over 400 s; PTO torque from the paired-force check differs by at most 37 N m. A Python seed produces a separate reproducible realization. This model covers pitch about a fixed hinge, not a general six-DOF device. |
-| End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. The heave-only solver above is a partial physical model. |
+| General WEC-Sim runner | Current MATLAB RM3 and OSWEC examples | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. The focused reference-model solvers above are separate modules. |
 
 Source comparisons: [MATLAB wave class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/waveClass.m),
 [MATLAB wave-number function](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/functions/BEMIO/calcWaveNumber.m),
@@ -64,7 +65,8 @@ so that the source, HDF5, time grid, and output remain paired.
 The [final reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37478333096)
 passed all RM3, OSWEC, and Sphere jobs, including Python preprocessing of
 the current RM3 and OSWEC HDF5 inputs for both bodies.
-The RM3 baseline also checks a reduced Python heave model. The OSWEC baseline
+The RM3 baseline also checks a reduced Python heave model and a coupled
+surge/heave/pitch model. The OSWEC baseline
 saves its random phase matrix and checks Python PM binning, wave elevation,
 directional excitation, and hinged-pitch motion against that same realization.
 The Python wave generator can use its own integer seed for standalone runs,
@@ -104,8 +106,8 @@ of Python dynamics agreement or disagreement.
 Current MATLAB WEC-Sim has changed its PM/JS spectra, seeded phase generator,
 object properties, and some wave inputs since the Python port was written.
 The historical fixtures therefore cannot establish parity for those modes.
-The next dynamics targets are the RM3 surge/pitch response, other OSWEC DOFs
-and force terms, and integration into a general runner. The Sphere free-decay
+The next dynamics targets are additional RM3 and OSWEC application variants,
+other OSWEC force terms, and integration into a general runner. The Sphere free-decay
 cases already have direct Python motion comparisons. A comparison must
 record both code revisions, the HDF5 input, time step, outputs, and numerical
 tolerances.

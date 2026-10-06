@@ -2,7 +2,7 @@
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
 > wave energy converter simulator. Focused solvers cover Sphere free decay,
-> RM3 regular-wave heave, and a forced OSWEC hinge-pitch response; the
+> RM3 regular-wave coupled motion, and OSWEC hinge-pitch response; the
 > original general runner still has no dynamics stage.
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
@@ -57,7 +57,20 @@ response = solve_two_body_regular_heave(
 
 This calculation includes only vertical translation, a linear relative-motion
 PTO, and frequency-dependent hydrodynamic coefficients at the incident wave
-frequency. It does not predict the RM3 surge or pitch response.
+frequency. The coupled RM3 reference model also predicts both body surge
+motions and their shared pitch:
+
+```python
+from source.objects.rm3Regular import solve_rm3_regular
+
+response = solve_rm3_regular("path/to/rm3.h5")
+# response.body_position and response.body_velocity have shape
+# (time_steps, 2 bodies, 6 DOFs); response.pto_force is the heave PTO force.
+```
+
+This model uses the published RM3 inertias, regular wave, floating-joint
+geometry, and linear PTO. It covers the canonical case's active degrees of
+freedom; it does not supply general Simscape joint dynamics.
 The OSWEC reference can generate a seeded Python wave realization and pass
 its six-component excitation history to the hinge-pitch solver:
 
