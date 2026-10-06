@@ -20,7 +20,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 HDF5 hydrodynamic input | Original `rm3.h5` | Both bodies load, including their names and water depth, under NumPy 2. |
 | RM3 regular-wave force preprocessing | Original MATLAB-generated `body_1_test` constants and files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF; the RM3 runner now completes preprocessing. |
 | RM3 irregular-wave force preprocessing | Original MATLAB-generated `body_2_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF. |
-| RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, and available radiation terms. |
+| RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, radiation IRF, and state-space matrices where present. |
 | OSWEC directional irregular force preprocessing | Original MATLAB-generated `body_3_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, radiation IRF, and three-direction excitation after replacing removed SciPy `interp2d`. |
 | End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. |
 
@@ -54,6 +54,16 @@ inventoried. The `MATLAB reference application regression` workflow runs
 the upstream test suites for all 18 application folders containing the 46
 explicit RM3, OSWEC, and Sphere cases. This verifies the pinned MATLAB
 reference for those cases, but there is no Python time-series comparison yet.
+
+The first application sweep revealed upstream test-suite limitations. In
+`Passive_Yaw`, two stored irregular-yaw regression checks fail; the same two
+checks fail in [the Applications repository's own CI run](https://github.com/WEC-Sim/WEC-Sim_Applications/actions/runs/36746373598)
+on both Linux and Windows under MATLAB R2024b. MoorDyn tests in `Mooring` and
+`Paraview_Visualization` explicitly skip themselves on GitHub CI. The
+`Multiple_Wave_Spectra` folder has no upstream unit test, so our harness now
+runs its input file directly and requires body output instead of accepting an
+empty test suite as success. These are MATLAB-reference gaps, not evidence of
+Python dynamics agreement or disagreement.
 
 ## Known differences and next reference case
 

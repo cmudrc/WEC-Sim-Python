@@ -227,6 +227,12 @@ def test_rm3_body_interaction_cic_preprocessing(case_number, b2b, ss_calc, body_
             body.hydroForce["fExt"][component], mat(prefix + component).ravel(),
             rtol=1e-10, atol=1e-8,
         )
+    if ss_calc:
+        for matrix in ("A", "B", "C", "D"):
+            np.testing.assert_allclose(
+                body.hydroForce["ssRadf"][matrix], mat(prefix + matrix),
+                rtol=1e-10, atol=1e-8,
+            )
 
 
 def test_rm3_entrypoint_completes_force_preprocessing():

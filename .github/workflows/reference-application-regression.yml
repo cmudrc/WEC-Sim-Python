@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      max-parallel: 8
       matrix:
         folder:
           - Body-to-Body_Interactions
