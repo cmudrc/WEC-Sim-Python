@@ -1,6 +1,7 @@
 % Run from the Python fork root after adding the pinned MATLAB WEC-Sim paths.
 % Produces direct waveClass outputs for comparison with the production port.
-outputDir = fullfile(pwd, 'matlab-reference-output');
+repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
+outputDir = fullfile(repoRoot, 'matlab-reference-output');
 if ~exist(outputDir, 'dir')
     mkdir(outputDir);
 end

@@ -28,6 +28,7 @@ jobs:
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('matlab-ref/source/objects'); addpath('matlab-ref/source/functions/BEMIO'); run('tests/matlab/regular_wave_reference.m')
+      - run: ls -l matlab-reference-output
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'

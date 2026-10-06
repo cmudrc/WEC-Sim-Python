@@ -24,9 +24,9 @@ against MATLAB WEC-Sim while preserving the original author's work.
 
 ## Current status
 
-Wave generation and RM3 hydrodynamic input have focused checks. The main
-runner still fails during body force preprocessing, and its device dynamics
-solver has not been implemented. The original README projected completion in
+Wave generation, RM3 hydrodynamic input, and regular-wave force preprocessing
+have focused checks. The main runner completes preprocessing but its device
+dynamics solver has not been implemented. The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.
 

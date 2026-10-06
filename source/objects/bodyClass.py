@@ -188,9 +188,9 @@ class BodyClass:
             self.hydroData['properties']['dof_end'] = np.array(f.get(name + '/properties/dof_end'))
         else:
             self.hydroData['properties']['dof_end'] = np.array((self.bodyNumber-1)*6+6)
-        self.dof       = self.hydroData['properties']['dof']
-        self.dof_start = self.hydroData['properties']['dof_start']
-        self.dof_end   = self.hydroData['properties']['dof_end']
+        self.dof       = np.asarray(self.hydroData['properties']['dof']).reshape(-1)
+        self.dof_start = np.asarray(self.hydroData['properties']['dof_start']).reshape(-1)
+        self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
         self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = np.transpose(np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness')))
         self.hydroData['hydro_coeffs']['excitation']['re'] = np.array(f.get(name +  '/hydro_coeffs/excitation/re'))
@@ -247,9 +247,9 @@ class BodyClass:
         self.cb        = hydroData['properties']['cb']
         self.dispVol   = hydroData['properties']['disp_vol']
         self.name      = hydroData['properties']['name']
-        self.dof       = self.hydroData['properties']['dof']
-        self.dof_start = self.hydroData['properties']['dof_start']
-        self.dof_end   = self.hydroData['properties']['dof_end']
+        self.dof       = np.asarray(self.hydroData['properties']['dof']).reshape(-1)
+        self.dof_start = np.asarray(self.hydroData['properties']['dof_start']).reshape(-1)
+        self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
     
     def hydroForcePre(self,w,waveDir,CIkt,CTTime,numFreq,dt,rho,g,waveType,waveAmpTime,iBod,numBod,ssCalc,nlHydro,B2B):
@@ -279,19 +279,24 @@ class BodyClass:
             self.viscDrag['cd']   = np.append(self.viscDrag['cd'], np.zeros(self.dof[0]-np.size(self.viscDrag['cd'])))
             self.viscDrag['characteristicArea'] = np.append(self.viscDrag['characteristicArea'],np.zeros(1,self.dof-np.size(self.viscDrag['characteristicArea'])))
 
-        if self.hydroStiffness.any() == 1:  #check if self.hydroStiffness is defined
+        if np.any(self.hydroStiffness):  # check for a user-defined stiffness
             self.hydroForce['linearHydroRestCoef'] = self.hydroStiffness
         else:
             k = self.hydroData['hydro_coeffs']['linear_restoring_stiffness']#(:,self.dof_start:self.dof_end)
             self.hydroForce['linearHydroRestCoef'] = k*rho*g
 
-        if  self.viscDrag['Drag'].any() == 1:  #check if self.viscDrag['Drag'] is defined
+        if np.any(self.viscDrag['Drag']):  # check for a user-defined drag matrix
             self.hydroForce['visDrag'] = self.viscDrag['Drag']
         else:
-            self.hydroForce['visDrag'] = np.diag(0.5*rho*self.viscDrag['cd']*self.viscDrag['characteristicArea'])
+            self.hydroForce['visDrag'] = np.diag(
+                0.5 * rho * np.asarray(self.viscDrag['cd'])
+                * np.asarray(self.viscDrag['characteristicArea'])
+            )
 
         self.hydroForce['linearDamping'] = self.linearDamping
-        self.hydroForce['userDefinedFe'] = np.zeros((len(waveAmpTime[1]),int(self.dof[0])))  #initializing userDefinedFe for non imported wave cases
+        self.hydroForce['userDefinedFe'] = np.zeros(
+            (len(waveAmpTime[1]), int(np.asarray(self.dof).item()))
+        )  # initialize userDefinedFe for non-imported wave cases
         if waveType == 'noWave':
             self.noExcitation()
             self.constAddedMassAndDamping(w,CIkt,rho,B2B)
