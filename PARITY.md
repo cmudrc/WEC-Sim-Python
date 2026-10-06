@@ -84,6 +84,10 @@ input file.
 The [four-job reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37486493413)
 passed RM3, RM3 body-to-body, OSWEC, and Sphere, including the Sphere CLI
 smoke test against the MATLAB-generated HDF5 input.
+The [case-driven dynamics run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37491350883)
+passed all four jobs again using JSON cases through the main runner. It also
+compared the mapped linear-coordinate RM3 heave and Sphere free-decay cases
+against the paired MATLAB trajectories.
 `python -m source.objects.wecSimPython CASE.json --output motion.csv` runs a
 supported dynamics configuration. The case declares wave, body, constraint,
 PTO, and time settings; the result includes all six body position and

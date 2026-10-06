@@ -201,5 +201,6 @@ def test_sphere_linear_subspace_general_runner(tmp_path):
     }
     _, columns, _ = _run(tmp_path, case)
     expected = np.loadtxt(Path(REFERENCE) / "Sphere_5m_body1.csv", delimiter=",")
+    assert not any(name.startswith("pto_") for name in columns)
     assert np.max(np.abs(columns["body1_heave_position"] - expected[:, 3])) < 0.001
     assert np.max(np.abs(columns["body1_heave_velocity"] - expected[:, 9])) < 0.001

@@ -109,6 +109,11 @@ class GeneralizedDynamics:
         dt: float | None = None,
     ) -> np.ndarray:
         """Assemble M(q) and generalized force, then solve M(q) q'' = F."""
+        if any(body.radiation_kernel is not None for body in self.bodies):
+            if known_radiation is None or dt is None or dt <= 0:
+                raise ValueError("radiation-memory acceleration needs history and dt")
+        if known_radiation is not None and len(known_radiation) != len(self.bodies):
+            raise ValueError("radiation history needs one force vector per body")
         n = self.coordinate_count
         motions = tuple(body.motion(coordinate, speed) for body in self.bodies)
         mass = np.zeros((n, n))

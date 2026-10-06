@@ -103,8 +103,9 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     """Run one explicitly supported wave/device configuration.
 
     ``base_dir`` resolves relative hydro and phase file paths. The accepted
-    layouts are one-body heave free decay, one-body fixed-hinge pitch, and a
-    two-body floating joint with independent heaves and shared surge/pitch.
+    layouts are one-body heave free decay, one-body fixed-hinge pitch, a
+    two-body floating joint, and mapped linear coordinates for compatible
+    bodies and PTO matrices.
     Every one of these layouts uses the generalized dynamics engine.
     """
     case = _section(
@@ -177,11 +178,13 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         if len(bodies) != 1 or wave["type"] != "pm" or b2b:
             raise ValueError("fixed-hinge pitch needs one body and PM waves")
         _body_number(bodies[0], 1)
+        if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "pitch_inertia"}:
+            raise ValueError("fixed-hinge pitch uses mass and pitch_inertia")
         mass = _number(bodies[0].get("mass"), "body.mass", positive=True)
         inertia = _number(bodies[0].get("pitch_inertia"),
                           "body.pitch_inertia", positive=True)
-        if "initial_displacement" in constraint:
-            raise ValueError("fixed-hinge initial displacement is not yet supported")
+        if set(constraint) - {"kind", "location"}:
+            raise ValueError("fixed-hinge initial conditions are not yet supported")
         location = _location(constraint)
         damping, stiffness = _pto(case.get("pto"), "pitch")
         height = _number(wave.get("height"), "wave.height", positive=True)
@@ -244,10 +247,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             raise ValueError("the current floating-joint layout needs one shared HDF5")
         for number, body in enumerate(bodies, start=1):
             _body_number(body, number)
+            if set(body) - {"hydro_file", "hydro_body", "mass", "pitch_inertia"}:
+                raise ValueError("floating-joint bodies use mass and pitch_inertia")
             if body.get("mass", "equilibrium") != "equilibrium":
                 raise ValueError("floating-joint bodies currently require equilibrium mass")
-        if "initial_displacement" in constraint:
-            raise ValueError("floating-joint initial displacement is not yet supported")
+        if set(constraint) - {"kind", "location"}:
+            raise ValueError("floating-joint initial conditions are not yet supported")
         location = _location(constraint)
         damping, stiffness = _pto(case.get("pto"), "relative_heave")
         height = _number(wave.get("height"), "wave.height", nonnegative=True)
@@ -468,5 +473,6 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         hydro, wave_elevation=elevation,
         pto_generalized_force=(
             -response.coordinate @ stiffness.T - response.speed @ damping.T
+            if "pto" in case else None
         ),
     )
