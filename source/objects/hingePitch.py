@@ -35,6 +35,7 @@ def solve_hinged_pitch_from_excitation(
     pitch_inertia: float,
     pto_damping: float,
     pto_stiffness: float = 0.0,
+    pto_equilibrium: float = 0.0,
     dt: float = 0.1,
     memory_time: float = 30.0,
     rho: float = 1000.0,
@@ -60,7 +61,7 @@ def solve_hinged_pitch_from_excitation(
     if not np.isfinite(force).all():
         raise ValueError("excitation_force must be finite")
     values = [hinge_z, body_mass, pitch_inertia, pto_damping,
-              pto_stiffness, dt, memory_time, rho, g]
+              pto_stiffness, pto_equilibrium, dt, memory_time, rho, g]
     if not np.isfinite(values).all():
         raise ValueError("solver parameters must be finite")
     if (body_mass <= 0 or pitch_inertia <= 0 or pto_damping < 0
@@ -144,6 +145,7 @@ def solve_hinged_pitch_from_excitation(
     ),), 1,
         pto_stiffness=np.array([[pto_stiffness]]),
         pto_damping=np.array([[pto_damping]]),
+        pto_equilibrium=np.array([pto_equilibrium]),
     )
     solved = device.integrate(dt=dt, end_time=(count - 1) * dt)
     angle = solved.coordinate[:, 0]
@@ -161,5 +163,6 @@ def solve_hinged_pitch_from_excitation(
         center_position=center_position,
         center_velocity=center_velocity,
         excitation_torque=excitation_torque,
-        pto_torque=-pto_damping * speed - pto_stiffness * angle,
+        pto_torque=(-pto_damping * speed
+                    - pto_stiffness * (angle - pto_equilibrium)),
     )

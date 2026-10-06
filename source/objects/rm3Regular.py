@@ -30,6 +30,7 @@ def solve_rm3_regular(
     pitch_inertias: tuple[float, float] = (21_306_090.66, 94_407_091.24),
     pto_damping: float = 1_200_000.0,
     pto_stiffness: float = 0.0,
+    pto_equilibrium: float = 0.0,
     b2b: bool = False,
     joint_z: float = 0.0,
     dt: float = 0.1,
@@ -49,6 +50,7 @@ def solve_rm3_regular(
     joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
+              pto_equilibrium,
               joint_z, dt, end_time, ramp_time, rho, g, *pitch_inertias]
     if not np.isfinite(inputs).all():
         raise ValueError("solver inputs must be finite")
@@ -161,6 +163,8 @@ def solve_rm3_regular(
         tuple(dynamic_bodies), 4,
         pto_stiffness=pto_stiffness * pto_coupling,
         pto_damping=pto_damping * pto_coupling,
+        pto_equilibrium=np.array([0, pto_equilibrium / 2,
+                                  -pto_equilibrium / 2, 0]),
     )
     solved = system.integrate(dt=dt, end_time=end_time)
     q = solved.coordinate
@@ -169,5 +173,5 @@ def solve_rm3_regular(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
         pto_force=(-pto_damping * (v[:, 1] - v[:, 2])
-                   - pto_stiffness * (q[:, 1] - q[:, 2])),
+                   - pto_stiffness * (q[:, 1] - q[:, 2] - pto_equilibrium)),
     )

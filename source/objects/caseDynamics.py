@@ -90,13 +90,27 @@ def _location(constraint):
 
 def _pto(pto, kind):
     _section(pto, "pto", {"kind", "damping"},
-             {"kind", "damping", "stiffness"})
+             {"kind", "damping", "stiffness", "equilibrium_position",
+              "pretension"})
     if pto["kind"] != kind:
         raise ValueError(f"this layout requires a {kind} PTO")
-    return (
-        _number(pto["damping"], "pto.damping", nonnegative=True),
-        _number(pto.get("stiffness", 0), "pto.stiffness", nonnegative=True),
-    )
+    if "equilibrium_position" in pto and "pretension" in pto:
+        raise ValueError("specify either PTO equilibrium_position or pretension")
+    damping = _number(pto["damping"], "pto.damping", nonnegative=True)
+    stiffness = _number(pto.get("stiffness", 0), "pto.stiffness", nonnegative=True)
+    if "pretension" in pto:
+        pretension = _number(pto["pretension"], "pto.pretension")
+        if pretension and not stiffness:
+            raise ValueError("nonzero PTO pretension needs positive stiffness")
+        equilibrium = -pretension / stiffness if stiffness else 0.0
+    else:
+        equilibrium = _number(pto.get("equilibrium_position", 0),
+                              "pto.equilibrium_position")
+    if not np.isfinite(equilibrium):
+        raise ValueError("PTO equilibrium position is outside its supported range")
+    if equilibrium and not stiffness:
+        raise ValueError("nonzero PTO equilibrium_position needs positive stiffness")
+    return damping, stiffness, equilibrium
 
 
 def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
@@ -186,7 +200,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         if set(constraint) - {"kind", "location"}:
             raise ValueError("fixed-hinge initial conditions are not yet supported")
         location = _location(constraint)
-        damping, stiffness = _pto(case.get("pto"), "pitch")
+        damping, stiffness, equilibrium = _pto(case.get("pto"), "pitch")
         height = _number(wave.get("height"), "wave.height", positive=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
         if "direction" in wave:
@@ -220,7 +234,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         solved = solve_hinged_pitch_from_excitation(
             hydro[0], incident.excitation_force,
             hinge_z=location[2], body_mass=mass, pitch_inertia=inertia,
-            pto_damping=damping, pto_stiffness=stiffness, dt=dt,
+            pto_damping=damping, pto_stiffness=stiffness,
+            pto_equilibrium=equilibrium, dt=dt,
             memory_time=_number(
                 sim.get("radiation_memory", 30), "simulation.radiation_memory",
                 positive=True,
@@ -254,7 +269,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         if set(constraint) - {"kind", "location"}:
             raise ValueError("floating-joint initial conditions are not yet supported")
         location = _location(constraint)
-        damping, stiffness = _pto(case.get("pto"), "relative_heave")
+        damping, stiffness, equilibrium = _pto(case.get("pto"), "relative_heave")
         height = _number(wave.get("height"), "wave.height", nonnegative=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
         if set(wave) - {"type", "height", "period", "direction"}:
@@ -271,7 +286,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         solved = solve_rm3_regular(
             hydro[0], wave_height=height, wave_period=period,
             pitch_inertias=inertias, pto_damping=damping,
-            pto_stiffness=stiffness, b2b=b2b, joint_z=location[2],
+            pto_stiffness=stiffness, pto_equilibrium=equilibrium,
+            b2b=b2b, joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )
         ramp = np.ones(len(solved.time))
@@ -342,7 +358,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         raise ValueError("initial coordinates and speeds must each have N finite values")
     if "pto" in case:
         pto = _section(case["pto"], "pto", {"kind"},
-                       {"kind", "stiffness_matrix", "damping_matrix"})
+                       {"kind", "stiffness_matrix", "damping_matrix",
+                        "equilibrium_coordinate"})
         if pto["kind"] != "linear":
             raise ValueError("linear_subspace requires a linear PTO matrix")
         stiffness = np.asarray(pto.get("stiffness_matrix", np.zeros((n, n))), dtype=float)
@@ -350,9 +367,16 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         if (stiffness.shape != (n, n) or damping.shape != (n, n)
                 or not np.isfinite(stiffness).all() or not np.isfinite(damping).all()):
             raise ValueError("PTO matrices must be finite N-by-N matrices")
+        equilibrium = np.asarray(pto.get("equilibrium_coordinate", [0] * n),
+                                 dtype=float)
+        if equilibrium.shape != (n,) or not np.isfinite(equilibrium).all():
+            raise ValueError("pto.equilibrium_coordinate must have N finite values")
+        if np.any(equilibrium) and not np.any(stiffness @ equilibrium):
+            raise ValueError("PTO equilibrium offset must produce a spring force")
     else:
         stiffness = np.zeros((n, n))
         damping = np.zeros((n, n))
+        equilibrium = np.zeros(n)
 
     dynamic_bodies = []
     for index, (body_spec, path, mapping) in enumerate(zip(bodies, hydro, maps), start=1):
@@ -458,7 +482,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         ))
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), n, pto_stiffness=stiffness,
-        pto_damping=damping,
+        pto_damping=damping, pto_equilibrium=equilibrium,
     )
     response = system.integrate(
         dt=dt, end_time=end_time,
@@ -476,7 +500,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
         pto_generalized_force=(
-            -response.coordinate @ stiffness.T - response.speed @ damping.T
+            -(response.coordinate - equilibrium) @ stiffness.T
+            - response.speed @ damping.T
             if "pto" in case else None
         ),
     )

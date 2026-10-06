@@ -8,7 +8,8 @@ from source.objects.generalDynamics import (
 )
 
 
-def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None, pto_damping=0.0):
+def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
+                pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0):
     jacobian = np.zeros((6, 1))
     jacobian[2, 0] = 1
     rigid_mass = np.zeros((6, 6))
@@ -34,6 +35,8 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None, pto_damping=0.0):
     )
     return GeneralizedDynamics(
         (body,), 1, pto_damping=np.array([[pto_damping]]),
+        pto_stiffness=np.array([[pto_stiffness]]),
+        pto_equilibrium=np.array([pto_equilibrium]),
     )
 
 
@@ -51,6 +54,18 @@ def test_regular_rk4_matches_damped_oscillator_solution():
     )
     assert np.max(np.abs(response.coordinate[:, 0] - expected)) < 1e-7
     assert np.max(np.abs(response.body_position[:, 0, 2] - expected)) < 1e-7
+
+
+def test_pto_equilibrium_shift_changes_force_and_motion():
+    system = _oscillator(stiffness=0, pto_stiffness=8,
+                         pto_equilibrium=1)
+    response = system.integrate(dt=0.01, end_time=2)
+    expected = 1 - np.cos(2 * response.time)
+    assert np.max(np.abs(response.coordinate[:, 0] - expected)) < 1e-8
+    np.testing.assert_allclose(
+        system.acceleration(0, np.array([0.0]), np.array([0.0])),
+        [4.0], rtol=0, atol=1e-12,
+    )
 
 
 def test_radiation_memory_matches_augmented_state_equation():

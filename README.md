@@ -65,6 +65,28 @@ second body's heave to coordinate 2. `constraint.initial_coordinate` and
 `stiffness_matrix` apply generalized linear forces. This layout assumes
 small rotations and a constant coordinate map.
 
+### PTO tuning
+
+The `fixed_hinge` and `floating_joint` layouts accept scalar `pto.damping`
+and optional `pto.stiffness`. They also accept either
+`pto.equilibrium_position` or `pto.pretension`. For hinge pitch, the position
+is an angle in radians and forces are torques; for the floating joint, it is
+relative heave in meters and forces are newtons. The implemented law is
+`F = -damping * velocity - stiffness * (position - equilibrium_position)`.
+As in MATLAB WEC-Sim, `pretension` sets the equivalent equilibrium position
+to `-pretension / stiffness`; nonzero pretension or equilibrium position
+requires positive stiffness. These fields default to zero, preserving the
+paired reference cases. For example, add
+`"stiffness": 100000, "equilibrium_position": 0.1` to the RM3 example's
+`pto` object to shift its neutral relative heave by 0.1 m.
+
+The `linear_subspace` layout uses `pto.stiffness_matrix` and
+`pto.damping_matrix`, with optional `pto.equilibrium_coordinate` (N values).
+Its force law is `F = -K @ (q - q_eq) - C @ q_dot`. A nonzero offset must
+produce a spring force. The zero-offset cases have paired MATLAB checks;
+nonzero offsets have analytical and case-level tests. Force limits, hard
+stops, time-varying controllers, and hydraulic PTO models are not implemented.
+
 The published Sphere free-decay cases can also be calculated with the focused solver:
 
 ```python

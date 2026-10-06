@@ -61,6 +61,7 @@ class GeneralizedDynamics:
         *,
         pto_stiffness: np.ndarray | None = None,
         pto_damping: np.ndarray | None = None,
+        pto_equilibrium: np.ndarray | None = None,
     ):
         if not bodies or coordinate_count < 1:
             raise ValueError("a device needs bodies and independent coordinates")
@@ -75,11 +76,17 @@ class GeneralizedDynamics:
             np.zeros((n, n)) if pto_damping is None
             else np.asarray(pto_damping, dtype=float)
         )
+        self.pto_equilibrium = (
+            np.zeros(n) if pto_equilibrium is None
+            else np.asarray(pto_equilibrium, dtype=float)
+        )
         if (self.pto_stiffness.shape != (n, n)
                 or self.pto_damping.shape != (n, n)
+                or self.pto_equilibrium.shape != (n,)
                 or not np.isfinite(self.pto_stiffness).all()
-                or not np.isfinite(self.pto_damping).all()):
-            raise ValueError("PTO matrices must match the coordinate count")
+                or not np.isfinite(self.pto_damping).all()
+                or not np.isfinite(self.pto_equilibrium).all()):
+            raise ValueError("PTO matrices and equilibrium must match the coordinate count")
         for body in self.bodies:
             if (len(body.added_mass) != len(bodies)
                     or len(body.damping) != len(bodies)):
@@ -117,7 +124,8 @@ class GeneralizedDynamics:
         n = self.coordinate_count
         motions = tuple(body.motion(coordinate, speed) for body in self.bodies)
         mass = np.zeros((n, n))
-        force = -self.pto_stiffness @ coordinate - self.pto_damping @ speed
+        force = (-self.pto_stiffness @ (coordinate - self.pto_equilibrium)
+                 - self.pto_damping @ speed)
         velocities = tuple(motion.jacobian @ speed for motion in motions)
         for i, body in enumerate(self.bodies):
             motion = motions[i]

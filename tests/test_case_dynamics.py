@@ -74,6 +74,42 @@ def test_independent_multibody_radiation_maps_each_body_to_its_own_velocity():
     assert np.isfinite(coupled.body_position).all()
 
 
+def test_scalar_pto_equilibrium_and_pretension_change_force():
+    case = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    case["simulation"]["end_time"] = 0.2
+    case["pto"].update(damping=0, stiffness=1000,
+                       equilibrium_position=0.5)
+    shifted = run_case(case, base_dir=EXAMPLE.parent)
+    np.testing.assert_allclose(shifted.pto_force[0], 500, rtol=0, atol=1e-12)
+    case["pto"]["equilibrium_position"] = 0
+    unshifted = run_case(case, base_dir=EXAMPLE.parent)
+    assert np.max(np.abs(shifted.body_position - unshifted.body_position)) > 1e-9
+    del case["pto"]["equilibrium_position"]
+    case["pto"]["pretension"] = 100
+    pretensioned = run_case(case, base_dir=EXAMPLE.parent)
+    np.testing.assert_allclose(pretensioned.pto_force[0], -100, rtol=0,
+                               atol=1e-12)
+    case["pto"]["equilibrium_position"] = 0.5
+    with pytest.raises(ValueError, match="either PTO equilibrium_position or pretension"):
+        run_case(case, base_dir=EXAMPLE.parent)
+
+
+def test_mapped_pto_equilibrium_changes_generalized_force():
+    hydro = json.loads(EXAMPLE.read_text())["bodies"][0]["hydro_file"]
+    case = {
+        "simulation": {"dt": 0.1, "end_time": 0, "ramp_time": 0},
+        "wave": {"type": "regular", "height": 0, "period": 8},
+        "bodies": [{"hydro_file": hydro,
+                    "coordinate_map": [[0], [0], [1], [0], [0], [0]]}],
+        "constraint": {"kind": "linear_subspace"},
+        "pto": {"kind": "linear", "stiffness_matrix": [[1000]],
+                "equilibrium_coordinate": [0.5]},
+    }
+    response = run_case(case, base_dir=EXAMPLE.parent)
+    np.testing.assert_allclose(response.pto_generalized_force, [[500]],
+                               rtol=0, atol=1e-12)
+
+
 @pytest.mark.parametrize("change,explanation", [
     ({"constraint": {"kind": "free_six_dof"}}, "unsupported constraint layout"),
     ({"pto": {"kind": "pitch", "damping": 1}}, "relative_heave PTO"),

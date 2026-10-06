@@ -88,6 +88,9 @@ The [case-driven dynamics run](https://github.com/cmudrc/WEC-Sim-Python/actions/
 passed all four jobs again using JSON cases through the main runner. It also
 compared the mapped linear-coordinate RM3 heave and Sphere free-decay cases
 against the paired MATLAB trajectories.
+Optional linear PTO equilibrium offsets and scalar pretension use the same
+generalized dynamics engine. Their nonzero-force behavior has analytical and
+case-level tests; the paired MATLAB reference cases use zero offsets.
 `python -m source.objects.wecSimPython CASE.json --output motion.csv` runs a
 supported dynamics configuration. The case declares wave, body, constraint,
 PTO, and time settings; the result includes all six body position and
