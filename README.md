@@ -13,7 +13,7 @@ To run the production-code parity checks with Python 3.12:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt pytest
 .venv/bin/python -m compileall -q source/objects
-.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py
+.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py
 ```
 
 **WEC-Sim-Python** is Sungjun Won's Python port of

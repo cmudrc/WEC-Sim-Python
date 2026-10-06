@@ -62,9 +62,10 @@ mass, and radiation impulse-response kernel. It integrates the resulting
 linear convolution equation with a fixed 0.01 s trapezoidal step. The five
 Sphere trajectory comparisons [passed in the same MATLAB job](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37476318082)
 so that the source, HDF5, time grid, and output remain paired.
-The [final reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37478333096)
+The [current reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37483219008)
 passed all RM3, OSWEC, and Sphere jobs, including Python preprocessing of
-the current RM3 and OSWEC HDF5 inputs for both bodies.
+the current RM3 and OSWEC HDF5 inputs for both bodies and the focused dynamics
+comparisons described above.
 The RM3 baseline also checks a reduced Python heave model and a coupled
 surge/heave/pitch model. The OSWEC baseline
 saves its random phase matrix and checks Python PM binning, wave elevation,
@@ -77,8 +78,8 @@ provides a standalone RM3, OSWEC, or Sphere command. It writes a CSV and a
 JSON reproducibility record containing settings, the HDF5 SHA-256 hash, the
 NumPy version, and Git revision/dirty state. It does not execute arbitrary
 WEC-Sim input files.
-Expanded application
-cases remain inventoried. The manually dispatched `MATLAB reference application regression`
+Expanded application cases remain inventoried. The manually dispatched
+`MATLAB reference application regression`
 workflow can run the upstream test suites for all 18 application folders
 containing the 46 explicit RM3, OSWEC, and Sphere cases. This checks the
 pinned MATLAB reference for those cases, but there is no Python time-series
@@ -111,6 +112,9 @@ of Python dynamics agreement or disagreement.
 Current MATLAB WEC-Sim has changed its PM/JS spectra, seeded phase generator,
 object properties, and some wave inputs since the Python port was written.
 The historical fixtures therefore cannot establish parity for those modes.
+The focused OSWEC PM implementation above is checked against current MATLAB;
+the inherited general `WaveClass` still needs corresponding updates for other
+irregular-wave cases.
 The next dynamics targets are additional RM3 and OSWEC application variants,
 other OSWEC force terms, and integration into a general runner. The Sphere free-decay
 cases already have direct Python motion comparisons. A comparison must
