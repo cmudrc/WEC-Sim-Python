@@ -49,7 +49,7 @@ Supported combinations are:
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
 | `floating_joint` | `regular` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation |
-| `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies, each with a 6-by-N `coordinate_map`; optional N-by-N linear PTO matrices | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
@@ -64,6 +64,49 @@ second body's heave to coordinate 2. `constraint.initial_coordinate` and
 `initial_speed` set those coordinates, and `pto.damping_matrix` and
 `stiffness_matrix` apply generalized linear forces. This layout assumes
 small rotations and a constant coordinate map.
+
+### Configuring body motions and PTO attachments
+
+The [configurable two-body example](examples/python/configurable_rm3_pto.json)
+shows a WEC definition with named bodies, independent motion coordinates, and
+a PTO connection. Run it with:
+
+```sh
+python -m source.objects.wecSimPython examples/python/configurable_rm3_pto.json --output results/configurable-rm3.csv
+```
+
+In `constraint.coordinates`, each named coordinate lists the body motions it
+drives. Assigning the same coordinate to two bodies gives them a shared motion;
+separate coordinates let them move independently. A motion names one of surge,
+sway, heave, roll, pitch, or yaw and may include a `scale` (default `1`).
+For a rotational motion, `pivot` can specify `{"world": [x, y, z]}` or
+`{"point": [x, y, z]}` in that body's local center-of-gravity frame. The
+rotation then moves the body center about that point. With no `pivot`, the
+body rotates about its center of gravity. The example's shared pitch rotates
+both RM3 bodies about world `[0, 0, 0]`.
+`initial_coordinate` and `initial_speed` may be vectors or dictionaries keyed
+by coordinate name. The original 6-by-N `coordinate_map` remains available for
+advanced cases. These maps describe constant, small-motion kinematics, not an
+arbitrary multibody joint solver.
+
+`ptos` is a list of linear actuators. Each PTO has a unique `name`, `from` and
+`to` endpoints, and damping and/or stiffness. A body endpoint uses
+`{"body": "float", "point": [x, y, z]}`: the point is in that body's local
+frame relative to its HDF5 center of gravity. A fixed world anchor uses
+`{"ground": [x, y, z]}`. `axis` gives a fixed world-space force direction;
+if omitted, the axis follows the line between endpoints **at the reference
+pose** and then stays fixed. Stroke is projected displacement along that axis
+from the reference pose. Moving an attachment point changes its moment arm
+when the body rotates. The CSV includes each PTO's stroke, velocity, force,
+and power absorbed by its damper, as well as named coordinate motion. This
+force is positive along the axis on the `to` endpoint and opposite on `from`.
+The reported absorbed power is damping times stroke velocity squared. This
+connection model is linearized for small rotations; it does not update the
+actuator's axis as its endpoints move. Use either `ptos` or the older `pto`
+matrix in one case.
+In the example, each body-local PTO point has a vertical coordinate that
+places it at world `z = 0` in the reference pose; its horizontal offset sets
+the pitch moment arm.
 
 ### PTO tuning
 
@@ -84,8 +127,12 @@ The `linear_subspace` layout uses `pto.stiffness_matrix` and
 `pto.damping_matrix`, with optional `pto.equilibrium_coordinate` (N values).
 Its force law is `F = -K @ (q - q_eq) - C @ q_dot`. A nonzero offset must
 produce a spring force. The zero-offset cases have paired MATLAB checks;
-nonzero offsets have analytical and case-level tests. Force limits, hard
-stops, time-varying controllers, and hydraulic PTO models are not implemented.
+nonzero offsets have analytical and case-level tests. Each actuator in `ptos`
+can instead set `damping`, `stiffness`, and either `equilibrium_position` or
+`pretension`. Connection geometry and nonzero offsets have case-level and
+analytical checks; the paired MATLAB cases use the original PTO geometry.
+Force limits, hard stops, time-varying controllers, and hydraulic PTO models
+are not implemented.
 
 The published Sphere free-decay cases can also be calculated with the focused solver:
 

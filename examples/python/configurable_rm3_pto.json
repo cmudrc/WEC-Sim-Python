@@ -1,0 +1,68 @@
+{
+  "name": "Configurable two-body WEC with offset PTO attachment points",
+  "simulation": {
+    "dt": 0.1,
+    "end_time": 20,
+    "ramp_time": 5
+  },
+  "wave": {
+    "type": "regular",
+    "height": 2.5,
+    "period": 8,
+    "direction": 0
+  },
+  "bodies": [
+    {
+      "name": "float",
+      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_body": 1,
+      "mass": "equilibrium",
+      "inertia": [0, 21306090.66, 0]
+    },
+    {
+      "name": "spar",
+      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_body": 2,
+      "mass": "equilibrium",
+      "inertia": [0, 94407091.24, 0]
+    }
+  ],
+  "constraint": {
+    "kind": "linear_subspace",
+    "coordinates": [
+      {
+        "name": "shared_surge",
+        "motions": [
+          {"body": "float", "dof": "surge"},
+          {"body": "spar", "dof": "surge"}
+        ]
+      },
+      {
+        "name": "float_heave",
+        "motions": [{"body": "float", "dof": "heave"}]
+      },
+      {
+        "name": "spar_heave",
+        "motions": [{"body": "spar", "dof": "heave"}]
+      },
+      {
+        "name": "shared_pitch",
+        "motions": [
+          {"body": "float", "dof": "pitch", "pivot": {"world": [0, 0, 0]}},
+          {"body": "spar", "dof": "pitch", "pivot": {"world": [0, 0, 0]}}
+        ]
+      }
+    ]
+  },
+  "ptos": [
+    {
+      "name": "main",
+      "kind": "linear_actuator",
+      "from": {"body": "float", "point": [2, 0, 0.72]},
+      "to": {"body": "spar", "point": [-1, 0, 21.29]},
+      "axis": [0, 0, 1],
+      "damping": 1200000,
+      "stiffness": 0
+    }
+  ]
+}

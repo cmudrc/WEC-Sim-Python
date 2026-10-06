@@ -77,6 +77,9 @@ def main(argv=None):
     if response.total_heave_force is not None:
         columns.append("body1_total_heave_force")
         arrays.append(response.total_heave_force)
+    for name, values in response.extra_outputs:
+        columns.append(name)
+        arrays.append(values)
     values = np.column_stack(arrays)
     if not np.isfinite(values).all():
         raise RuntimeError("the dynamics produced nonfinite output")

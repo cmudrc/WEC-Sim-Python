@@ -16,7 +16,9 @@ from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .hingePitch import solve_hinged_pitch_from_excitation
 from .irregularWave import pm_equal_energy_components, synthesize_irregular_response
+from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
+from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
 
 
@@ -35,6 +37,7 @@ class CaseResponse:
     total_heave_force: np.ndarray | None = None
     auxiliary_files: tuple[Path, ...] = ()
     pto_generalized_force: np.ndarray | None = None
+    extra_outputs: tuple[tuple[str, np.ndarray], ...] = ()
 
 
 def _section(value, name, required, allowed):
@@ -63,7 +66,7 @@ def _number(value, name, *, positive=False, nonnegative=False):
 def _hydro_file(body, base_dir):
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
-              "inertia", "coordinate_map"})
+              "inertia", "coordinate_map", "name"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -124,7 +127,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     """
     case = _section(
         case, "case", {"simulation", "wave", "bodies", "constraint"},
-        {"name", "simulation", "wave", "bodies", "constraint", "pto", "body_to_body"},
+        {"name", "simulation", "wave", "bodies", "constraint", "pto",
+         "ptos", "body_to_body"},
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
                    {"dt", "end_time", "ramp_time", "rho", "g", "radiation_memory"})
@@ -138,7 +142,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                      "spreading", "seed", "phase_file", "frequency_count"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
-                           "initial_coordinate", "initial_speed"})
+                           "initial_coordinate", "initial_speed", "coordinates"})
     bodies = case["bodies"]
     if not isinstance(bodies, list) or not bodies:
         raise ValueError("bodies must be a nonempty list")
@@ -148,6 +152,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+    if "ptos" in case and kind != "linear_subspace":
+        raise ValueError("configurable PTO connections require linear_subspace")
 
     if kind == "linear_subspace":
         return _run_linear_subspace(
@@ -307,7 +313,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
 def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                          b2b, dt, end_time, ramp_time, rho, g):
     """Run constant linear coordinate maps with regular or no incident waves."""
-    if set(constraint) - {"kind", "initial_coordinate", "initial_speed"}:
+    if set(constraint) - {"kind", "initial_coordinate", "initial_speed",
+                           "coordinates"}:
         raise ValueError("linear_subspace uses coordinate maps, not joint locations")
     if wave["type"] not in ("regular", "none"):
         raise ValueError("linear_subspace supports regular or no incident waves")
@@ -338,24 +345,43 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     time = np.arange(round(end_time / dt) + 1) * dt
     if not np.isclose(time[-1], end_time, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
-    maps = []
+    body_names = []
     for index, body_spec in enumerate(bodies, start=1):
         _body_number(body_spec, index)
         if "pitch_inertia" in body_spec:
             raise ValueError("linear_subspace uses body.inertia, not pitch_inertia")
-        mapping = np.asarray(body_spec.get("coordinate_map"), dtype=float)
-        if (mapping.ndim != 2 or mapping.shape[0] != 6
-                or mapping.shape[1] < 1 or not np.isfinite(mapping).all()):
-            raise ValueError("body.coordinate_map must be a finite 6-by-N matrix")
-        maps.append(mapping)
+        name = body_spec.get("name", f"body{index}")
+        if not isinstance(name, str) or not name or name in body_names:
+            raise ValueError("body names must be nonempty and unique")
+        body_names.append(name)
+    loaded_bodies = []
+    centers = []
+    for index, path in enumerate(hydro, start=1):
+        body = BodyClass(str(path))
+        body.bodyNumber = index
+        body.bodyTotal = len(bodies)
+        body.readH5file()
+        if int(np.asarray(body.dof).item()) != 6:
+            raise ValueError("linear_subspace needs six-DOF hydrodynamic bodies")
+        center = np.asarray(body.cg, dtype=float).ravel()
+        if center.shape != (3,):
+            raise ValueError("body center must have three coordinates")
+        loaded_bodies.append(body)
+        centers.append(center)
+    maps, coordinate_names = build_coordinate_maps(
+        constraint, bodies, body_names, centers,
+    )
     n = maps[0].shape[1]
-    if any(mapping.shape[1] != n for mapping in maps):
-        raise ValueError("all coordinate maps must use the same coordinate count")
-    initial_q = np.asarray(constraint.get("initial_coordinate", [0] * n), dtype=float)
-    initial_v = np.asarray(constraint.get("initial_speed", [0] * n), dtype=float)
-    if (initial_q.shape != (n,) or initial_v.shape != (n,)
-            or not np.isfinite(initial_q).all() or not np.isfinite(initial_v).all()):
-        raise ValueError("initial coordinates and speeds must each have N finite values")
+    initial_q = initial_coordinate(
+        constraint.get("initial_coordinate", [0] * n), coordinate_names,
+        "constraint.initial_coordinate",
+    )
+    initial_v = initial_coordinate(
+        constraint.get("initial_speed", [0] * n), coordinate_names,
+        "constraint.initial_speed",
+    )
+    if "pto" in case and "ptos" in case:
+        raise ValueError("use either a PTO matrix or PTO connections")
     if "pto" in case:
         pto = _section(case["pto"], "pto", {"kind"},
                        {"kind", "stiffness_matrix", "damping_matrix",
@@ -377,15 +403,12 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         stiffness = np.zeros((n, n))
         damping = np.zeros((n, n))
         equilibrium = np.zeros(n)
+    pto_bias = np.zeros(n)
+    connections = ()
 
     dynamic_bodies = []
-    for index, (body_spec, path, mapping) in enumerate(zip(bodies, hydro, maps), start=1):
-        body = BodyClass(str(path))
-        body.bodyNumber = index
-        body.bodyTotal = len(bodies)
-        body.readH5file()
-        if int(np.asarray(body.dof).item()) != 6:
-            raise ValueError("linear_subspace needs six-DOF hydrodynamic bodies")
+    for index, (body_spec, body, mapping) in enumerate(
+            zip(bodies, loaded_bodies, maps), start=1):
         mass_setting = body_spec.get("mass", "equilibrium")
         if mass_setting != "equilibrium":
             mass_setting = _number(mass_setting, "body.mass", positive=True)
@@ -444,9 +467,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 kernel = independent_kernel
         else:
             kernel = None
-        center = np.asarray(body.cg, dtype=float).ravel()
-        if center.shape != (3,):
-            raise ValueError("body center must have three coordinates")
+        center = centers[index - 1]
 
         def motion(q, v, *, mapping=mapping):
             return BodyMotion(mapping @ q, mapping, np.zeros(6))
@@ -480,9 +501,14 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             excitation=excitation,
             radiation_kernel=kernel,
         ))
+    if "ptos" in case:
+        connections, stiffness, damping, pto_bias = build_linear_ptos(
+            case["ptos"], maps, centers, body_names,
+        )
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), n, pto_stiffness=stiffness,
         pto_damping=damping, pto_equilibrium=equilibrium,
+        pto_bias=pto_bias,
     )
     response = system.integrate(
         dt=dt, end_time=end_time,
@@ -496,12 +522,24 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         elevation = height / 2 * ramp * np.cos(frequency * response.time)
     else:
         elevation = None
+    coordinate_outputs = tuple(
+        output for index, name in enumerate(coordinate_names)
+        for output in (
+            (f"coordinate_{name}_position", response.coordinate[:, index]),
+            (f"coordinate_{name}_velocity", response.speed[:, index]),
+        )
+    ) if "coordinates" in constraint else ()
+    pto_outputs = tuple(
+        output for connection in connections
+        for output in connection.outputs(response.coordinate, response.speed)
+    )
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
         pto_generalized_force=(
             -(response.coordinate - equilibrium) @ stiffness.T
-            - response.speed @ damping.T
-            if "pto" in case else None
+            - response.speed @ damping.T + pto_bias
+            if "pto" in case or "ptos" in case else None
         ),
+        extra_outputs=coordinate_outputs + pto_outputs,
     )
