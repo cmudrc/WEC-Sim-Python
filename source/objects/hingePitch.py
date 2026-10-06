@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 from .bodyClass import BodyClass
+from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 
 
 @dataclass(frozen=True)
@@ -100,90 +101,59 @@ def solve_hinged_pitch_from_excitation(
         1, 1, 0, 0, 0,
     )
 
-    added_mass = np.asarray(body.hydroForce["fAddedMass"])
-    restoring = np.asarray(body.hydroForce["linearHydroRestCoef"])
-    kernel = np.asarray(body.hydroForce["irkb"])
     displaced_volume = float(np.asarray(body.dispVol).item())
     static_force = np.array([
         0.0, 0.0, (rho * displaced_volume - body_mass) * g, 0.0, 0.0, 0.0,
     ])
-    rigid_inertia = body_mass * lever**2 + pitch_inertia
 
-    def jacobian(angle):
-        return np.array([
+    def motion(q, v):
+        angle, speed = q[0], v[0]
+        j = np.array([
             lever * np.cos(angle), 0.0, -lever * np.sin(angle),
             0.0, 1.0, 0.0,
-        ])
-
-    def jacobian_prime(angle):
-        return np.array([
+        ])[:, None]
+        bias = np.array([
             -lever * np.sin(angle), 0.0, -lever * np.cos(angle),
             0.0, 0.0, 0.0,
-        ])
-
-    def acceleration(angle, speed, index, known_radiation):
-        j = jacobian(angle)
-        jp = jacobian_prime(angle)
+        ]) * speed**2
         displacement = np.array([
             lever * np.sin(angle), 0.0,
             lever * (np.cos(angle) - 1.0), 0.0, angle, 0.0,
         ])
-        mass = rigid_inertia + j @ added_mass @ j
-        if mass <= 0 or not np.isfinite(mass):
-            raise ValueError("effective hinge inertia must be positive and finite")
-        hydrostatic_torque = j @ (static_force - restoring @ displacement)
-        excitation_torque = j @ force[index]
-        radiation_torque = j @ (
-            known_radiation + dt / 2 * (kernel[0] @ j) * speed
-        )
-        added_mass_curvature = (j @ added_mass @ jp) * speed**2
-        return (hydrostatic_torque + excitation_torque
-                - pto_damping * speed - pto_stiffness * angle
-                - radiation_torque - added_mass_curvature) / mass
+        return BodyMotion(displacement, j, bias)
 
-    angle = np.zeros(count)
-    speed = np.zeros(count)
-    angular_acceleration = np.zeros(count)
-    six_velocity = np.zeros((count, 6))
-    angular_acceleration[0] = acceleration(0.0, 0.0, 0, np.zeros(6))
-    for step in range(1, count):
-        memory = min(step, memory_steps)
-        known_radiation = dt * np.einsum(
-            "tij,tj->i", kernel[1:memory + 1],
-            six_velocity[step - memory:step][::-1],
-        )
-        trial_speed = speed[step - 1]
-        for _ in range(12):
-            trial_angle = angle[step - 1] + dt * (speed[step - 1] + trial_speed) / 2
-            trial_acceleration = acceleration(
-                trial_angle, trial_speed, step, known_radiation,
-            )
-            next_speed = speed[step - 1] + dt * (
-                angular_acceleration[step - 1] + trial_acceleration
-            ) / 2
-            if abs(next_speed - trial_speed) < 1e-12:
-                trial_speed = next_speed
-                break
-            trial_speed = next_speed
-        else:
-            raise RuntimeError("hinge-pitch step did not converge; reduce dt")
-        speed[step] = trial_speed
-        angle[step] = angle[step - 1] + dt * (
-            speed[step - 1] + speed[step]
-        ) / 2
-        angular_acceleration[step] = acceleration(
-            angle[step], speed[step], step, known_radiation,
-        )
-        six_velocity[step] = jacobian(angle[step]) * speed[step]
+    def excitation(at_time):
+        index = round(at_time / dt)
+        if index < 0 or index >= count or not np.isclose(index * dt, at_time, atol=1e-9):
+            raise ValueError("sampled excitation is defined only on the simulation time grid")
+        return force[index]
 
-    center_position = np.column_stack((
-        lever * np.sin(angle), np.zeros(count),
-        hinge_z + lever * np.cos(angle),
-    ))
-    center_velocity = six_velocity[:, :3]
-    excitation_torque = np.einsum(
-        "ij,ij->i", np.stack([jacobian(a) for a in angle]), force,
+    rigid_mass = np.diag([
+        body_mass, body_mass, body_mass, 0.0, pitch_inertia, 0.0,
+    ])
+    device = GeneralizedDynamics((DynamicBody(
+        rigid_mass=rigid_mass,
+        added_mass=(np.asarray(body.hydroForce["fAddedMass"]),),
+        damping=(np.zeros((6, 6)),),
+        restoring=np.asarray(body.hydroForce["linearHydroRestCoef"]),
+        static_force=static_force,
+        reference_position=np.array([0, 0, cg_z, 0, 0, 0]),
+        motion=motion,
+        excitation=excitation,
+        radiation_kernel=np.asarray(body.hydroForce["irkb"]),
+    ),), 1,
+        pto_stiffness=np.array([[pto_stiffness]]),
+        pto_damping=np.array([[pto_damping]]),
     )
+    solved = device.integrate(dt=dt, end_time=(count - 1) * dt)
+    angle = solved.coordinate[:, 0]
+    speed = solved.speed[:, 0]
+    center_position = solved.body_position[:, 0, :3]
+    center_velocity = solved.body_velocity[:, 0, :3]
+    excitation_torque = np.array([
+        motion(solved.coordinate[i], solved.speed[i]).jacobian[:, 0] @ force[i]
+        for i in range(count)
+    ])
     return HingePitchResponse(
         time=time,
         angle=angle,

@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 
 from .bodyClass import BodyClass
+from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 
 
 @dataclass(frozen=True)
@@ -115,18 +116,12 @@ def solve_rm3_regular(
     pto_coupling[1, 1] = pto_coupling[2, 2] = 1
     pto_coupling[1, 2] = pto_coupling[2, 1] = -1
 
-    def derivative(at_time, state):
-        q = state[:4]  # joint surge, body 1 heave, body 2 heave, common pitch
-        v = state[4:]
-        angle = q[3]
-        angular_speed = v[3]
-        ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time
-                else (1.0 - np.cos(np.pi * at_time / ramp_time)) / 2)
-        generalized_mass = np.zeros((4, 4))
-        generalized_force = np.zeros(4)
-        geometry = []
-        for index, body in enumerate(data):
-            lever = body["lever"]
+    dynamic_bodies = []
+    for index, body in enumerate(data):
+        lever = body["lever"]
+
+        def motion(q, v, *, index=index, lever=lever):
+            angle = q[3]
             jacobian = np.zeros((6, 4))
             jacobian[0, 0] = 1.0
             jacobian[2, index + 1] = 1.0
@@ -136,65 +131,43 @@ def solve_rm3_regular(
             curvature = np.array([
                 -lever * np.sin(angle), 0.0, -lever * np.cos(angle),
                 0.0, 0.0, 0.0,
-            ])
+            ]) * v[3]**2
             displacement = np.array([
                 q[0] + lever * np.sin(angle), 0.0,
                 q[index + 1] + lever * (np.cos(angle) - 1.0),
                 0.0, angle, 0.0,
             ])
-            incident = wave_height / 2 * ramp * (
-                body["re"] * np.cos(omega * at_time)
-                - body["im"] * np.sin(omega * at_time)
+            return BodyMotion(displacement, jacobian, curvature)
+
+        def excitation(at_time, *, re=body["re"], im=body["im"]):
+            ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time
+                    else (1.0 - np.cos(np.pi * at_time / ramp_time)) / 2)
+            return wave_height / 2 * ramp * (
+                re * np.cos(omega * at_time) - im * np.sin(omega * at_time)
             )
-            incident[2] += body["vertical_bias"]
-            geometry.append((jacobian, curvature, displacement, incident))
-        for index, body in enumerate(data):
-            jacobian, curvature, displacement, incident = geometry[index]
-            force = (incident - body["restoring"] @ displacement
-                     - body["rigid_mass"] @ curvature * angular_speed**2)
-            generalized_mass += jacobian.T @ body["rigid_mass"] @ jacobian
-            for other, (other_jacobian, other_curvature, _, _) in enumerate(geometry):
-                added_mass = body["added_mass"][other]
-                damping = body["damping"][other]
-                generalized_mass += jacobian.T @ added_mass @ other_jacobian
-                force -= damping @ (other_jacobian @ v)
-                force -= added_mass @ other_curvature * angular_speed**2
-            generalized_force += jacobian.T @ force
-        generalized_force -= pto_damping * pto_coupling @ v
-        generalized_force -= pto_stiffness * pto_coupling @ q
-        return np.concatenate((
-            v, np.linalg.solve(generalized_mass, generalized_force),
+
+        dynamic_bodies.append(DynamicBody(
+            rigid_mass=body["rigid_mass"],
+            added_mass=tuple(body["added_mass"]),
+            damping=tuple(body["damping"]),
+            restoring=body["restoring"],
+            static_force=np.array([0, 0, body["vertical_bias"], 0, 0, 0]),
+            reference_position=np.array([0, 0, body["center_z"], 0, 0, 0]),
+            motion=motion,
+            excitation=excitation,
         ))
 
-    state = np.zeros((steps + 1, 8))
-    for step in range(steps):
-        t = time[step]
-        y = state[step]
-        k1 = derivative(t, y)
-        k2 = derivative(t + dt / 2, y + dt * k1 / 2)
-        k3 = derivative(t + dt / 2, y + dt * k2 / 2)
-        k4 = derivative(t + dt, y + dt * k3)
-        state[step + 1] = y + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
-
-    q = state[:, :4]
-    v = state[:, 4:]
-    angle = q[:, 3]
-    angular_speed = v[:, 3]
-    position = np.zeros((len(time), 2, 6))
-    velocity = np.zeros_like(position)
-    for index, body in enumerate(data):
-        lever = body["lever"]
-        position[:, index, 0] = q[:, 0] + lever * np.sin(angle)
-        position[:, index, 2] = (
-            body["center_z"] + q[:, index + 1]
-            + lever * (np.cos(angle) - 1.0)
-        )
-        position[:, index, 4] = angle
-        velocity[:, index, 0] = v[:, 0] + lever * np.cos(angle) * angular_speed
-        velocity[:, index, 2] = v[:, index + 1] - lever * np.sin(angle) * angular_speed
-        velocity[:, index, 4] = angular_speed
+    system = GeneralizedDynamics(
+        tuple(dynamic_bodies), 4,
+        pto_stiffness=pto_stiffness * pto_coupling,
+        pto_damping=pto_damping * pto_coupling,
+    )
+    solved = system.integrate(dt=dt, end_time=end_time)
+    q = solved.coordinate
+    v = solved.speed
     return RM3RegularResponse(
-        time=time, body_position=position, body_velocity=velocity,
+        time=solved.time, body_position=solved.body_position,
+        body_velocity=solved.body_velocity,
         pto_force=(-pto_damping * (v[:, 1] - v[:, 2])
                    - pto_stiffness * (q[:, 1] - q[:, 2])),
     )

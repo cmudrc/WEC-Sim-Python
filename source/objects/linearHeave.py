@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 from .bodyClass import BodyClass
+from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 
 
 @dataclass(frozen=True)
@@ -230,46 +231,42 @@ def solve_heave_free_decay(
         1, [], 0, 0, 0,
     )
 
-    stiffness = float(body.hydroForce["linearHydroRestCoef"][2, 2])
     mass = float(np.asarray(body.mass).item() + body.hydroForce["fAddedMass"][2, 2])
-    kernel = np.asarray(body.hydroForce["irkb"][:, 2, 2])
     equilibrium_z = float(body.hydroData["properties"]["cg"][0, 2])
     if mass <= 0:
         raise ValueError("body mass plus infinite-frequency added mass must be positive")
+    j = np.zeros((6, 1))
+    j[2, 0] = 1
 
-    displacement = np.zeros(steps + 1)
-    velocity = np.zeros(steps + 1)
-    acceleration = np.zeros(steps + 1)
-    displacement[0] = initial_displacement
-    acceleration[0] = -stiffness * initial_displacement / mass
-    denominator = 1 + dt / (2 * mass) * (stiffness * dt / 2 + dt * kernel[0] / 2)
+    def motion(q, v):
+        displacement = np.zeros(6)
+        displacement[2] = q[0]
+        return BodyMotion(displacement, j, np.zeros(6))
 
-    for step in range(1, steps + 1):
-        memory = min(step, memory_steps)
-        known_radiation = dt * np.dot(
-            kernel[1:memory + 1], velocity[step - memory:step][::-1],
-        )
-        velocity[step] = (
-            velocity[step - 1] + dt * acceleration[step - 1] / 2
-            - dt / (2 * mass) * (
-                stiffness * displacement[step - 1]
-                + stiffness * dt * velocity[step - 1] / 2
-                + known_radiation
-            )
-        ) / denominator
-        displacement[step] = (
-            displacement[step - 1]
-            + dt * (velocity[step - 1] + velocity[step]) / 2
-        )
-        acceleration[step] = (
-            -stiffness * displacement[step]
-            - known_radiation
-            - dt * kernel[0] * velocity[step] / 2
-        ) / mass
+    rigid_mass = np.zeros((6, 6))
+    rigid_mass[:3, :3] = np.eye(3) * float(np.asarray(body.mass).item())
+    device = GeneralizedDynamics((DynamicBody(
+        rigid_mass=rigid_mass,
+        added_mass=(np.asarray(body.hydroForce["fAddedMass"]),),
+        damping=(np.zeros((6, 6)),),
+        restoring=np.asarray(body.hydroForce["linearHydroRestCoef"]),
+        static_force=np.zeros(6),
+        reference_position=np.array([0, 0, equilibrium_z, 0, 0, 0]),
+        motion=motion,
+        excitation=lambda t: np.zeros(6),
+        radiation_kernel=np.asarray(body.hydroForce["irkb"]),
+    ),), 1)
+    solved = device.integrate(
+        dt=dt, end_time=end_time,
+        initial_coordinate=np.array([initial_displacement]),
+    )
+    displacement = solved.coordinate[:, 0]
+    velocity = solved.speed[:, 0]
+    acceleration = solved.acceleration[:, 0]
 
     return HeaveResponse(
-        time=time,
-        position=equilibrium_z + displacement,
+        time=solved.time,
+        position=solved.body_position[:, 0, 2],
         displacement=displacement,
         velocity=velocity,
         force_total=mass * acceleration,
