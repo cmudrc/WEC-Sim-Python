@@ -37,6 +37,43 @@ def test_example_case_runs_and_records_provenance(tmp_path):
     assert len(metadata["hydro_files"][0]["sha256"]) == 64
 
 
+def test_independent_multibody_radiation_maps_each_body_to_its_own_velocity():
+    hydro = str((EXAMPLE.parent / json.loads(EXAMPLE.read_text())[
+        "bodies"][0]["hydro_file"]).resolve())
+    first = [[0, 0], [0, 0], [1, 0], [0, 0], [0, 0], [0, 0]]
+    second = [[0, 0], [0, 0], [0, 1], [0, 0], [0, 0], [0, 0]]
+    case = {
+        "simulation": {"dt": 0.1, "end_time": 0.3,
+                       "radiation_memory": 0.2},
+        "wave": {"type": "none"},
+        "bodies": [
+            {"hydro_file": hydro, "coordinate_map": first},
+            {"hydro_file": hydro, "coordinate_map": second},
+        ],
+        "constraint": {"kind": "linear_subspace",
+                       "initial_coordinate": [1, 0]},
+    }
+    independent = run_case(case)
+    one_body = {
+        **case,
+        "bodies": [{"hydro_file": hydro,
+                    "coordinate_map": [[row[0]] for row in first]}],
+        "constraint": {"kind": "linear_subspace",
+                       "initial_coordinate": [1]},
+    }
+    reference = run_case(one_body)
+    np.testing.assert_allclose(
+        independent.body_position[:, 0, 2],
+        reference.body_position[:, 0, 2], rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        independent.body_position[:, 1, 2],
+        independent.body_position[0, 1, 2], rtol=0, atol=1e-10,
+    )
+    coupled = run_case({**case, "body_to_body": True})
+    assert np.isfinite(coupled.body_position).all()
+
+
 @pytest.mark.parametrize("change,explanation", [
     ({"constraint": {"kind": "free_six_dof"}}, "unsupported constraint layout"),
     ({"pto": {"kind": "pitch", "damping": 1}}, "relative_heave PTO"),

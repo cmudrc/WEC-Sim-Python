@@ -414,6 +414,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         if wave["type"] == "none":
             radiation_damping = tuple(np.zeros((6, 6)) for _ in bodies)
             kernel = np.asarray(hydro_force["irkb"])
+            if not b2b and len(bodies) > 1:
+                independent_kernel = np.zeros((len(kernel), 6, 6 * len(bodies)))
+                independent_kernel[:, :, 6 * (index - 1):6 * index] = kernel
+                kernel = independent_kernel
         else:
             kernel = None
         center = np.asarray(body.cg, dtype=float).ravel()
