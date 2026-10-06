@@ -22,6 +22,22 @@ from numpy.linalg import inv
 from scipy import interpolate
 from copy import copy
 
+
+def _directional_interp(frequencies, directions, values, query_frequencies, query_directions):
+    """Interpolate a direction-by-frequency hydrodynamic table linearly."""
+    frequencies = np.asarray(frequencies).ravel()
+    directions = np.asarray(directions).ravel()
+    query_frequencies = np.atleast_1d(query_frequencies)
+    query_directions = np.atleast_1d(query_directions)
+    frequency_grid, direction_grid = np.meshgrid(query_frequencies, query_directions)
+    points = np.column_stack((direction_grid.ravel(), frequency_grid.ravel()))
+    interpolator = interpolate.RegularGridInterpolator(
+        (directions, frequencies), np.asarray(values), bounds_error=False,
+        fill_value=None,
+    )
+    return interpolator(points).reshape(direction_grid.shape)
+
+
 class BodyClass:
     def hdf5FileProperties(self):#hdf5 file properties
         """
@@ -487,12 +503,9 @@ class BodyClass:
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 y = self.hydroData['simulation_parameters']['wave_dir'][0]
-                s1 = interpolate.interp2d(x,y, np.squeeze(re[ii]))# interpolate using interp2d to get interpolation of 2d space
-                self.hydroForce['fExt']['re'][ii] = s1(w[0],waveDir)
-                s2 = interpolate.interp2d(x,y, np.squeeze(im[ii]))
-                self.hydroForce['fExt']['im'][ii] = s2(w[0],waveDir)
-                s3 = interpolate.interp2d(x,y, np.squeeze(md[ii]))
-                self.hydroForce['fExt']['md'][ii] = s3(w[0],waveDir)
+                self.hydroForce['fExt']['re'][ii] = _directional_interp(x, y, np.squeeze(re[ii]), w, waveDir).item()
+                self.hydroForce['fExt']['im'][ii] = _directional_interp(x, y, np.squeeze(im[ii]), w, waveDir).item()
+                self.hydroForce['fExt']['md'][ii] = _directional_interp(x, y, np.squeeze(md[ii]), w, waveDir).item()
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 s1 = interpolate.CubicSpline(x, np.squeeze(re[ii][0]))# interpolate using CubicSline to get interpolation of spline 3d space
@@ -519,12 +532,9 @@ class BodyClass:
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 y = self.hydroData['simulation_parameters']['wave_dir'][0]
-                s1 = interpolate.interp2d(x,y, np.squeeze(re[ii]))# interpolate using interp2d to get interpolation of 2d space
-                self.hydroForce['fExt']['re'][:,:,ii] = s1(wv[0],waveDir)
-                s2 = interpolate.interp2d(x,y, np.squeeze(im[ii]))
-                self.hydroForce['fExt']['im'][:,:,ii] = s2(wv[0],waveDir)
-                s3 = interpolate.interp2d(x,y, np.squeeze(md[ii]))
-                self.hydroForce['fExt']['md'][:,:,ii] = s3(wv[0],waveDir)
+                self.hydroForce['fExt']['re'][:,:,ii] = _directional_interp(x, y, np.squeeze(re[ii]), wv, waveDir)
+                self.hydroForce['fExt']['im'][:,:,ii] = _directional_interp(x, y, np.squeeze(im[ii]), wv, waveDir)
+                self.hydroForce['fExt']['md'][:,:,ii] = _directional_interp(x, y, np.squeeze(md[ii]), wv, waveDir)
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 s1 = interpolate.CubicSpline(x, np.squeeze(re[ii][0]))# interpolate using CubicSline to get interpolation of spline 3d space
@@ -547,8 +557,7 @@ class BodyClass:
         for ii in range(nDOF):
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 y = self.hydroData['simulation_parameters']['wave_dir'][0] 
-                s1 = interpolate.interp2d(kt,y, np.squeeze(kf[ii])) # interpolate using interp2d to get interpolation of 2d space
-                self.userDefinedExcIRF = s1(t,waveDir)
+                self.userDefinedExcIRF = _directional_interp(kt, y, np.squeeze(kf[ii]), t, waveDir).squeeze()
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 s1 = interpolate.CubicSpline(kt, np.squeeze(kf[ii][0])) # interpolate using CubicSline to get interpolation of spline 3d space
                 self.userDefinedExcIRF = s1(t)

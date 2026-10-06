@@ -71,6 +71,43 @@ def test_rm3_regular_cic_force_preprocessing_matches_matlab_fixture():
     )
 
 
+def test_oswec_directional_irregular_preprocessing_matches_matlab_fixture():
+    fixture = ROOT / "tests/test_objects/test_bodyclass/testData"
+    case = fixture / "body_3_test"
+
+    def mat(name):
+        values = scipy.io.loadmat(case / f"{name}.mat")
+        return next(value for key, value in values.items() if not key.startswith("__"))
+
+    body = BodyClass(str(fixture / "hydroData/oswec.h5"))
+    body.bodyNumber = 1
+    body.readH5file()
+    body.hydroStiffness = np.zeros((6, 6))
+    body.viscDrag = {
+        "Drag": np.zeros((6, 6)),
+        "cd": np.zeros(6),
+        "characteristicArea": np.zeros(6),
+    }
+    body.linearDamping = np.zeros((6, 6))
+    body.mass = 127000
+    body.hydroForcePre(
+        mat("w").T, [0, 30, 90], 301, mat("CTTime")[0], 500,
+        0.1, 1000, 9.81, "irregular", mat("waveAmpTime").T,
+        1, [], 0, 0, 0,
+    )
+
+    for field, expected in (
+        ("linearHydroRestCoef", mat("linearHydroRestCoef")),
+        ("fAddedMass", mat("fAddedMass")),
+        ("irkb", mat("irkb")),
+    ):
+        np.testing.assert_allclose(body.hydroForce[field], expected, rtol=1e-10, atol=1e-8)
+    for component in ("re", "im", "md"):
+        np.testing.assert_allclose(
+            body.hydroForce["fExt"][component], mat(component), rtol=1e-10, atol=1e-8,
+        )
+
+
 def test_rm3_entrypoint_completes_force_preprocessing():
     code = """
 import runpy
