@@ -99,6 +99,17 @@ equal-energy bins, directional excitation, and pitch are checked against
 current MATLAB WEC-Sim using the same saved random phase matrix. A Python
 integer seed creates a reproducible Python realization, with a different
 random sequence from MATLAB.
+
+To run a supported case without writing Python code:
+
+```sh
+python -m source.objects.referenceRunner rm3 --h5 path/to/rm3.h5 --output results/rm3.csv
+python -m source.objects.referenceRunner oswec --h5 path/to/oswec.h5 --output results/oswec.csv --seed 7
+python -m source.objects.referenceRunner sphere --h5 path/to/sphere.h5 --output results/sphere.csv --initial-displacement 1
+```
+
+Each command writes a numeric CSV and an adjacent JSON file with the model
+settings, HDF5 SHA-256 hash, NumPy version, and Git revision/dirty state.
 The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.

@@ -72,6 +72,11 @@ directional excitation, and hinged-pitch motion against that same realization.
 The Python wave generator can use its own integer seed for standalone runs,
 but its random sequence differs from MATLAB's Threefry generator. The runner
 still has no general dynamics solver.
+For the supported canonical cases, `python -m source.objects.referenceRunner`
+provides a standalone RM3, OSWEC, or Sphere command. It writes a CSV and a
+JSON reproducibility record containing settings, the HDF5 SHA-256 hash, the
+NumPy version, and Git revision/dirty state. It does not execute arbitrary
+WEC-Sim input files.
 Expanded application
 cases remain inventoried. The manually dispatched `MATLAB reference application regression`
 workflow can run the upstream test suites for all 18 application folders
