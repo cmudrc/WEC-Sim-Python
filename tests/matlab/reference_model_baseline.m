@@ -28,6 +28,17 @@ for iCase = 1:numel(cases)
     wecSim;
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
+    if string(model) == "OSWEC"
+        % The published case shuffles its random phase on each run. Save the
+        % actual components so wave and force checks use the paired realization.
+        components = [waves.omega(:), waves.amplitude(:), ...
+            waves.dOmega(:), waves.phase];
+        assert(all(isfinite(components), 'all'), 'Nonfinite wave components');
+        writematrix(components, fullfile(outDir, 'OSWEC_wave_components.csv'));
+        writematrix([waves.direction(:), waves.spread(:)], ...
+            fullfile(outDir, 'OSWEC_wave_directions.csv'));
+        writematrix(waves.waveAmpTime, fullfile(outDir, 'OSWEC_wave_elevation.csv'));
+    end
     for iBody = 1:numel(output.bodies)
         response = output.bodies(iBody);
         values = [response.time(:), response.position, response.velocity, ...
