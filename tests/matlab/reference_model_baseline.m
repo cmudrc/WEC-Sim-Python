@@ -19,6 +19,10 @@ switch string(model)
         end
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
+    case "RM3_B2B"
+        cases = ["B2B_Case1", "B2B_Case2"];
+        caseDirs = fullfile(repoRoot, 'applications', ...
+            'Body-to-Body_Interactions', cases);
     otherwise
         error('Unknown reference model: %s', model);
 end
