@@ -36,6 +36,16 @@ for iCase = 1:numel(cases)
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
     end
+    if isstruct(output.ptos)
+        for iPto = 1:numel(output.ptos)
+            response = output.ptos(iPto);
+            values = [response.time(:), response.position, response.velocity, ...
+                response.forceInternalMechanics, response.powerInternalMechanics];
+            assert(all(isfinite(values), 'all'), 'The MATLAB PTO response contains nonfinite values');
+            filename = sprintf('%s_%s_pto%d.csv', model, cases(iCase), iPto);
+            writematrix(values, fullfile(outDir, filename));
+        end
+    end
     close_system(erase(simu.simMechanicsFile, '.slx'), 0);
     clear output;
 end

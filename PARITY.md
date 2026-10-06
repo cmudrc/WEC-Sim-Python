@@ -24,7 +24,8 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, radiation IRF, and state-space matrices where present. |
 | OSWEC directional irregular force preprocessing | Original MATLAB-generated `body_3_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, radiation IRF, and three-direction excitation after replacing removed SciPy `interp2d`. |
 | Sphere `noWaveCIC` heave free decay (0 m, 1 m, 1 m with Morison elements, 3 m, 5 m) | Current MATLAB WEC-Sim and MATLAB-generated Sphere HDF5 | The focused Python linear heave solver agrees over 40 s to maximum differences of 0.45 mm position, 0.64 mm/s velocity, and 363 N total force in the 5 m case. The Morison element has only x-direction coefficients in the published 1 m case, so it does not affect heave. |
-| End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. |
+| RM3 regular-wave heave and excitation | Current MATLAB RM3 example and current RM3 HDF5 | A focused two-body linear heave solver with relative-motion PTO damping agrees locally over 400 s within 5.9 mm position and 6.1 mm/s velocity for both bodies. The heave excitation force matches to less than `1e-5` N. This reduced model does not cover surge, pitch, or full Simscape PTO mechanics. |
+| End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. The heave-only solver above is a partial physical model. |
 
 Source comparisons: [MATLAB wave class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/waveClass.m),
 [MATLAB wave-number function](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/functions/BEMIO/calcWaveNumber.m),
@@ -42,7 +43,8 @@ This is a source inventory, not a claim that every case runs in Python.
 The `MATLAB reference model baselines` workflow runs the two canonical core
 examples and all five Sphere free-decay cases from the Applications suite.
 It records time, position, velocity, total force, and excitation force for
-each body as CSV artifacts. The Applications source is pinned to
+each body as CSV artifacts. New runs also record position, velocity, internal
+mechanics force, and power for each PTO. The Applications source is pinned to
 [`d53d4d4c9eda2581f04204f5d394a6ef84bb099e`](https://github.com/WEC-Sim/WEC-Sim_Applications/tree/d53d4d4c9eda2581f04204f5d394a6ef84bb099e).
 The first run [passed all three model jobs](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37471757955),
 producing nine finite body trajectories with 4,001 samples each (two RM3,
@@ -61,8 +63,9 @@ so that the source, HDF5, time grid, and output remain paired.
 The [final reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37478333096)
 passed all RM3, OSWEC, and Sphere jobs, including Python preprocessing of
 the current RM3 and OSWEC HDF5 inputs for both bodies.
-The RM3 and OSWEC MATLAB baselines do not establish Python dynamics parity;
-the Python runner still has no general dynamics solver. Expanded application
+The RM3 baseline also checks a reduced Python heave model, while OSWEC still
+has no Python motion comparison and the runner has no general dynamics solver.
+Expanded application
 cases remain inventoried. The manually dispatched `MATLAB reference application regression`
 workflow can run the upstream test suites for all 18 application folders
 containing the 46 explicit RM3, OSWEC, and Sphere cases. This checks the
@@ -96,10 +99,9 @@ of Python dynamics agreement or disagreement.
 Current MATLAB WEC-Sim has changed its PM/JS spectra, seeded phase generator,
 object properties, and some wave inputs since the Python port was written.
 The historical fixtures therefore cannot establish parity for those modes.
-The next Python dynamics target is the included RM3 hydrodynamic input with a
-regular wave, checking body displacement and PTO force against the pinned
-MATLAB baseline with the same inputs and solver settings. Subsequent dynamics
-targets are the OSWEC example and Sphere free-decay cases. A comparison must
+The next dynamics targets are the RM3 PTO force and full surge/pitch response,
+followed by the directional-irregular OSWEC example. The Sphere free-decay
+cases already have direct Python motion comparisons. A comparison must
 record both code revisions, the HDF5 input, time step, outputs, and numerical
 tolerances.
 

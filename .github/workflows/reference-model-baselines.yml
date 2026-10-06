@@ -7,6 +7,7 @@ on:
       - 'tests/matlab/reference_model_baseline.m'
       - 'tests/test_live_sphere_io.py'
       - 'tests/test_live_current_h5.py'
+      - 'tests/test_rm3_heave_dynamics_parity.py'
       - 'tests/test_sphere_dynamics_parity.py'
       - 'source/objects/linearHeave.py'
       - 'source/objects/bodyClass.py'
@@ -60,6 +61,12 @@ jobs:
         env:
           WEC_SIM_REFERENCE_MODEL: ${{ matrix.model }}
           WEC_SIM_MATLAB_CORE_DIR: matlab-ref
+      - run: python -m pytest -q tests/test_rm3_heave_dynamics_parity.py
+        if: matrix.model == 'RM3'
+        env:
+          WEC_SIM_REFERENCE_MODEL: RM3
+          WEC_SIM_MATLAB_CORE_DIR: matlab-ref
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_live_sphere_io.py tests/test_sphere_dynamics_parity.py
         if: matrix.model == 'Sphere'
         env:

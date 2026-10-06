@@ -1,8 +1,9 @@
 # WEC-Sim-Python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
-> wave energy converter simulator. A focused linear heave free-decay solver
-> is available; the original general runner still has no dynamics stage.
+> wave energy converter simulator. Focused linear heave solvers cover Sphere
+> free decay and the RM3 regular-wave heave subsystem; the original general
+> runner still has no dynamics stage.
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
@@ -41,6 +42,22 @@ This solver assumes one heave-only body, zero incident waves, and no PTO,
 mooring, or nonlinear force. Generate `sphere.h5` with the published
 WEC-Sim_Applications Sphere `bemio.m`, or download the HDF5 artifact from the
 [MATLAB reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556464).
+The RM3 regular-wave heave subsystem can be calculated with the same module:
+
+```python
+from source.objects.linearHeave import solve_two_body_regular_heave
+
+response = solve_two_body_regular_heave(
+    "path/to/rm3.h5", wave_height=2.5, wave_period=8.0,
+    pto_damping=1_200_000.0,
+)
+# response.position and response.velocity each have two body columns;
+# response.pto_force is the PTO force acting on body 1.
+```
+
+This calculation includes only vertical translation, a linear relative-motion
+PTO, and frequency-dependent hydrodynamic coefficients at the incident wave
+frequency. It does not predict the RM3 surge or pitch response.
 The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.
