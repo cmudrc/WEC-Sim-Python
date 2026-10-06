@@ -2,6 +2,8 @@
 
 import os
 from pathlib import Path
+import json
+import subprocess
 import sys
 
 import numpy as np
@@ -38,3 +40,19 @@ def test_matlab_generated_sphere_hydrodynamics_preprocess():
     )
     for field in ("linearHydroRestCoef", "fAddedMass", "fDamping", "irkb"):
         assert np.isfinite(body.hydroForce[field]).all()
+
+
+def test_sphere_reference_command_exports_result(tmp_path):
+    output = tmp_path / "sphere.csv"
+    subprocess.run(
+        [sys.executable, "-m", "source.objects.referenceRunner", "sphere",
+         "--h5", SPHERE_H5, "--output", str(output),
+         "--initial-displacement", "1", "--end-time", "2"],
+        cwd=ROOT, check=True, capture_output=True, text=True,
+    )
+    values = np.loadtxt(output, delimiter=",", skiprows=1)
+    metadata = json.loads(output.with_suffix(".json").read_text())
+    assert values.shape == (201, 4)
+    assert np.isfinite(values).all()
+    assert metadata["model"] == "sphere"
+    assert metadata["time_steps"] == 201
