@@ -1,0 +1,64 @@
+source,case,family,wave_types,hydro_files,revision
+WEC-Sim,examples/OSWEC,OSWEC,irregular,hydroData/oswec.h5,0753b2e47f2457c078751dcfe5d251d1767b80ab
+WEC-Sim,examples/RM3,RM3,regular,hydroData/rm3.h5,0753b2e47f2457c078751dcfe5d251d1767b80ab
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case1,RM3,regular,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case2,RM3,regular,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case3,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case4,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case5,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Body-to-Body_Interactions/B2B_Case6,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Cable,Other or dynamic,regular,;hydroData/mbari.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/Declutching,Sphere,regular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/Latching,Sphere,regular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/MPC,Sphere,irregular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/Passive (P),Sphere,regular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/Reactive (PI),Sphere,regular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Controls/ReactiveWithPTO,Sphere,regular,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Desalination,OSWEC,irregular,../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,End_Stops,RM3,regular,../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Free_Decay/0m,Sphere,noWaveCIC,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Free_Decay/1m,Sphere,noWaveCIC,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Free_Decay/1m-ME,Sphere,noWaveCIC,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Free_Decay/3m,Sphere,noWaveCIC,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Free_Decay/5m,Sphere,noWaveCIC,../../_Common_Input_Files/Sphere/hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Full_Directional_Waves,OSWEC,spectrumImportFullDir,../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Generalized_Body_Modes,Other or dynamic,regular,hydroData/barge.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Load_Mitigating_Controls/CalcImpedance,Other or dynamic,noWaveCIC,../hydroData/waveBotBuoy.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Load_Mitigating_Controls/ControlTests,Other or dynamic,irregular,../hydroData/waveBotBuoy.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,MOST,Other or dynamic,irregular,,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Mean_Drift,Sphere,regularCIC,hydroData/sphere.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Mooring/MoorDyn,RM3,elevationImport,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Mooring/MooringMatrix,RM3,elevationImport,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Morison_Element/monopile,Other or dynamic,irregular,;../hydroData/monopile.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Morison_Element/morisonElement,Other or dynamic,irregular,,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Multiple_Condition_Runs/RM3_MCROPT1,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Multiple_Condition_Runs/RM3_MCROPT2,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Multiple_Condition_Runs/RM3_MCROPT3,RM3,regularCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Multiple_Condition_Runs/RM3_MCROPT3_SeaState,RM3,spectrumImport,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Multiple_Wave_Spectra,OSWEC,irregular,../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Nonhydro_Body,OSWEC,regular,;../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Nonlinear_Hydro/ode4/Regular,Other or dynamic,regular,../../hydroData/ellipsoid.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Nonlinear_Hydro/ode4/RegularCIC,Other or dynamic,regularCIC,../../hydroData/ellipsoid.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Nonlinear_Hydro/ode45/Regular,Other or dynamic,regular,../../hydroData/ellipsoid.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Nonlinear_Hydro/ode45/RegularCIC,Other or dynamic,regularCIC,../../hydroData/ellipsoid.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,OWC/FloatingOWC,Other or dynamic,regular,./hydroData/floatingOWC.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,OWC/OrificeModel,Other or dynamic,irregular,./hydroData/test17a_clean.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,PTO-Sim/OSWEC/OSWEC_Hydraulic_Crank_PTO,OSWEC,irregular,../../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,PTO-Sim/OSWEC/OSWEC_Hydraulic_PTO,OSWEC,irregular,../../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,PTO-Sim/RM3/RM3_DD_PTO,RM3,regular,../../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,PTO-Sim/RM3/RM3_cHydraulic_PTO,RM3,irregular,../../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Paraview_Visualization/OSWEC_NonLinear_Viz,OSWEC,regular,../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Paraview_Visualization/RM3_MoorDyn_Viz,RM3,irregular,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Passive_Yaw/PassiveYawOFF,OSWEC,regular,../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Passive_Yaw/PassiveYawON,OSWEC,regular,../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Passive_Yaw/PassiveYawRegression,OSWEC,irregular,../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,RM3_PTO_Extension/float,RM3,noWaveCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,RM3_PTO_Extension/spar,RM3,noWaveCIC,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Radiation_Force_Options,RM3,regular;regularCIC,../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Variable_Hydro/Passive_Yaw,OSWEC,irregular;regular,hydroData/oswec_10.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Variable_Hydro/Variable_Mass,Other or dynamic,regular,,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,WECCCOMP/WECCCOMP,Other or dynamic,irregular,;../hydroData/wavestar.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,WECCCOMP/WECCCOMP_Fault_Implementation,Other or dynamic,irregular,;../hydroData/wavestar.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,WECCCOMP/WECCCOMP_Nonlinear_Model_Predictive,Other or dynamic,irregular,;../hydroData/wavestar.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Wave_Markers/OSWEC,OSWEC,regular,../../_Common_Input_Files/OSWEC/hydroData/oswec.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+WEC-Sim_Applications,Wave_Markers/RM3,RM3,regular,../../_Common_Input_Files/RM3/hydroData/rm3.h5,d53d4d4c9eda2581f04204f5d394a6ef84bb099e

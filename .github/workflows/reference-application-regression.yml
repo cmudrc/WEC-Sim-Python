@@ -1,0 +1,89 @@
+name: MATLAB reference application regression
+
+on:
+  push:
+    paths:
+      - '.github/workflows/reference-application-regression.yml'
+      - 'tests/matlab/application_regression.m'
+  workflow_dispatch:
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        folder:
+          - Body-to-Body_Interactions
+          - Controls
+          - Desalination
+          - End_Stops
+          - Free_Decay
+          - Full_Directional_Waves
+          - Mean_Drift
+          - Mooring
+          - Multiple_Condition_Runs
+          - Multiple_Wave_Spectra
+          - Nonhydro_Body
+          - PTO-Sim
+          - Paraview_Visualization
+          - Passive_Yaw
+          - RM3_PTO_Extension
+          - Radiation_Force_Options
+          - Variable_Hydro
+          - Wave_Markers
+        include:
+          - folder: Controls
+            products: Simulink Simscape Simscape_Multibody Control_System_Toolbox Optimization_Toolbox Statistics_and_Machine_Learning_Toolbox Symbolic_Math_Toolbox System_Identification_Toolbox
+          - folder: Desalination
+            products: Simulink Simscape Simscape_Multibody Simscape_Fluids
+    name: ${{ matrix.folder }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim
+          ref: 0753b2e47f2457c078751dcfe5d251d1767b80ab
+          path: matlab-ref
+          filter: blob:none
+          sparse-checkout: source
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim_Applications
+          ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+          path: applications
+          filter: blob:none
+          lfs: true
+          sparse-checkout: |
+            wecSimAppTest.m
+            _Common_Input_Files
+            ${{ matrix.folder }}
+      - uses: actions/checkout@v7
+        if: matrix.folder == 'Mooring' || matrix.folder == 'Paraview_Visualization'
+        with:
+          repository: WEC-Sim/MoorDyn
+          ref: 34c0703c9a5b74fd2cc5bb52caaadaaa356d675e
+          path: MoorDyn
+      - name: Install MoorDyn in the MATLAB source tree
+        if: matrix.folder == 'Mooring' || matrix.folder == 'Paraview_Visualization'
+        run: mkdir -p matlab-ref/source/functions/moorDyn && cp -r MoorDyn/* matlab-ref/source/functions/moorDyn/
+      - name: Start a display for Desalination
+        if: matrix.folder == 'Desalination'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          Xvfb :99 &
+          echo 'DISPLAY=:99' >> "$GITHUB_ENV"
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+          products: ${{ matrix.products || 'Simulink Simscape Simscape_Multibody' }}
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests/matlab'); application_regression('${{ matrix.folder }}')
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: application-${{ matrix.folder }}
+          path: matlab-application-results/
