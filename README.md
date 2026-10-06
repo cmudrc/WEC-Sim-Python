@@ -1,8 +1,9 @@
 # WEC-Sim-Python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
-> wave energy converter simulator. The original port ends before solving the
-> device dynamics. See [PARITY.md](PARITY.md) for verified behavior, current
+> wave energy converter simulator. A focused linear heave free-decay solver
+> is available; the original general runner still has no dynamics stage.
+> See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
 To run the production-code parity checks with Python 3.12:
@@ -25,8 +26,19 @@ against MATLAB WEC-Sim while preserving the original author's work.
 ## Current status
 
 Wave generation, RM3 and OSWEC hydrodynamic input, and tested force preprocessing
-have focused checks. The main runner completes preprocessing but its device
-dynamics solver has not been implemented. The original README projected completion in
+have focused checks. The main runner completes preprocessing but its general
+device dynamics solver has not been implemented. The published Sphere free-decay
+cases can be calculated with the focused solver:
+
+```python
+from source.objects.linearHeave import solve_heave_free_decay
+
+response = solve_heave_free_decay("sphere.h5", initial_displacement=1.0)
+# response.time, response.position, response.velocity, response.force_total
+```
+
+This solver assumes one heave-only body, zero incident waves, and no PTO,
+mooring, or nonlinear force. The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.
 
