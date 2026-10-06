@@ -76,12 +76,28 @@ class GeneralizedDynamics:
             else np.asarray(pto_damping, dtype=float)
         )
         if (self.pto_stiffness.shape != (n, n)
-                or self.pto_damping.shape != (n, n)):
+                or self.pto_damping.shape != (n, n)
+                or not np.isfinite(self.pto_stiffness).all()
+                or not np.isfinite(self.pto_damping).all()):
             raise ValueError("PTO matrices must match the coordinate count")
         for body in self.bodies:
             if (len(body.added_mass) != len(bodies)
                     or len(body.damping) != len(bodies)):
                 raise ValueError("each body needs one hydrodynamic block per body")
+            for matrix in (body.rigid_mass, body.restoring,
+                           *body.added_mass, *body.damping):
+                if np.shape(matrix) != (6, 6) or not np.isfinite(matrix).all():
+                    raise ValueError("body mass, restoring, and radiation blocks must be finite 6x6 matrices")
+            for vector in (body.static_force, body.reference_position):
+                if np.shape(vector) != (6,) or not np.isfinite(vector).all():
+                    raise ValueError("body static force and reference position must be finite six-vectors")
+            kernel = body.radiation_kernel
+            if kernel is not None and (
+                np.ndim(kernel) != 3 or np.shape(kernel)[0] < 1
+                or np.shape(kernel)[1:] != (6, 6 * len(bodies))
+                or not np.isfinite(kernel).all()
+            ):
+                raise ValueError("radiation kernel must have shape (lags, 6, 6 * bodies)")
 
     def acceleration(
         self,

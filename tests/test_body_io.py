@@ -1,7 +1,6 @@
 """Read the RM3 hydrodynamic file included with the original port."""
 
 from pathlib import Path
-import subprocess
 import sys
 
 import numpy as np
@@ -233,23 +232,3 @@ def test_rm3_body_interaction_cic_preprocessing(case_number, b2b, ss_calc, body_
                 body.hydroForce["ssRadf"][matrix], mat(prefix + matrix),
                 rtol=1e-10, atol=1e-8,
             )
-
-
-def test_rm3_entrypoint_completes_force_preprocessing():
-    code = """
-import runpy
-import numpy as np
-
-state = runpy.run_path('wecSimPython.py')
-assert state['simu'].numWecBodies == 2
-assert len(state['body']) == 2
-for body in state['body']:
-    for field in ('linearHydroRestCoef', 'fAddedMass', 'fDamping'):
-        matrix = np.asarray(body.hydroForce[field])
-        assert matrix.shape == (6, 6)
-        assert np.isfinite(matrix).all()
-"""
-    subprocess.run(
-        [sys.executable, "-c", code],
-        cwd=ROOT / "source/objects", check=True, capture_output=True, text=True,
-    )

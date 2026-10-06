@@ -1,9 +1,9 @@
 # WEC-Sim-Python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
-> wave energy converter simulator. Focused solvers cover Sphere free decay,
-> RM3 regular-wave coupled motion, and OSWEC hinge-pitch response; the
-> original general runner still has no dynamics stage.
+> wave energy converter simulator. A case-driven dynamics runner now covers
+> Sphere heave free decay, RM3 regular-wave coupled motion, and OSWEC
+> hinged pitch. Other mechanical layouts and force models remain unsupported.
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
@@ -13,7 +13,7 @@ To run the production-code parity checks with Python 3.12:
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt pytest
 .venv/bin/python -m compileall -q source/objects
-.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py
+.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py
 ```
 
 **WEC-Sim-Python** is Sungjun Won's Python port of
@@ -26,10 +26,36 @@ against MATLAB WEC-Sim while preserving the original author's work.
 
 ## Current status
 
-Wave generation, RM3 and OSWEC hydrodynamic input, and tested force preprocessing
-have focused checks. The main runner completes preprocessing but its general
-device dynamics solver has not been implemented. The published Sphere free-decay
-cases can be calculated with the focused solver:
+Wave generation, RM3 and OSWEC hydrodynamic input, force preprocessing, and
+the supported device dynamics have paired MATLAB checks. The main runner
+accepts a JSON case that specifies simulation, wave, bodies, constraint, and
+PTO settings. The included RM3 example runs with the historical bundled HDF5:
+
+```sh
+python -m source.objects.wecSimPython examples/python/rm3.json --output results/rm3.csv
+```
+
+The runner saves body position and velocity, wave elevation where applicable,
+PTO force or torque, and a JSON provenance record beside the CSV. HDF5 paths
+in the case file resolve relative to that file. For a comparison with current
+MATLAB WEC-Sim, point the case at the HDF5 file from the pinned reference run.
+
+Supported combinations are:
+
+| Constraint `kind` | Wave `type` | Bodies and PTO | Integration |
+| --- | --- | --- | --- |
+| `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
+| `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
+| `floating_joint` | `regular` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation |
+
+The runner rejects unsupported layouts and settings. For the PM case, supply
+`wave.height`, `wave.period`, optional `directions` and `spreading`, and either
+an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
+`simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
+`radiation_memory` for convolution cases. The general dynamics module
+assembles the supported body and PTO forces; it does not parse Simscape models.
+
+The published Sphere free-decay cases can also be calculated with the focused solver:
 
 ```python
 from source.objects.linearHeave import solve_heave_free_decay
@@ -119,7 +145,7 @@ for the tested scope and next reference case.
 
 ## Design direction
 
-The Python implementation will solve device dynamics without Simulink. Its
-preprocessing, equations, and numerical outputs must be compared to explicit
-MATLAB WEC-Sim revisions and reference cases before a feature is called
-supported. ParaView file output and BEMIO conversion are future work.
+The Python dynamics engine uses independent coordinates for each supported
+constraint layout, avoiding numerical joint drift. New layouts and force
+models need explicit MATLAB comparisons before they are called supported.
+ParaView file output and BEMIO conversion remain future work.

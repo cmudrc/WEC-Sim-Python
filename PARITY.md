@@ -28,7 +28,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 coupled surge, heave, pitch, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A four-coordinate two-body model uses the published joint geometry, body inertias, regular-wave forcing, and nonlinear rotation kinematics. Over 400 s, the two body surge positions differ by at most 36.3 mm, heaves by 4.2 mm, shared pitch by 0.00086 rad, and PTO force by 4.7 kN. It covers the canonical active DOFs but not general Simscape joint mechanics or other RM3 cases. |
 | RM3 body-to-body Cases 1 and 2 | Pinned MATLAB Applications inputs and RM3 HDF5 generated with current BEMIO | Both published regular-wave cases run for 400 s with coupling off and on. In Case 2, body positions differ by at most 36.1 mm surge, 4.6 mm heave, and 0.00107 rad pitch; PTO force differs by at most 5.3 kN over a 1.65 MN range. Turning on cross-body coupling reduces the body-1 heave RMS error against Case 2 from 22.8 mm to 2.9 mm. These are reduced-model comparisons, not full Simscape mechanics. |
 | OSWEC PM equal-energy waves, directional excitation, pitch, and PTO | Current MATLAB OSWEC example and current OSWEC HDF5 | Python recreates all 500 PM equal-energy bins from the HDF5 range, then synthesizes wave elevation and six-component excitation using the saved MATLAB phase matrix. Local component differences are below `6e-15`, elevation below `2e-13` m, and excitation below `1e-7` N. The fixed-hinge solver's pitch differs by at most 0.0021 rad over 400 s; PTO torque from the paired-force check differs by at most 37 N m. A Python seed produces a separate reproducible realization. This model covers pitch about a fixed hinge, not a general six-DOF device. |
-| General WEC-Sim runner | Current MATLAB RM3 and OSWEC examples | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. The focused reference-model solvers above are separate modules. |
+| Case-driven dynamics runner | Current MATLAB RM3 and OSWEC examples plus Sphere and RM3 body-to-body Applications cases | The former commented-out simulation script is replaced with a JSON-driven runner. One generalized-coordinate engine assembles rigid inertia, hydrodynamic added mass and radiation, hydrostatic restoring, excitation, and linear PTO forces. Its three supported constraint layouts run the nine paired reference cases; arbitrary Simscape layouts, moorings, nonlinear hydro, and other application cases are not yet supported. |
 
 Source comparisons: [MATLAB wave class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/waveClass.m),
 [MATLAB wave-number function](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/functions/BEMIO/calcWaveNumber.m),
@@ -73,8 +73,9 @@ surge/heave/pitch model. The OSWEC baseline
 saves its random phase matrix and checks Python PM binning, wave elevation,
 directional excitation, and hinged-pitch motion against that same realization.
 The Python wave generator can use its own integer seed for standalone runs,
-but its random sequence differs from MATLAB's Threefry generator. The runner
-still has no general dynamics solver.
+but its random sequence differs from MATLAB's Threefry generator. The
+case-driven runner shares a generalized dynamics engine across the validated
+layouts. A PM phase CSV can replay the actual MATLAB realization.
 The RM3 body-to-body job generates the Applications HDF5 input with the pinned
 MATLAB BEMIO code, then compares the Python solver with coupling off and on
 against paired MATLAB Cases 1 and 2. The CLI selects these hydrodynamic modes
@@ -83,11 +84,13 @@ input file.
 The [four-job reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37486493413)
 passed RM3, RM3 body-to-body, OSWEC, and Sphere, including the Sphere CLI
 smoke test against the MATLAB-generated HDF5 input.
-For the supported canonical cases, `python -m source.objects.referenceRunner`
-provides a standalone RM3, OSWEC, or Sphere command. It writes a CSV and a
-JSON reproducibility record containing settings, the HDF5 SHA-256 hash, the
-NumPy version, and Git revision/dirty state. It does not execute arbitrary
-WEC-Sim input files.
+`python -m source.objects.wecSimPython CASE.json --output motion.csv` runs a
+supported dynamics configuration. The case declares wave, body, constraint,
+PTO, and time settings; the result includes all six body position and
+velocity coordinates, applicable wave and PTO signals, and a JSON record of
+the case and HDF5 hashes, NumPy version, and Git state. The older
+`referenceRunner` remains as a preset CLI for the three model families.
+Neither command parses an arbitrary WEC-Sim or Simscape input file.
 Expanded application cases remain inventoried. The manually dispatched
 `MATLAB reference application regression`
 workflow can run the upstream test suites for all 18 application folders
@@ -125,10 +128,10 @@ The historical fixtures therefore cannot establish parity for those modes.
 The focused OSWEC PM implementation above is checked against current MATLAB;
 the inherited general `WaveClass` still needs corresponding updates for other
 irregular-wave cases.
-The next dynamics targets are the regularCIC RM3 body-to-body variants and
-additional RM3 and OSWEC application variants,
-other OSWEC force terms, and integration into a general runner. The Sphere free-decay
-cases already have direct Python motion comparisons. A comparison must
+The next dynamics targets are the regularCIC RM3 body-to-body variants,
+additional RM3 and OSWEC application variants, other OSWEC force terms, and
+more constraint layouts. The Sphere free-decay cases already have direct
+Python motion comparisons. A comparison must
 record both code revisions, the HDF5 input, time step, outputs, and numerical
 tolerances.
 
