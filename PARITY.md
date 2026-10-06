@@ -80,6 +80,9 @@ MATLAB BEMIO code, then compares the Python solver with coupling off and on
 against paired MATLAB Cases 1 and 2. The CLI selects these hydrodynamic modes
 with `rm3` and `rm3 --b2b`; neither command executes an arbitrary application
 input file.
+The [four-job reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37486493413)
+passed RM3, RM3 body-to-body, OSWEC, and Sphere, including the Sphere CLI
+smoke test against the MATLAB-generated HDF5 input.
 For the supported canonical cases, `python -m source.objects.referenceRunner`
 provides a standalone RM3, OSWEC, or Sphere command. It writes a CSV and a
 JSON reproducibility record containing settings, the HDF5 SHA-256 hash, the
@@ -134,3 +137,6 @@ MATLAB code. The wave-surface calculation is now importable; VTP serialization
 and body visualization explicitly raise `NotImplementedError` until ported.
 The older object tests import duplicate copies of classes inside test folders.
 The parity tests here import the production files instead.
+Six inherited files under `tests/test_simulink` still contain unfinished
+MATLAB-like Python and do not parse; they are outside the collected pytest
+suite. `source/objects` compiles, and the scoped production parity suite runs.
