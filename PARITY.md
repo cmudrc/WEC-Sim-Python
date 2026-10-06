@@ -5,7 +5,12 @@ The current MATLAB reference reviewed for this baseline is
 [WEC-Sim/WEC-Sim `0753b2e47f2457c078751dcfe5d251d1767b80ab`](https://github.com/WEC-Sim/WEC-Sim/tree/0753b2e47f2457c078751dcfe5d251d1767b80ab).
 The original Python repository includes MATLAB-generated wave fixtures, but
 there is no MATLAB or Octave executable on the machine used for this baseline.
-The current MATLAB source was inspected; it was not executed here.
+The current MATLAB source was inspected; it was not executed locally. The
+`MATLAB reference parity` GitHub Actions workflow checks out the pinned MATLAB
+revision, runs its `waveClass` under MATLAB R2025b, and compares the generated
+outputs with the production Python code. It also saves the MATLAB outputs as
+a workflow artifact. Its result should be checked separately from the local
+fixture tests.
 
 | Behavior | Reference | Baseline result |
 | --- | --- | --- |
