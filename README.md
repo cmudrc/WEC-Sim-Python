@@ -58,21 +58,34 @@ response = solve_two_body_regular_heave(
 This calculation includes only vertical translation, a linear relative-motion
 PTO, and frequency-dependent hydrodynamic coefficients at the incident wave
 frequency. It does not predict the RM3 surge or pitch response.
-The OSWEC hinge-pitch solver accepts a six-component excitation history:
+The OSWEC reference can generate a seeded Python wave realization and pass
+its six-component excitation history to the hinge-pitch solver:
 
 ```python
 from source.objects.hingePitch import solve_hinged_pitch_from_excitation
+from source.objects.irregularWave import (
+    pm_equal_energy_components, synthesize_irregular_response,
+)
 
+components = pm_equal_energy_components(
+    "path/to/oswec.h5", significant_height=2.5, peak_period=8,
+    directions=[0, 30, 90], spreading=[0.1, 0.2, 0.7], seed=7,
+)
+wave = synthesize_irregular_response(
+    "path/to/oswec.h5", components, dt=0.1, end_time=400, ramp_time=100,
+)
 response = solve_hinged_pitch_from_excitation(
-    "path/to/oswec.h5", excitation_force, hinge_z=-8.9,
+    "path/to/oswec.h5", wave.excitation_force, hinge_z=-8.9,
     body_mass=127_000, pitch_inertia=1.85e6, pto_damping=12_000,
 )
-# excitation_force has shape (time_steps, 6); response.angle is in radians.
+# response.angle is in radians; wave.elevation is the incident elevation.
 ```
 
-It models pitch about a fixed hinge and the radiation-memory force. Irregular
-wave excitation is supplied by the caller; the repository has not yet
-independently reproduced the current MATLAB OSWEC wave realization.
+It models pitch about a fixed hinge and the radiation-memory force. PM
+equal-energy bins, directional excitation, and pitch are checked against
+current MATLAB WEC-Sim using the same saved random phase matrix. A Python
+integer seed creates a reproducible Python realization, with a different
+random sequence from MATLAB.
 The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.
