@@ -22,6 +22,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 irregular-wave force preprocessing | Original MATLAB-generated `body_2_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF. |
 | RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, radiation IRF, and state-space matrices where present. |
 | OSWEC directional irregular force preprocessing | Original MATLAB-generated `body_3_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, radiation IRF, and three-direction excitation after replacing removed SciPy `interp2d`. |
+| Sphere `noWaveCIC` heave free decay (0 m, 1 m, 1 m with Morison elements, 3 m, 5 m) | Current MATLAB WEC-Sim and MATLAB-generated Sphere HDF5 | The focused Python linear heave solver agrees over 40 s to a maximum position difference of 0.45 mm in the 5 m case; velocity and total force are also checked. The Morison element has only x-direction coefficients in the published 1 m case, so it does not affect heave. |
 | End-to-end RM3 motion and PTO response | Current MATLAB RM3 example | **Not yet available.** The inherited runner has no dynamics solver; its simulation stage is commented out. |
 
 Source comparisons: [MATLAB wave class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/waveClass.m),
@@ -48,22 +49,35 @@ two OSWEC, and five Sphere). The `1m-ME` and `1m` Sphere trajectories were
 identical in the saved motion and force signals: the Morison element in that
 published case has nonzero coefficients only in x while the free-decay motion
 is in heave.
+The renewed [model baseline run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556464)
+also generated the Sphere HDF5 file with current MATLAB BEMIO and verified
+Python preprocessing of it. `source/objects/linearHeave.py` uses that
+preprocessing, the heave restoring coefficient, infinite-frequency added
+mass, and radiation impulse-response kernel. It integrates the resulting
+linear convolution equation with a fixed 0.01 s trapezoidal step. The five
+Sphere trajectory comparisons run in the same MATLAB job so that the source,
+HDF5, time grid, and output remain paired.
 The MATLAB baselines do not establish Python dynamics parity; the Python
 runner still has no dynamics solver. Expanded application cases remain
-inventoried. The `MATLAB reference application regression` workflow runs
-the upstream test suites for all 18 application folders containing the 46
-explicit RM3, OSWEC, and Sphere cases. This verifies the pinned MATLAB
-reference for those cases, but there is no Python time-series comparison yet.
+inventoried. The manually dispatched `MATLAB reference application regression`
+workflow can run the upstream test suites for all 18 application folders
+containing the 46 explicit RM3, OSWEC, and Sphere cases. This checks the
+pinned MATLAB reference for those cases, but there is no Python time-series
+comparison yet.
 
 The first application sweep revealed upstream test-suite limitations. In
 `Passive_Yaw`, two stored irregular-yaw regression checks fail; the same two
 checks fail in [the Applications repository's own CI run](https://github.com/WEC-Sim/WEC-Sim_Applications/actions/runs/36746373598)
 on both Linux and Windows under MATLAB R2024b. MoorDyn tests in `Mooring` and
-`Paraview_Visualization` explicitly skip themselves on GitHub CI. The
-`Multiple_Wave_Spectra` folder has no upstream unit test, so our harness now
-runs its input file directly and requires body output instead of accepting an
-empty test suite as success. These are MATLAB-reference gaps, not evidence of
-Python dynamics agreement or disagreement.
+`Paraview_Visualization` explicitly skip themselves on GitHub CI. Forcing the
+MoorDyn test exposed a native library mismatch (`GLIBCXX_3.4.32` unavailable
+from MATLAB's bundled `libstdc++`), so those cases remain unverified in CI.
+The `Multiple_Wave_Spectra` test class is excluded by MATLAB because its
+class name does not match its filename. Our harness generates its OSWEC HDF5
+file with BEMIO, runs the input file directly, and requires body output
+instead of accepting an empty test suite as success. These are
+MATLAB-reference gaps, not evidence of Python dynamics agreement or
+disagreement.
 
 ## Known differences and next reference case
 

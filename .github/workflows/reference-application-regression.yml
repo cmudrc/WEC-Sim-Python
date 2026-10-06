@@ -1,21 +1,15 @@
 name: MATLAB reference application regression
 
 on:
-  push:
-    paths:
-      - '.github/workflows/reference-application-regression.yml'
-      - 'tests/matlab/application_regression.m'
   workflow_dispatch:
-
-jobs:
-  regression:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      matrix:
-        folder:
+    inputs:
+      folder:
+        description: Application folder to test, or all
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
           - Body-to-Body_Interactions
           - Controls
           - Desalination
@@ -34,11 +28,16 @@ jobs:
           - Radiation_Force_Options
           - Variable_Hydro
           - Wave_Markers
-        include:
-          - folder: Controls
-            products: Simulink Simscape Simscape_Multibody Control_System_Toolbox Optimization_Toolbox Statistics_and_Machine_Learning_Toolbox Symbolic_Math_Toolbox System_Identification_Toolbox
-          - folder: Desalination
-            products: Simulink Simscape Simscape_Multibody Simscape_Fluids
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        folder: ${{ fromJSON(inputs.folder == 'all' && '["Body-to-Body_Interactions","Controls","Desalination","End_Stops","Free_Decay","Full_Directional_Waves","Mean_Drift","Mooring","Multiple_Condition_Runs","Multiple_Wave_Spectra","Nonhydro_Body","PTO-Sim","Paraview_Visualization","Passive_Yaw","RM3_PTO_Extension","Radiation_Force_Options","Variable_Hydro","Wave_Markers"]' || format('["{0}"]', inputs.folder)) }}
     name: ${{ matrix.folder }}
     steps:
       - uses: actions/checkout@v7
@@ -79,7 +78,7 @@ jobs:
       - uses: matlab-actions/setup-matlab@v3
         with:
           release: R2025b
-          products: ${{ matrix.products || 'Simulink Simscape Simscape_Multibody' }}
+          products: ${{ matrix.folder == 'Controls' && 'Simulink Simscape Simscape_Multibody Control_System_Toolbox Optimization_Toolbox Statistics_and_Machine_Learning_Toolbox Symbolic_Math_Toolbox System_Identification_Toolbox' || matrix.folder == 'Desalination' && 'Simulink Simscape Simscape_Multibody Simscape_Fluids' || 'Simulink Simscape Simscape_Multibody' }}
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('tests/matlab'); application_regression('${{ matrix.folder }}')
