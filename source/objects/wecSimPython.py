@@ -123,7 +123,7 @@ for ii in range(simu.numWecBodies):
         #h5Info = cwd +'/'+ body[ii].h5File
         h5Info = os.path.abspath(os.path.realpath(body[ii].h5File))
         if os.path.getsize(h5Info) < 1000:
-            warnings.warn('This is not the correct *.h5 file. Please install git-lfs to access the correct *.h5 file, or run \hydroData\bemio.m to generate a new *.h5 file')
+            warnings.warn(r'This is not the correct *.h5 file. Please install git-lfs to access the correct *.h5 file, or run \hydroData\bemio.m to generate a new *.h5 file')
         del h5Info
         body[ii].readH5file()
     body[ii].bodyTotal = simu.numWecBodies

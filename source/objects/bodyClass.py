@@ -162,29 +162,29 @@ class BodyClass:
         self.cg = np.transpose(np.array(f.get(name + '/properties/cg')))
         self.cb = np.transpose(np.array(f.get(name + '/properties/cb')))
         self.dispVol = np.array(f.get(name + '/properties/disp_vol'))
-        self.name = np.string_(np.array(f.get(name + '/properties/name'))).decode("utf-8")
+        self.name = f[name + '/properties/name'].asstr()[()]
         self.hydroData['simulation_parameters']['scaled'] = np.array(f.get('/simulation_parameters/scaled'))
         self.hydroData['simulation_parameters']['wave_dir'] = np.transpose(np.array(f.get('/simulation_parameters/wave_dir')))
-        if np.array(f.get('/simulation_parameters/water_depth')).dtype == float:
+        if np.array(f.get('/simulation_parameters/water_depth')).dtype.kind in 'fi':
             self.hydroData['simulation_parameters']['water_depth'] = np.array(f.get('/simulation_parameters/water_depth'))
         else:            
-            self.hydroData['simulation_parameters']['water_depth'] = np.string_(np.array(f.get('/simulation_parameters/water_depth'))).decode("utf-8")
+            self.hydroData['simulation_parameters']['water_depth'] = f['/simulation_parameters/water_depth'].asstr()[()]
         self.hydroData['simulation_parameters']['w'] = np.transpose(np.array(f.get('/simulation_parameters/w')))
         self.hydroData['simulation_parameters']['T'] = np.transpose(np.array(f.get('/simulation_parameters/T')))
-        self.hydroData['properties']['name'] = np.string_(np.array(f.get(name + '/properties/name'))).decode("utf-8")
+        self.hydroData['properties']['name'] = self.name
         self.hydroData['properties']['body_number'] = np.array(f.get(name + '/properties/body_number'))
         self.hydroData['properties']['cg'] = np.transpose(np.array(f.get(name + '/properties/cg')))
         self.hydroData['properties']['cb'] = np.transpose(np.array(f.get(name + '/properties/cb')))
         self.hydroData['properties']['disp_vol'] = np.array(f.get(name + '/properties/disp_vol'))
-        if np.array(f.get(name +'/properties/dof')).all() != None:
+        if f.get(name + '/properties/dof') is not None:
             self.hydroData['properties']['dof'] = np.array(f.get(name +'/properties/dof')) 
         else:
             self.hydroData['properties']['dof'] = np.array(6)
-        if np.array(f.get(name + '/properties/dof_start')).all() != None:
+        if f.get(name + '/properties/dof_start') is not None:
             self.hydroData['properties']['dof_start'] = np.array(f.get(name + '/properties/dof_start'))
         else:
             self.hydroData['properties']['dof_start'] = np.array((self.bodyNumber-1)*6+1)
-        if np.array(f.get(name + '/properties/dof_end')).all() != None:
+        if f.get(name + '/properties/dof_end') is not None:
             self.hydroData['properties']['dof_end'] = np.array(f.get(name + '/properties/dof_end'))
         else:
             self.hydroData['properties']['dof_end'] = np.array((self.bodyNumber-1)*6+6)
@@ -195,36 +195,37 @@ class BodyClass:
         self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = np.transpose(np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness')))
         self.hydroData['hydro_coeffs']['excitation']['re'] = np.array(f.get(name +  '/hydro_coeffs/excitation/re'))
         self.hydroData['hydro_coeffs']['excitation']['im'] = np.array(f.get(name + '/hydro_coeffs/excitation/im'))
-        if np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f')).all() != None:
+        if f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f') is not None:
             self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['f'] = np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f'))
-        if np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t')).all() != None:
+        if f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t') is not None:
             self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['t'] = np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t'))
         self.hydroData['hydro_coeffs']['added_mass']['all'] = np.array(f.get(name + '/hydro_coeffs/added_mass/all'))
         self.hydroData['hydro_coeffs']['added_mass']['inf_freq'] = np.array(f.get(name + '/hydro_coeffs/added_mass/inf_freq'))
         self.hydroData['hydro_coeffs']['radiation_damping']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['impulse_response_fun']['K'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K'))
-        if np.array(f.get(name +'/hydro_coeffs/radiation_damping/impulse_response_fun/t')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/t') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['impulse_response_fun']['t'] = np.transpose(np.array(f.get(name +'/hydro_coeffs/radiation_damping/impulse_response_fun/t')))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/it')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/it') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['it'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/it'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['A']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['B']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['C']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/D/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/D/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['D']['all'] = np.array(f.get(name +'/hydro_coeffs/radiation_damping/state_space/D/all'))
-        if np.array(f.get(name + '/properties/mass')).all() != None:
-            tmp = np.array(f.get(name + '/properties/mass'))
-            self.hydroData['gbm']['mass'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
-        if np.array(f.get(name + '/properties/stiffness')).all() != None:
-            tmp = np.array(f.get(name + '/properties/stiffness'))
-            self.hydroData['gbm']['stiffness'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
-        if np.array(f.get(name + '/properties/damping')).all() != None:
-            tmp = np.array(f.get(name + '/properties/damping'))
-            self.hydroData['gbm']['damping'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
+        gbm_start = int(np.asarray(self.dof_start).item()) + 5
+        gbm_end = int(np.asarray(self.dof_end).item())
+        for property_name in ('mass', 'stiffness', 'damping'):
+            dataset = f.get(name + '/properties/' + property_name)
+            if dataset is not None:
+                # HDF5 reverses MATLAB's matrix dimension order.
+                matrix = np.asarray(dataset).T
+                self.hydroData['gbm'][property_name] = matrix[
+                    gbm_start:gbm_end, gbm_start:gbm_end
+                ]
         if self.meanDriftForce == 0:
             self.hydroData['hydro_coeffs']['mean_drift'] = 0.*self.hydroData['hydro_coeffs']['excitation']['re']
         elif self.meanDriftForce == 1:
@@ -766,4 +767,3 @@ def arange_MATLAB(start, end, step):
     Change np.arange to have same sequence as MATLAB when step is float
     """
     return step*np.arange(start/step, np.floor(end/step))
-    
