@@ -28,14 +28,17 @@ def _sha256(path):
 
 def _git_state():
     root = Path(__file__).resolve().parents[2]
-    revision = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=root,
-        capture_output=True, text=True, check=False,
-    )
-    changes = subprocess.run(
-        ["git", "status", "--porcelain"], cwd=root,
-        capture_output=True, text=True, check=False,
-    )
+    try:
+        revision = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=root,
+            capture_output=True, text=True, check=False,
+        )
+        changes = subprocess.run(
+            ["git", "status", "--porcelain"], cwd=root,
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return None, None
     return (
         revision.stdout.strip() if revision.returncode == 0 else None,
         bool(changes.stdout) if changes.returncode == 0 else None,
@@ -67,6 +70,10 @@ def main(argv=None):
     if response.pto_force is not None:
         columns.append(response.pto_label)
         arrays.append(response.pto_force)
+    if response.pto_generalized_force is not None:
+        for coordinate in range(response.pto_generalized_force.shape[1]):
+            columns.append(f"pto_coordinate{coordinate + 1}_force")
+            arrays.append(response.pto_generalized_force[:, coordinate])
     if response.total_heave_force is not None:
         columns.append("body1_total_heave_force")
         arrays.append(response.total_heave_force)

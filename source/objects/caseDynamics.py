@@ -12,6 +12,8 @@ from typing import Mapping
 
 import numpy as np
 
+from .bodyClass import BodyClass
+from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .hingePitch import solve_hinged_pitch_from_excitation
 from .irregularWave import pm_equal_energy_components, synthesize_irregular_response
 from .linearHeave import solve_heave_free_decay
@@ -32,6 +34,7 @@ class CaseResponse:
     wave_elevation: np.ndarray | None = None
     total_heave_force: np.ndarray | None = None
     auxiliary_files: tuple[Path, ...] = ()
+    pto_generalized_force: np.ndarray | None = None
 
 
 def _section(value, name, required, allowed):
@@ -59,7 +62,8 @@ def _number(value, name, *, positive=False, nonnegative=False):
 
 def _hydro_file(body, base_dir):
     _section(body, "body", {"hydro_file"},
-             {"hydro_file", "hydro_body", "mass", "pitch_inertia"})
+             {"hydro_file", "hydro_body", "mass", "pitch_inertia",
+              "inertia", "coordinate_map"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -118,7 +122,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     {"type", "height", "period", "direction", "directions",
                      "spreading", "seed", "phase_file", "frequency_count"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
-                          {"kind", "location", "initial_displacement"})
+                          {"kind", "location", "initial_displacement",
+                           "initial_coordinate", "initial_speed"})
     bodies = case["bodies"]
     if not isinstance(bodies, list) or not bodies:
         raise ValueError("bodies must be a nonempty list")
@@ -128,6 +133,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+
+    if kind == "linear_subspace":
+        return _run_linear_subspace(
+            case, sim, wave, constraint, bodies, hydro, b2b,
+            dt, end_time, ramp_time, rho, g,
+        )
 
     if kind == "heave":
         if len(bodies) != 1 or wave["type"] != "none" or b2b or "pto" in case:
@@ -270,3 +281,192 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")
+
+
+def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
+                         b2b, dt, end_time, ramp_time, rho, g):
+    """Run constant linear coordinate maps with regular or no incident waves."""
+    if set(constraint) - {"kind", "initial_coordinate", "initial_speed"}:
+        raise ValueError("linear_subspace uses coordinate maps, not joint locations")
+    if wave["type"] not in ("regular", "none"):
+        raise ValueError("linear_subspace supports regular or no incident waves")
+    if b2b and len(set(hydro)) != 1:
+        raise ValueError("body-to-body hydrodynamics need one shared HDF5 file")
+    if wave["type"] == "none" and set(wave) != {"type"}:
+        raise ValueError("no-wave cases have no wave height or period")
+    if wave["type"] == "regular":
+        if set(wave) - {"type", "height", "period", "direction"}:
+            raise ValueError("regular waves use height, period, and direction")
+        height = _number(wave.get("height"), "wave.height", nonnegative=True)
+        period = _number(wave.get("period"), "wave.period", positive=True)
+        direction = _number(wave.get("direction", 0), "wave.direction")
+        frequency = 2 * np.pi / period
+        if "radiation_memory" in sim:
+            raise ValueError("regular-wave linear dynamics use constant radiation")
+    else:
+        if "ramp_time" in sim:
+            raise ValueError("ramp_time is inapplicable to no-wave dynamics")
+        memory_time = _number(
+            sim.get("radiation_memory", 15), "simulation.radiation_memory",
+            positive=True,
+        )
+        memory_steps = round(memory_time / dt)
+        if not np.isclose(memory_steps * dt, memory_time, atol=1e-10):
+            raise ValueError("radiation_memory must be a multiple of dt")
+        convolution_time = np.arange(memory_steps + 1) * dt
+    time = np.arange(round(end_time / dt) + 1) * dt
+    if not np.isclose(time[-1], end_time, atol=1e-10):
+        raise ValueError("end_time must be an integer multiple of dt")
+    maps = []
+    for index, body_spec in enumerate(bodies, start=1):
+        _body_number(body_spec, index)
+        if "pitch_inertia" in body_spec:
+            raise ValueError("linear_subspace uses body.inertia, not pitch_inertia")
+        mapping = np.asarray(body_spec.get("coordinate_map"), dtype=float)
+        if (mapping.ndim != 2 or mapping.shape[0] != 6
+                or mapping.shape[1] < 1 or not np.isfinite(mapping).all()):
+            raise ValueError("body.coordinate_map must be a finite 6-by-N matrix")
+        maps.append(mapping)
+    n = maps[0].shape[1]
+    if any(mapping.shape[1] != n for mapping in maps):
+        raise ValueError("all coordinate maps must use the same coordinate count")
+    initial_q = np.asarray(constraint.get("initial_coordinate", [0] * n), dtype=float)
+    initial_v = np.asarray(constraint.get("initial_speed", [0] * n), dtype=float)
+    if (initial_q.shape != (n,) or initial_v.shape != (n,)
+            or not np.isfinite(initial_q).all() or not np.isfinite(initial_v).all()):
+        raise ValueError("initial coordinates and speeds must each have N finite values")
+    if "pto" in case:
+        pto = _section(case["pto"], "pto", {"kind"},
+                       {"kind", "stiffness_matrix", "damping_matrix"})
+        if pto["kind"] != "linear":
+            raise ValueError("linear_subspace requires a linear PTO matrix")
+        stiffness = np.asarray(pto.get("stiffness_matrix", np.zeros((n, n))), dtype=float)
+        damping = np.asarray(pto.get("damping_matrix", np.zeros((n, n))), dtype=float)
+        if (stiffness.shape != (n, n) or damping.shape != (n, n)
+                or not np.isfinite(stiffness).all() or not np.isfinite(damping).all()):
+            raise ValueError("PTO matrices must be finite N-by-N matrices")
+    else:
+        stiffness = np.zeros((n, n))
+        damping = np.zeros((n, n))
+
+    dynamic_bodies = []
+    for index, (body_spec, path, mapping) in enumerate(zip(bodies, hydro, maps), start=1):
+        body = BodyClass(str(path))
+        body.bodyNumber = index
+        body.bodyTotal = len(bodies)
+        body.readH5file()
+        if int(np.asarray(body.dof).item()) != 6:
+            raise ValueError("linear_subspace needs six-DOF hydrodynamic bodies")
+        mass_setting = body_spec.get("mass", "equilibrium")
+        if mass_setting != "equilibrium":
+            mass_setting = _number(mass_setting, "body.mass", positive=True)
+        body.mass = mass_setting
+        inertia = np.asarray(body_spec.get("inertia", [0, 0, 0]), dtype=float)
+        if (inertia.shape != (3,) or not np.isfinite(inertia).all()
+                or np.any(inertia < 0)):
+            raise ValueError("body.inertia must have three nonnegative entries")
+        body.hydroStiffness = np.zeros((6, 6))
+        body.viscDrag = {
+            "Drag": np.zeros((6, 6)), "cd": np.zeros(6),
+            "characteristicArea": np.zeros(6),
+        }
+        body.linearDamping = np.zeros((6, 6))
+        wave_amp = np.vstack((time, np.zeros_like(time)))
+        if wave["type"] == "regular":
+            body.hydroForcePre(
+                frequency, [direction], 1, np.array([0.0]), [], dt, rho, g,
+                "regular", wave_amp, index, len(bodies), 0, 0, int(b2b),
+            )
+        else:
+            irf_time = body.hydroData["hydro_coeffs"]["radiation_damping"][
+                "impulse_response_fun"]["t"]
+            if memory_time > np.max(irf_time) + 1e-10:
+                raise ValueError("radiation_memory exceeds the HDF5 kernel")
+            body.hydroForcePre(
+                [], [0], len(convolution_time), convolution_time, [],
+                dt, rho, g, "noWaveCIC", wave_amp,
+                index, len(bodies), 0, 0, int(b2b),
+            )
+        physical_mass = float(np.asarray(body.mass).item())
+        rigid_mass = np.diag([physical_mass] * 3 + inertia.tolist())
+        hydro_force = body.hydroForce
+        if b2b:
+            added_mass = tuple(
+                np.asarray(hydro_force["fAddedMass"])[:, 6*j:6*(j+1)]
+                for j in range(len(bodies))
+            )
+            if wave["type"] == "regular":
+                radiation_damping = tuple(
+                    np.asarray(hydro_force["fDamping"])[:, 6*j:6*(j+1)]
+                    for j in range(len(bodies))
+                )
+        else:
+            added_mass = [np.zeros((6, 6)) for _ in bodies]
+            added_mass[index - 1] = np.asarray(hydro_force["fAddedMass"])
+            if wave["type"] == "regular":
+                radiation_damping = [np.zeros((6, 6)) for _ in bodies]
+                radiation_damping[index - 1] = np.asarray(hydro_force["fDamping"])
+        if wave["type"] == "none":
+            radiation_damping = tuple(np.zeros((6, 6)) for _ in bodies)
+            kernel = np.asarray(hydro_force["irkb"])
+        else:
+            kernel = None
+        center = np.asarray(body.cg, dtype=float).ravel()
+        if center.shape != (3,):
+            raise ValueError("body center must have three coordinates")
+
+        def motion(q, v, *, mapping=mapping):
+            return BodyMotion(mapping @ q, mapping, np.zeros(6))
+
+        if wave["type"] == "regular":
+            real = np.asarray(hydro_force["fExt"]["re"])
+            imaginary = np.asarray(hydro_force["fExt"]["im"])
+
+            def excitation(at_time, *, real=real, imaginary=imaginary):
+                ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time
+                        else (1 - np.cos(np.pi * at_time / ramp_time)) / 2)
+                return height / 2 * ramp * (
+                    real * np.cos(frequency * at_time)
+                    - imaginary * np.sin(frequency * at_time)
+                )
+        else:
+            def excitation(at_time):
+                return np.zeros(6)
+
+        dynamic_bodies.append(DynamicBody(
+            rigid_mass=rigid_mass,
+            added_mass=tuple(added_mass),
+            damping=tuple(radiation_damping),
+            restoring=np.asarray(hydro_force["linearHydroRestCoef"]),
+            static_force=np.array([
+                0, 0, (rho * float(np.asarray(body.dispVol).item()) - physical_mass) * g,
+                0, 0, 0,
+            ]),
+            reference_position=np.r_[center, np.zeros(3)],
+            motion=motion,
+            excitation=excitation,
+            radiation_kernel=kernel,
+        ))
+    system = GeneralizedDynamics(
+        tuple(dynamic_bodies), n, pto_stiffness=stiffness,
+        pto_damping=damping,
+    )
+    response = system.integrate(
+        dt=dt, end_time=end_time,
+        initial_coordinate=initial_q, initial_speed=initial_v,
+    )
+    if wave["type"] == "regular":
+        ramp = np.ones(len(response.time))
+        if ramp_time > 0:
+            early = response.time < ramp_time
+            ramp[early] = (1 - np.cos(np.pi * response.time[early] / ramp_time)) / 2
+        elevation = height / 2 * ramp * np.cos(frequency * response.time)
+    else:
+        elevation = None
+    return CaseResponse(
+        response.time, response.body_position, response.body_velocity,
+        hydro, wave_elevation=elevation,
+        pto_generalized_force=(
+            -response.coordinate @ stiffness.T - response.speed @ damping.T
+        ),
+    )

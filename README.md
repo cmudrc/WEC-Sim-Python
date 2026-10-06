@@ -39,6 +39,8 @@ The runner saves body position and velocity, wave elevation where applicable,
 PTO force or torque, and a JSON provenance record beside the CSV. HDF5 paths
 in the case file resolve relative to that file. For a comparison with current
 MATLAB WEC-Sim, point the case at the HDF5 file from the pinned reference run.
+The provenance record hashes the case, hydrodynamic files, and any replayed
+phase CSV.
 
 Supported combinations are:
 
@@ -47,6 +49,7 @@ Supported combinations are:
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
 | `floating_joint` | `regular` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation |
+| `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies, each with a 6-by-N `coordinate_map`; optional N-by-N linear PTO matrices | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
@@ -54,6 +57,13 @@ an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
 `radiation_memory` for convolution cases. The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+For `linear_subspace`, the map's rows are surge, sway, heave, roll, pitch,
+and yaw; its columns are independent generalized coordinates. A two-body
+heave case, for example, maps the first body's heave to coordinate 1 and the
+second body's heave to coordinate 2. `constraint.initial_coordinate` and
+`initial_speed` set those coordinates, and `pto.damping_matrix` and
+`stiffness_matrix` apply generalized linear forces. This layout assumes
+small rotations and a constant coordinate map.
 
 The published Sphere free-decay cases can also be calculated with the focused solver:
 

@@ -21,11 +21,12 @@ def _run(tmp_path, case):
     case_file = tmp_path / "case.json"
     output = tmp_path / "motion.csv"
     case_file.write_text(json.dumps(case), encoding="utf-8")
-    subprocess.run(
+    completed = subprocess.run(
         [sys.executable, "-m", "source.objects.wecSimPython",
          str(case_file), "--output", str(output)],
-        cwd=ROOT, check=True, capture_output=True, text=True,
+        cwd=ROOT, check=False, capture_output=True, text=True,
     )
+    assert completed.returncode == 0, completed.stderr
     values = np.loadtxt(output, delimiter=",", skiprows=1)
     columns = output.read_text(encoding="utf-8").splitlines()[0].split(",")
     metadata = json.loads(output.with_suffix(".json").read_text(encoding="utf-8"))
@@ -55,7 +56,7 @@ def _rm3_case(hydro, *, b2b=False):
 @pytest.mark.skipif(MODEL != "RM3" or not (CORE and REFERENCE),
                     reason="paired MATLAB RM3 baseline not provided")
 def test_rm3_general_runner(tmp_path):
-    hydro = Path(CORE) / "examples/RM3/hydroData/rm3.h5"
+    hydro = (Path(CORE) / "examples/RM3/hydroData/rm3.h5").resolve()
     _, columns, _ = _run(tmp_path, _rm3_case(hydro))
     for body in (1, 2):
         expected = np.loadtxt(
@@ -72,11 +73,48 @@ def test_rm3_general_runner(tmp_path):
     )) < 5_000
 
 
+@pytest.mark.skipif(MODEL != "RM3" or not (CORE and REFERENCE),
+                    reason="paired MATLAB RM3 heave baseline not provided")
+def test_rm3_linear_subspace_general_runner(tmp_path):
+    hydro = (Path(CORE) / "examples/RM3/hydroData/rm3.h5").resolve()
+    first = [[0, 0], [0, 0], [1, 0], [0, 0], [0, 0], [0, 0]]
+    second = [[0, 0], [0, 0], [0, 1], [0, 0], [0, 0], [0, 0]]
+    case = {
+        "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100},
+        "wave": {"type": "regular", "height": 2.5, "period": 8},
+        "bodies": [
+            {"hydro_file": str(hydro), "coordinate_map": first},
+            {"hydro_file": str(hydro), "coordinate_map": second},
+        ],
+        "constraint": {"kind": "linear_subspace"},
+        "pto": {"kind": "linear", "damping_matrix": [
+            [1_200_000, -1_200_000], [-1_200_000, 1_200_000],
+        ]},
+    }
+    _, columns, _ = _run(tmp_path, case)
+    for body in (1, 2):
+        expected = np.loadtxt(
+            Path(REFERENCE) / f"RM3_RM3_body{body}.csv", delimiter=",",
+        )
+        assert np.max(np.abs(
+            columns[f"body{body}_heave_position"] - expected[:, 3]
+        )) < 0.0065
+        assert np.max(np.abs(
+            columns[f"body{body}_heave_velocity"] - expected[:, 9]
+        )) < 0.0065
+    expected_pto = np.loadtxt(Path(REFERENCE) / "RM3_RM3_pto1.csv", delimiter=",")
+    assert np.max(np.abs(columns["pto_coordinate1_force"] - expected_pto[:, 15])) < 9_000
+    np.testing.assert_allclose(
+        columns["pto_coordinate1_force"], -columns["pto_coordinate2_force"],
+        rtol=0, atol=1e-9,
+    )
+
+
 @pytest.mark.skipif(MODEL != "RM3_B2B" or not (APPLICATIONS and REFERENCE),
                     reason="paired MATLAB RM3 body-to-body baseline not provided")
 @pytest.mark.parametrize("case,b2b", [("B2B_Case1", False), ("B2B_Case2", True)])
 def test_rm3_body_to_body_general_runner(tmp_path, case, b2b):
-    hydro = Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     _, columns, _ = _run(tmp_path, _rm3_case(hydro, b2b=b2b))
     for body in (1, 2):
         expected = np.loadtxt(
@@ -102,7 +140,7 @@ def test_oswec_general_runner(tmp_path):
     components = np.loadtxt(reference / "OSWEC_wave_components.csv", delimiter=",")
     directions = np.loadtxt(reference / "OSWEC_wave_directions.csv", delimiter=",")
     np.savetxt(tmp_path / "phase.csv", components[:, 3:], delimiter=",")
-    hydro = Path(CORE) / "examples/OSWEC/hydroData/oswec.h5"
+    hydro = (Path(CORE) / "examples/OSWEC/hydroData/oswec.h5").resolve()
     case = {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
                        "radiation_memory": 30},
@@ -138,7 +176,8 @@ def test_sphere_general_runner(tmp_path, case, displacement):
         "simulation": {"dt": 0.01, "end_time": 40,
                        "radiation_memory": 15},
         "wave": {"type": "none"},
-        "bodies": [{"hydro_file": SPHERE_H5, "mass": "equilibrium"}],
+        "bodies": [{"hydro_file": str(Path(SPHERE_H5).resolve()),
+                    "mass": "equilibrium"}],
         "constraint": {"kind": "heave", "initial_displacement": displacement},
     }
     _, columns, _ = _run(tmp_path, config)
@@ -147,3 +186,20 @@ def test_sphere_general_runner(tmp_path, case, displacement):
     assert np.max(np.abs(columns["body1_heave_position"] - expected[:, 3])) < 2e-4 * scale
     assert np.max(np.abs(columns["body1_heave_velocity"] - expected[:, 9])) < 2e-4 * scale
     assert np.max(np.abs(columns["body1_total_heave_force"] - expected[:, 15])) < 160 * scale
+
+
+@pytest.mark.skipif(MODEL != "Sphere" or not (SPHERE_H5 and REFERENCE),
+                    reason="paired MATLAB Sphere baseline not provided")
+def test_sphere_linear_subspace_general_runner(tmp_path):
+    case = {
+        "simulation": {"dt": 0.01, "end_time": 40,
+                       "radiation_memory": 15},
+        "wave": {"type": "none"},
+        "bodies": [{"hydro_file": str(Path(SPHERE_H5).resolve()),
+                    "coordinate_map": [[0], [0], [1], [0], [0], [0]]}],
+        "constraint": {"kind": "linear_subspace", "initial_coordinate": [5]},
+    }
+    _, columns, _ = _run(tmp_path, case)
+    expected = np.loadtxt(Path(REFERENCE) / "Sphere_5m_body1.csv", delimiter=",")
+    assert np.max(np.abs(columns["body1_heave_position"] - expected[:, 3])) < 0.001
+    assert np.max(np.abs(columns["body1_heave_velocity"] - expected[:, 9])) < 0.001
