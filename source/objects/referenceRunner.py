@@ -53,6 +53,9 @@ def main(argv=None):
         sub.add_argument("--h5", type=Path, required=True, help="hydrodynamic HDF5 file")
         sub.add_argument("--output", type=Path, required=True, help="result CSV path")
     subparsers.choices["rm3"].add_argument("--end-time", type=float, default=400.0)
+    subparsers.choices["rm3"].add_argument(
+        "--b2b", action="store_true", help="enable RM3 body-to-body hydrodynamic coupling",
+    )
     subparsers.choices["oswec"].add_argument("--end-time", type=float, default=400.0)
     subparsers.choices["oswec"].add_argument("--seed", type=int, default=7)
     subparsers.choices["sphere"].add_argument("--end-time", type=float, default=40.0)
@@ -65,7 +68,7 @@ def main(argv=None):
     output.parent.mkdir(parents=True, exist_ok=True)
 
     if args.model == "rm3":
-        response = solve_rm3_regular(h5_file, end_time=args.end_time)
+        response = solve_rm3_regular(h5_file, end_time=args.end_time, b2b=args.b2b)
         columns = ["time"]
         arrays = [response.time]
         for name, values in (("position", response.body_position),
@@ -78,7 +81,8 @@ def main(argv=None):
         arrays.append(response.pto_force)
         parameters = {"end_time": args.end_time, "dt": 0.1,
                       "wave_height": 2.5, "wave_period": 8.0,
-                      "ramp_time": 100.0, "pto_damping": 1_200_000.0}
+                      "ramp_time": 100.0, "pto_damping": 1_200_000.0,
+                      "b2b": args.b2b}
     elif args.model == "oswec":
         components = pm_equal_energy_components(
             h5_file, significant_height=2.5, peak_period=8.0,

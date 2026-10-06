@@ -29,6 +29,7 @@ def solve_rm3_regular(
     pitch_inertias: tuple[float, float] = (21_306_090.66, 94_407_091.24),
     pto_damping: float = 1_200_000.0,
     pto_stiffness: float = 0.0,
+    b2b: bool = False,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -42,8 +43,9 @@ def solve_rm3_regular(
     added mass and radiation damping, hydrostatic restoring, and regular-wave
     excitation. Rigid-body rotation changes their surge/heave Jacobians at
     each step. A fixed-step classical RK4 method follows the MATLAB example's
-    ``ode4`` setting. Sway, roll, yaw, full Simscape joint forces, and body-to-
-    body hydrodynamic interactions are outside this reduced model.
+    ``ode4`` setting. ``b2b=True`` includes the regular-wave cross-body added
+    mass and radiation-damping blocks. Sway, roll, yaw, and full Simscape
+    joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
               joint_z, dt, end_time, ramp_time, rho, g, *pitch_inertias]
@@ -54,6 +56,8 @@ def solve_rm3_regular(
             or pto_damping < 0 or pto_stiffness < 0 or dt <= 0
             or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0):
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
+    if not isinstance(b2b, bool):
+        raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
@@ -63,7 +67,7 @@ def solve_rm3_regular(
     for index, pitch_inertia in enumerate(pitch_inertias, start=1):
         body = BodyClass(str(h5_file))
         body.bodyNumber = index
-        body.bodyTotal = 2
+        body.bodyTotal = np.array([2])
         body.readH5file()
         if int(np.asarray(body.dof).item()) != 6:
             raise ValueError("each RM3 hydrodynamic body must have six DOFs")
@@ -78,7 +82,7 @@ def solve_rm3_regular(
         body.hydroForcePre(
             omega, [0], 1, np.array([0.0]), [], dt, rho, g,
             "regular", np.vstack((time, np.zeros_like(time))),
-            index, 2, 0, 0, 0,
+            index, 2, 0, 0, int(b2b),
         )
         mass = float(np.asarray(body.mass).item())
         center = np.asarray(body.cg).ravel()
@@ -87,11 +91,20 @@ def solve_rm3_regular(
         lever = float(center[2] - joint_z)
         rigid_mass = np.diag([mass, mass, mass, 0.0, pitch_inertia, 0.0])
         hydro = body.hydroForce
+        if b2b:
+            added_mass = tuple(np.asarray(hydro["fAddedMass"])[:, 6*j:6*(j+1)] for j in range(2))
+            damping = tuple(np.asarray(hydro["fDamping"])[:, 6*j:6*(j+1)] for j in range(2))
+        else:
+            added_mass = [np.zeros((6, 6)), np.zeros((6, 6))]
+            damping = [np.zeros((6, 6)), np.zeros((6, 6))]
+            added_mass[index - 1] = np.asarray(hydro["fAddedMass"])
+            damping[index - 1] = np.asarray(hydro["fDamping"])
         data.append({
             "center_z": float(center[2]),
             "lever": lever,
-            "mass": rigid_mass + np.asarray(hydro["fAddedMass"]),
-            "damping": np.asarray(hydro["fDamping"]),
+            "rigid_mass": rigid_mass,
+            "added_mass": added_mass,
+            "damping": damping,
             "restoring": np.asarray(hydro["linearHydroRestCoef"]),
             "re": np.asarray(hydro["fExt"]["re"]),
             "im": np.asarray(hydro["fExt"]["im"]),
@@ -111,6 +124,7 @@ def solve_rm3_regular(
                 else (1.0 - np.cos(np.pi * at_time / ramp_time)) / 2)
         generalized_mass = np.zeros((4, 4))
         generalized_force = np.zeros(4)
+        geometry = []
         for index, body in enumerate(data):
             lever = body["lever"]
             jacobian = np.zeros((6, 4))
@@ -133,10 +147,18 @@ def solve_rm3_regular(
                 - body["im"] * np.sin(omega * at_time)
             )
             incident[2] += body["vertical_bias"]
-            force = (incident - body["damping"] @ (jacobian @ v)
-                     - body["restoring"] @ displacement
-                     - body["mass"] @ curvature * angular_speed**2)
-            generalized_mass += jacobian.T @ body["mass"] @ jacobian
+            geometry.append((jacobian, curvature, displacement, incident))
+        for index, body in enumerate(data):
+            jacobian, curvature, displacement, incident = geometry[index]
+            force = (incident - body["restoring"] @ displacement
+                     - body["rigid_mass"] @ curvature * angular_speed**2)
+            generalized_mass += jacobian.T @ body["rigid_mass"] @ jacobian
+            for other, (other_jacobian, other_curvature, _, _) in enumerate(geometry):
+                added_mass = body["added_mass"][other]
+                damping = body["damping"][other]
+                generalized_mass += jacobian.T @ added_mass @ other_jacobian
+                force -= damping @ (other_jacobian @ v)
+                force -= added_mass @ other_curvature * angular_speed**2
             generalized_force += jacobian.T @ force
         generalized_force -= pto_damping * pto_coupling @ v
         generalized_force -= pto_stiffness * pto_coupling @ q

@@ -20,6 +20,11 @@ switch string(model)
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
     case "RM3_B2B"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
         cases = ["B2B_Case1", "B2B_Case2"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);

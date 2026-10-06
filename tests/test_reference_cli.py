@@ -12,17 +12,18 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("model,h5_file,columns", [
-    ("rm3", ROOT / "source" / "objects" / "rm3.h5", 14),
+@pytest.mark.parametrize("model,h5_file,columns,extra", [
+    ("rm3", ROOT / "source" / "objects" / "rm3.h5", 14, []),
+    ("rm3", ROOT / "source" / "objects" / "rm3.h5", 14, ["--b2b"]),
     ("oswec", ROOT / "tests" / "test_objects" / "test_bodyclass"
-     / "testData" / "hydroData" / "oswec.h5", 7),
+     / "testData" / "hydroData" / "oswec.h5", 7, []),
 ])
-def test_reference_runner_exports_result_and_metadata(tmp_path, model, h5_file, columns):
+def test_reference_runner_exports_result_and_metadata(tmp_path, model, h5_file, columns, extra):
     output = tmp_path / f"{model}.csv"
     subprocess.run(
         [sys.executable, "-m", "source.objects.referenceRunner", model,
          "--h5", str(h5_file), "--output", str(output),
-         "--end-time", "2"],
+         "--end-time", "2", *extra],
         cwd=ROOT, check=True, capture_output=True, text=True,
     )
     values = np.loadtxt(output, delimiter=",", skiprows=1)
@@ -33,3 +34,5 @@ def test_reference_runner_exports_result_and_metadata(tmp_path, model, h5_file, 
     assert metadata["time_steps"] == 21
     assert len(metadata["h5_sha256"]) == 64
     assert len(metadata["csv_columns"]) == columns
+    if model == "rm3":
+        assert metadata["parameters"]["b2b"] == ("--b2b" in extra)
