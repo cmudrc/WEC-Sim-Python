@@ -18,6 +18,7 @@ the production Python code. The live wave comparison passed on 6 October
 | Irregular Bretschneider equal-energy binning | Original MATLAB-era test constants | Production `WaveClass` agrees after NumPy/SciPy API updates. This is historical compatibility only: current MATLAB WEC-Sim rejects the `BS` option. |
 | Wave-surface grid for no-wave, regular, and directional irregular waves | Current MATLAB `waveClass.waveElevationGrid` equations | Implemented and checked for regular and two-direction irregular cases. |
 | RM3 HDF5 hydrodynamic input | Original `rm3.h5` | Both bodies load, including their names and water depth, under NumPy 2. |
+| Current RM3 and OSWEC HDF5 hydrodynamic inputs | Pinned current MATLAB core examples | Both bodies in each model load and complete regularCIC or directional irregular preprocessing with finite restoring, added-mass, excitation, and radiation arrays. This is input compatibility, not motion parity. |
 | RM3 regular-wave force preprocessing | Original MATLAB-generated `body_1_test` constants and files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF; the RM3 runner now completes preprocessing. |
 | RM3 irregular-wave force preprocessing | Original MATLAB-generated `body_2_test` files | Production `BodyClass` agrees for restoring stiffness, added mass, excitation, and radiation IRF. |
 | RM3 body interaction force preprocessing | Original MATLAB-generated `body_4_test` through `body_9_test` files | All six regular/regularCIC variants, including body-to-body coupling on/off and state-space radiation on/off, agree for both RM3 bodies on restoring stiffness, added mass, excitation, radiation IRF, and state-space matrices where present. |
@@ -55,15 +56,22 @@ Python preprocessing of it. `source/objects/linearHeave.py` uses that
 preprocessing, the heave restoring coefficient, infinite-frequency added
 mass, and radiation impulse-response kernel. It integrates the resulting
 linear convolution equation with a fixed 0.01 s trapezoidal step. The five
-Sphere trajectory comparisons run in the same MATLAB job so that the source,
-HDF5, time grid, and output remain paired.
-The MATLAB baselines do not establish Python dynamics parity; the Python
-runner still has no dynamics solver. Expanded application cases remain
-inventoried. The manually dispatched `MATLAB reference application regression`
+Sphere trajectory comparisons [passed in the same MATLAB job](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37476318082)
+so that the source, HDF5, time grid, and output remain paired.
+The RM3 and OSWEC MATLAB baselines do not establish Python dynamics parity;
+the Python runner still has no general dynamics solver. Expanded application
+cases remain inventoried. The manually dispatched `MATLAB reference application regression`
 workflow can run the upstream test suites for all 18 application folders
 containing the 46 explicit RM3, OSWEC, and Sphere cases. This checks the
 pinned MATLAB reference for those cases, but there is no Python time-series
 comparison yet.
+
+The [first full application sweep](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556454)
+recorded 42 passed methods, two failed Passive Yaw assertions, two MoorDyn
+methods filtered by upstream's CI assumption, and an empty Multiple Wave
+Spectra suite. Both Variable Hydro methods passed under MATLAB R2025b. A
+targeted direct run subsequently passed Multiple Wave Spectra, bringing
+the exercised passing checks to 43.
 
 The first application sweep revealed upstream test-suite limitations. In
 `Passive_Yaw`, two stored irregular-yaw regression checks fail; the same two
@@ -75,9 +83,10 @@ from MATLAB's bundled `libstdc++`), so those cases remain unverified in CI.
 The `Multiple_Wave_Spectra` test class is excluded by MATLAB because its
 class name does not match its filename. Our harness generates its OSWEC HDF5
 file with BEMIO, runs the input file directly, and requires body output
-instead of accepting an empty test suite as success. These are
-MATLAB-reference gaps, not evidence of Python dynamics agreement or
-disagreement.
+instead of accepting an empty test suite as success. The
+[direct case passed](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37476616198).
+The Passive Yaw and MoorDyn findings are MATLAB-reference gaps, not evidence
+of Python dynamics agreement or disagreement.
 
 ## Known differences and next reference case
 

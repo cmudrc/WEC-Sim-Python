@@ -33,12 +33,15 @@ cases can be calculated with the focused solver:
 ```python
 from source.objects.linearHeave import solve_heave_free_decay
 
-response = solve_heave_free_decay("sphere.h5", initial_displacement=1.0)
+response = solve_heave_free_decay("path/to/sphere.h5", initial_displacement=1.0)
 # response.time, response.position, response.velocity, response.force_total
 ```
 
 This solver assumes one heave-only body, zero incident waves, and no PTO,
-mooring, or nonlinear force. The original README projected completion in
+mooring, or nonlinear force. Generate `sphere.h5` with the published
+WEC-Sim_Applications Sphere `bemio.m`, or download the HDF5 artifact from the
+[MATLAB reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556464).
+The original README projected completion in
 August 2022; that date is no longer applicable. See [PARITY.md](PARITY.md)
 for the tested scope and next reference case.
 

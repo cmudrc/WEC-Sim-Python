@@ -5,6 +5,9 @@ uses the production BodyClass preprocessing and a fixed-step trapezoidal
 integration of the Cummins radiation convolution. Other WEC-Sim degrees of
 freedom, excitation, constraints, PTOs, and nonlinear forces are outside its
 scope.
+
+The solved equation is ``(m + A_inf) q'' + C q + integral(K(tau)
+q'(t - tau) d tau) = 0`` in heave, with zero initial velocity.
 """
 
 from dataclasses import dataclass
@@ -48,6 +51,8 @@ def solve_heave_free_decay(
     ``position`` is the absolute vertical center of gravity in meters;
     ``displacement`` is relative to its equilibrium value.
     """
+    if not np.isfinite([initial_displacement, dt, end_time, cic_end_time, rho, g]).all():
+        raise ValueError("solver inputs must be finite")
     if dt <= 0 or cic_end_time <= 0 or rho <= 0 or g <= 0:
         raise ValueError("dt, cic_end_time, rho, and g must be positive")
     steps = _sample_count(end_time, dt)
@@ -60,6 +65,9 @@ def solve_heave_free_decay(
     body.readH5file()
     if int(np.asarray(body.dof).item()) != 6:
         raise ValueError("the heave solver requires one six-DOF hydrodynamic body")
+    irf_time = body.hydroData["hydro_coeffs"]["radiation_damping"]["impulse_response_fun"]["t"]
+    if memory_time[-1] > np.max(irf_time) + 1e-10:
+        raise ValueError("cic_end_time exceeds the radiation kernel in the HDF5 file")
     body.hydroStiffness = np.zeros((6, 6))
     body.viscDrag = {
         "Drag": np.zeros((6, 6)),
