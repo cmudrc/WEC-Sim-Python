@@ -67,7 +67,7 @@ def solve_rm3_regular(
     for index, pitch_inertia in enumerate(pitch_inertias, start=1):
         body = BodyClass(str(h5_file))
         body.bodyNumber = index
-        body.bodyTotal = np.array([2])
+        body.bodyTotal = 2
         body.readH5file()
         if int(np.asarray(body.dof).item()) != 6:
             raise ValueError("each RM3 hydrodynamic body must have six DOFs")

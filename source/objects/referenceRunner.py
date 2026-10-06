@@ -1,4 +1,4 @@
-"""Command-line runner for the three currently supported reference cases.
+"""Command-line runner for the three supported reference model families.
 
 Run ``python -m source.objects.referenceRunner MODEL --h5 FILE --output FILE``.
 The CSV and adjacent JSON record numeric results and reproducibility inputs.

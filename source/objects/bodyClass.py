@@ -585,7 +585,7 @@ class BodyClass:
             rd[:,:,i] *= self.hydroData['simulation_parameters']['w'][0][i]
         # Change matrix size: B2B [6x6n], noB2B [6x6]
         if B2B == 1:
-            lenJ = 6*int(self.bodyTotal[0])
+            lenJ = 6*int(np.asarray(self.bodyTotal).item())
             self.hydroForce['fAddedMass'] = np.zeros((6,lenJ))
             self.hydroForce['fDamping'] = np.zeros((6,lenJ))
             self.hydroForce['totDOF']  = np.zeros((6,lenJ))
@@ -620,7 +620,7 @@ class BodyClass:
         """
         nDOF = int(self.dof[0])
         if B2B == 1:
-            LDOF = int(self.bodyTotal[0])*6
+            LDOF = int(np.asarray(self.bodyTotal).item())*6
         else:
             LDOF = int(self.dof[0])
         

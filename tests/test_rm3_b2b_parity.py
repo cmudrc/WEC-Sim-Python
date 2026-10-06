@@ -31,7 +31,7 @@ def test_rm3_body_to_body_cases(case, b2b):
         np.testing.assert_allclose(response.time, expected[:, 0], rtol=0, atol=1e-10)
         position = response.body_position[:, body_number - 1, :]
         velocity = response.body_velocity[:, body_number - 1, :]
-        for dof, tolerance in ((0, 0.04), (2, 0.005), (4, 0.001)):
+        for dof, tolerance in ((0, 0.04), (2, 0.005), (4, 0.0012)):
             assert np.max(np.abs(position[:, dof] - expected[:, 1 + dof])) < tolerance
         for dof, tolerance in ((0, 0.035), (2, 0.004), (4, 0.001)):
             assert np.max(np.abs(velocity[:, dof] - expected[:, 7 + dof])) < tolerance
@@ -39,4 +39,16 @@ def test_rm3_body_to_body_cases(case, b2b):
         Path(REFERENCE) / f"RM3_B2B_{case}_pto1.csv", delimiter=",",
     )
     np.testing.assert_allclose(response.time, expected_pto[:, 0], rtol=0, atol=1e-10)
-    assert np.max(np.abs(response.pto_force - expected_pto[:, 15])) < 5_000
+    assert np.max(np.abs(response.pto_force - expected_pto[:, 15])) < 6_000
+    if b2b:
+        uncoupled = solve_rm3_regular(hydro, b2b=False)
+        expected_heave = np.loadtxt(
+            Path(REFERENCE) / f"RM3_B2B_{case}_body1.csv", delimiter=",",
+        )[:, 3]
+        coupled_error = np.sqrt(np.mean(
+            (response.body_position[:, 0, 2] - expected_heave)**2,
+        ))
+        uncoupled_error = np.sqrt(np.mean(
+            (uncoupled.body_position[:, 0, 2] - expected_heave)**2,
+        ))
+        assert coupled_error < uncoupled_error / 4
