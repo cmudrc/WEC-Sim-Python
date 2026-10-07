@@ -284,7 +284,7 @@ class WaveClass:
         Does not get used in any method
 
         """
-        m0 = np.trapz(self.S, x = self.w)
+        m0 = np.trapezoid(self.S, x=self.w)
         HsTest = 4*np.sqrt(m0)
         I = np.argmax(np.abs(self.S))
         wp = self.w[I]
@@ -513,7 +513,7 @@ class WaveClass:
             self.Pw = 1/(8*np.pi)*rho*g**(2)*(self.A)**(2)*self.T
         else:
             # Full Wave Power Equation
-            self.Pw = rho*g*(self.A)**(2)/4*np.sqrt(g/self.k*np.tanh(self.k*self.waterDepth))*(1+2*self.k*self.waterDepth/np.sinh(self.k*self.waterDepth))
+            self.Pw = rho*g*(self.A)**(2)/4*np.sqrt(g/self.k*np.tanh(self.k*self.waterDepth))*(1+2*self.k*self.waterDepth/np.sinh(2*self.k*self.waterDepth))
         
     def irregWaveSpectrum(self,g,rho):
         """
@@ -548,7 +548,7 @@ class WaveClass:
             for hind in np.argwhere(np.array(freq)>fp):
                 Gf[hind] = self.gamma**np.exp(-(freq[hind]-fp)**2/(2*sigb**2*fp**2))
             S_temp = g**2*(2*np.pi)**(-4)*freq**(-5)*np.exp(-(5/4)*(freq/fp)**(-4))
-            alpha_JS = Hs**(2)/16/np.trapz(S_temp*Gf,freq)
+            alpha_JS = Hs**(2)/16/np.trapezoid(S_temp*Gf,freq)
             S_f = alpha_JS*S_temp*Gf                                 # Wave Spectrum [m^2-s]
             self.S = S_f/(2*np.pi)                                       # Wave Spectrum [m^2-s/rad]
         elif self.spectrumType == 'spectrumImport':
@@ -569,10 +569,10 @@ class WaveClass:
             # Full Wave Power Equation
             self.Pw = np.sum((1/2)*rho*g*S_f*self.dw*np.sqrt(9.81/self.k*np.tanh(self.k*self.waterDepth))*(1 + 2*self.k*self.waterDepth/np.sinh(2*self.k*self.waterDepth)))
         if self.freqDisc == 'EqualEnergy':
-            m0 = np.trapz(np.abs(S_f),freq)
+            m0 = np.trapezoid(np.abs(S_f),freq)
             numBins = self.numFreq+1
             a_targ = m0/numBins
-            SF = np.insert(integrate.cumtrapz(S_f,freq),0,0) # integrate cumtrapz produce similar but not exact number that MATLAB produces. From my test E-6 decimal were same
+            SF = integrate.cumulative_trapezoid(S_f, freq, initial=0) # MATLAB cumtrapz equivalent
             # Modified method for solving wn
             # start of the midified code:
             

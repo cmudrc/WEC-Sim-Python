@@ -22,6 +22,22 @@ from numpy.linalg import inv
 from scipy import interpolate
 from copy import copy
 
+
+def _directional_interp(frequencies, directions, values, query_frequencies, query_directions):
+    """Interpolate a direction-by-frequency hydrodynamic table linearly."""
+    frequencies = np.asarray(frequencies).ravel()
+    directions = np.asarray(directions).ravel()
+    query_frequencies = np.atleast_1d(query_frequencies)
+    query_directions = np.atleast_1d(query_directions)
+    frequency_grid, direction_grid = np.meshgrid(query_frequencies, query_directions)
+    points = np.column_stack((direction_grid.ravel(), frequency_grid.ravel()))
+    interpolator = interpolate.RegularGridInterpolator(
+        (directions, frequencies), np.asarray(values), bounds_error=False,
+        fill_value=None,
+    )
+    return interpolator(points).reshape(direction_grid.shape)
+
+
 class BodyClass:
     def hdf5FileProperties(self):#hdf5 file properties
         """
@@ -162,69 +178,70 @@ class BodyClass:
         self.cg = np.transpose(np.array(f.get(name + '/properties/cg')))
         self.cb = np.transpose(np.array(f.get(name + '/properties/cb')))
         self.dispVol = np.array(f.get(name + '/properties/disp_vol'))
-        self.name = np.string_(np.array(f.get(name + '/properties/name'))).decode("utf-8")
+        self.name = f[name + '/properties/name'].asstr()[()]
         self.hydroData['simulation_parameters']['scaled'] = np.array(f.get('/simulation_parameters/scaled'))
         self.hydroData['simulation_parameters']['wave_dir'] = np.transpose(np.array(f.get('/simulation_parameters/wave_dir')))
-        if np.array(f.get('/simulation_parameters/water_depth')).dtype == float:
+        if np.array(f.get('/simulation_parameters/water_depth')).dtype.kind in 'fi':
             self.hydroData['simulation_parameters']['water_depth'] = np.array(f.get('/simulation_parameters/water_depth'))
         else:            
-            self.hydroData['simulation_parameters']['water_depth'] = np.string_(np.array(f.get('/simulation_parameters/water_depth'))).decode("utf-8")
+            self.hydroData['simulation_parameters']['water_depth'] = f['/simulation_parameters/water_depth'].asstr()[()]
         self.hydroData['simulation_parameters']['w'] = np.transpose(np.array(f.get('/simulation_parameters/w')))
         self.hydroData['simulation_parameters']['T'] = np.transpose(np.array(f.get('/simulation_parameters/T')))
-        self.hydroData['properties']['name'] = np.string_(np.array(f.get(name + '/properties/name'))).decode("utf-8")
+        self.hydroData['properties']['name'] = self.name
         self.hydroData['properties']['body_number'] = np.array(f.get(name + '/properties/body_number'))
         self.hydroData['properties']['cg'] = np.transpose(np.array(f.get(name + '/properties/cg')))
         self.hydroData['properties']['cb'] = np.transpose(np.array(f.get(name + '/properties/cb')))
         self.hydroData['properties']['disp_vol'] = np.array(f.get(name + '/properties/disp_vol'))
-        if np.array(f.get(name +'/properties/dof')).all() != None:
+        if f.get(name + '/properties/dof') is not None:
             self.hydroData['properties']['dof'] = np.array(f.get(name +'/properties/dof')) 
         else:
             self.hydroData['properties']['dof'] = np.array(6)
-        if np.array(f.get(name + '/properties/dof_start')).all() != None:
+        if f.get(name + '/properties/dof_start') is not None:
             self.hydroData['properties']['dof_start'] = np.array(f.get(name + '/properties/dof_start'))
         else:
             self.hydroData['properties']['dof_start'] = np.array((self.bodyNumber-1)*6+1)
-        if np.array(f.get(name + '/properties/dof_end')).all() != None:
+        if f.get(name + '/properties/dof_end') is not None:
             self.hydroData['properties']['dof_end'] = np.array(f.get(name + '/properties/dof_end'))
         else:
             self.hydroData['properties']['dof_end'] = np.array((self.bodyNumber-1)*6+6)
-        self.dof       = self.hydroData['properties']['dof']
-        self.dof_start = self.hydroData['properties']['dof_start']
-        self.dof_end   = self.hydroData['properties']['dof_end']
+        self.dof       = np.asarray(self.hydroData['properties']['dof']).reshape(-1)
+        self.dof_start = np.asarray(self.hydroData['properties']['dof_start']).reshape(-1)
+        self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
         self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = np.transpose(np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness')))
         self.hydroData['hydro_coeffs']['excitation']['re'] = np.array(f.get(name +  '/hydro_coeffs/excitation/re'))
         self.hydroData['hydro_coeffs']['excitation']['im'] = np.array(f.get(name + '/hydro_coeffs/excitation/im'))
-        if np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f')).all() != None:
+        if f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f') is not None:
             self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['f'] = np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f'))
-        if np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t')).all() != None:
+        if f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t') is not None:
             self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['t'] = np.array(f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/t'))
         self.hydroData['hydro_coeffs']['added_mass']['all'] = np.array(f.get(name + '/hydro_coeffs/added_mass/all'))
         self.hydroData['hydro_coeffs']['added_mass']['inf_freq'] = np.array(f.get(name + '/hydro_coeffs/added_mass/inf_freq'))
         self.hydroData['hydro_coeffs']['radiation_damping']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['impulse_response_fun']['K'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/K'))
-        if np.array(f.get(name +'/hydro_coeffs/radiation_damping/impulse_response_fun/t')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/impulse_response_fun/t') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['impulse_response_fun']['t'] = np.transpose(np.array(f.get(name +'/hydro_coeffs/radiation_damping/impulse_response_fun/t')))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/it')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/it') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['it'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/it'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['A']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/A/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['B']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/B/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['C']['all'] = np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/C/all'))
-        if np.array(f.get(name + '/hydro_coeffs/radiation_damping/state_space/D/all')).all() != None:
+        if f.get(name + '/hydro_coeffs/radiation_damping/state_space/D/all') is not None:
             self.hydroData['hydro_coeffs']['radiation_damping']['state_space']['D']['all'] = np.array(f.get(name +'/hydro_coeffs/radiation_damping/state_space/D/all'))
-        if np.array(f.get(name + '/properties/mass')).all() != None:
-            tmp = np.array(f.get(name + '/properties/mass'))
-            self.hydroData['gbm']['mass'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
-        if np.array(f.get(name + '/properties/stiffness')).all() != None:
-            tmp = np.array(f.get(name + '/properties/stiffness'))
-            self.hydroData['gbm']['stiffness'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
-        if np.array(f.get(name + '/properties/damping')).all() != None:
-            tmp = np.array(f.get(name + '/properties/damping'))
-            self.hydroData['gbm']['damping'] = [tmp[0].arange(self.dof_start+5,self.dof_end+1),tmp[1].arange(self.dof_start+5,self.dof_end+1)]
+        gbm_start = int(np.asarray(self.dof_start).item()) + 5
+        gbm_end = int(np.asarray(self.dof_end).item())
+        for property_name in ('mass', 'stiffness', 'damping'):
+            dataset = f.get(name + '/properties/' + property_name)
+            if dataset is not None:
+                # HDF5 reverses MATLAB's matrix dimension order.
+                matrix = np.asarray(dataset).T
+                self.hydroData['gbm'][property_name] = matrix[
+                    gbm_start:gbm_end, gbm_start:gbm_end
+                ]
         if self.meanDriftForce == 0:
             self.hydroData['hydro_coeffs']['mean_drift'] = 0.*self.hydroData['hydro_coeffs']['excitation']['re']
         elif self.meanDriftForce == 1:
@@ -246,9 +263,9 @@ class BodyClass:
         self.cb        = hydroData['properties']['cb']
         self.dispVol   = hydroData['properties']['disp_vol']
         self.name      = hydroData['properties']['name']
-        self.dof       = self.hydroData['properties']['dof']
-        self.dof_start = self.hydroData['properties']['dof_start']
-        self.dof_end   = self.hydroData['properties']['dof_end']
+        self.dof       = np.asarray(self.hydroData['properties']['dof']).reshape(-1)
+        self.dof_start = np.asarray(self.hydroData['properties']['dof_start']).reshape(-1)
+        self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
     
     def hydroForcePre(self,w,waveDir,CIkt,CTTime,numFreq,dt,rho,g,waveType,waveAmpTime,iBod,numBod,ssCalc,nlHydro,B2B):
@@ -278,19 +295,24 @@ class BodyClass:
             self.viscDrag['cd']   = np.append(self.viscDrag['cd'], np.zeros(self.dof[0]-np.size(self.viscDrag['cd'])))
             self.viscDrag['characteristicArea'] = np.append(self.viscDrag['characteristicArea'],np.zeros(1,self.dof-np.size(self.viscDrag['characteristicArea'])))
 
-        if self.hydroStiffness.any() == 1:  #check if self.hydroStiffness is defined
+        if np.any(self.hydroStiffness):  # check for a user-defined stiffness
             self.hydroForce['linearHydroRestCoef'] = self.hydroStiffness
         else:
             k = self.hydroData['hydro_coeffs']['linear_restoring_stiffness']#(:,self.dof_start:self.dof_end)
             self.hydroForce['linearHydroRestCoef'] = k*rho*g
 
-        if  self.viscDrag['Drag'].any() == 1:  #check if self.viscDrag['Drag'] is defined
+        if np.any(self.viscDrag['Drag']):  # check for a user-defined drag matrix
             self.hydroForce['visDrag'] = self.viscDrag['Drag']
         else:
-            self.hydroForce['visDrag'] = np.diag(0.5*rho*self.viscDrag['cd']*self.viscDrag['characteristicArea'])
+            self.hydroForce['visDrag'] = np.diag(
+                0.5 * rho * np.asarray(self.viscDrag['cd'])
+                * np.asarray(self.viscDrag['characteristicArea'])
+            )
 
         self.hydroForce['linearDamping'] = self.linearDamping
-        self.hydroForce['userDefinedFe'] = np.zeros((len(waveAmpTime[1]),int(self.dof[0])))  #initializing userDefinedFe for non imported wave cases
+        self.hydroForce['userDefinedFe'] = np.zeros(
+            (len(waveAmpTime[1]), int(np.asarray(self.dof).item()))
+        )  # initialize userDefinedFe for non-imported wave cases
         if waveType == 'noWave':
             self.noExcitation()
             self.constAddedMassAndDamping(w,CIkt,rho,B2B)
@@ -481,20 +503,18 @@ class BodyClass:
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 y = self.hydroData['simulation_parameters']['wave_dir'][0]
-                s1 = interpolate.interp2d(x,y, np.squeeze(re[ii]))# interpolate using interp2d to get interpolation of 2d space
-                self.hydroForce['fExt']['re'][ii] = s1(w[0],waveDir)
-                s2 = interpolate.interp2d(x,y, np.squeeze(im[ii]))
-                self.hydroForce['fExt']['im'][ii] = s2(w[0],waveDir)
-                s3 = interpolate.interp2d(x,y, np.squeeze(md[ii]))
-                self.hydroForce['fExt']['md'][ii] = s3(w[0],waveDir)
+                self.hydroForce['fExt']['re'][ii] = _directional_interp(x, y, np.squeeze(re[ii]), w, waveDir).item()
+                self.hydroForce['fExt']['im'][ii] = _directional_interp(x, y, np.squeeze(im[ii]), w, waveDir).item()
+                self.hydroForce['fExt']['md'][ii] = _directional_interp(x, y, np.squeeze(md[ii]), w, waveDir).item()
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 x = self.hydroData['simulation_parameters']['w'][0]
+                frequency = np.asarray(w).item()
                 s1 = interpolate.CubicSpline(x, np.squeeze(re[ii][0]))# interpolate using CubicSline to get interpolation of spline 3d space
                 s2 = interpolate.CubicSpline(x, np.squeeze(im[ii][0]))
                 s3 = interpolate.CubicSpline(x, np.squeeze(md[ii][0]))
-                self.hydroForce['fExt']['re'][ii] = s1(w)
-                self.hydroForce['fExt']['im'][ii] = s2(w)
-                self.hydroForce['fExt']['md'][ii] = s3(w)
+                self.hydroForce['fExt']['re'][ii] = s1(frequency)
+                self.hydroForce['fExt']['im'][ii] = s2(frequency)
+                self.hydroForce['fExt']['md'][ii] = s3(frequency)
 
     def irrExcitation(self,wv,numFreq,waveDir,rho,g):
         """
@@ -513,12 +533,9 @@ class BodyClass:
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 y = self.hydroData['simulation_parameters']['wave_dir'][0]
-                s1 = interpolate.interp2d(x,y, np.squeeze(re[ii]))# interpolate using interp2d to get interpolation of 2d space
-                self.hydroForce['fExt']['re'][:,:,ii] = s1(wv[0],waveDir)
-                s2 = interpolate.interp2d(x,y, np.squeeze(im[ii]))
-                self.hydroForce['fExt']['im'][:,:,ii] = s2(wv[0],waveDir)
-                s3 = interpolate.interp2d(x,y, np.squeeze(md[ii]))
-                self.hydroForce['fExt']['md'][:,:,ii] = s3(wv[0],waveDir)
+                self.hydroForce['fExt']['re'][:,:,ii] = _directional_interp(x, y, np.squeeze(re[ii]), wv, waveDir)
+                self.hydroForce['fExt']['im'][:,:,ii] = _directional_interp(x, y, np.squeeze(im[ii]), wv, waveDir)
+                self.hydroForce['fExt']['md'][:,:,ii] = _directional_interp(x, y, np.squeeze(md[ii]), wv, waveDir)
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 x = self.hydroData['simulation_parameters']['w'][0]
                 s1 = interpolate.CubicSpline(x, np.squeeze(re[ii][0]))# interpolate using CubicSline to get interpolation of spline 3d space
@@ -541,8 +558,7 @@ class BodyClass:
         for ii in range(nDOF):
             if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
                 y = self.hydroData['simulation_parameters']['wave_dir'][0] 
-                s1 = interpolate.interp2d(kt,y, np.squeeze(kf[ii])) # interpolate using interp2d to get interpolation of 2d space
-                self.userDefinedExcIRF = s1(t,waveDir)
+                self.userDefinedExcIRF = _directional_interp(kt, y, np.squeeze(kf[ii]), t, waveDir).squeeze()
             elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
                 s1 = interpolate.CubicSpline(kt, np.squeeze(kf[ii][0])) # interpolate using CubicSline to get interpolation of spline 3d space
                 self.userDefinedExcIRF = s1(t)
@@ -562,22 +578,23 @@ class BodyClass:
         Used by hydroForcePre
         
         """
+        frequency = np.asarray(w).item()
         am = self.hydroData['hydro_coeffs']['added_mass']['all']*rho
         rd = self.hydroData['hydro_coeffs']['radiation_damping']['all']*rho
         for i in range(len(self.hydroData['simulation_parameters']['w'][0])):
             rd[:,:,i] *= self.hydroData['simulation_parameters']['w'][0][i]
         # Change matrix size: B2B [6x6n], noB2B [6x6]
         if B2B == 1:
-            lenJ = 6*int(self.bodyTotal[0])
+            lenJ = 6*int(np.asarray(self.bodyTotal).item())
             self.hydroForce['fAddedMass'] = np.zeros((6,lenJ))
             self.hydroForce['fDamping'] = np.zeros((6,lenJ))
             self.hydroForce['totDOF']  = np.zeros((6,lenJ))
             for ii in range(6):
                 for jj in range(lenJ):
                     s1 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(am[ii,jj,:]))
-                    self.hydroForce['fAddedMass'][ii,jj] = s1(w)
+                    self.hydroForce['fAddedMass'][ii,jj] = s1(frequency)
                     s2 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(rd[ii,jj,:]))
-                    self.hydroForce['fDamping'][ii,jj] = s2(w)
+                    self.hydroForce['fDamping'][ii,jj] = s2(frequency)
         else: #B2B =2
             nDOF = int(self.dof[0])
             self.hydroForce['fAddedMass'] = np.zeros((nDOF,nDOF))
@@ -587,9 +604,9 @@ class BodyClass:
                 for jj in range(nDOF):
                     jjj = int(self.dof_start[0])-1+jj
                     s1 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(am[ii,jjj,:]))
-                    self.hydroForce['fAddedMass'][ii,jj] = s1(w)
+                    self.hydroForce['fAddedMass'][ii,jj] = s1(frequency)
                     s2 = interpolate.CubicSpline(self.hydroData['simulation_parameters']['w'][0], np.squeeze(rd[ii,jjj,:]))
-                    self.hydroForce['fDamping'][ii,jj] = s2(w)
+                    self.hydroForce['fDamping'][ii,jj] = s2(frequency)
     
     
     def irfInfAddedMassAndDamping(self,CIkt,CTTime,ssCalc,rho,B2B):
@@ -603,7 +620,7 @@ class BodyClass:
         """
         nDOF = int(self.dof[0])
         if B2B == 1:
-            LDOF = int(self.bodyTotal[0])*6
+            LDOF = int(np.asarray(self.bodyTotal).item())*6
         else:
             LDOF = int(self.dof[0])
         
@@ -766,4 +783,3 @@ def arange_MATLAB(start, end, step):
     Change np.arange to have same sequence as MATLAB when step is float
     """
     return step*np.arange(start/step, np.floor(end/step))
-    

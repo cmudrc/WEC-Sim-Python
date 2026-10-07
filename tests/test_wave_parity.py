@@ -1,0 +1,135 @@
+"""Checks against MATLAB-generated fixtures and the WEC-Sim wave equations.
+
+The older object tests import copies of the implementation from their own
+directories. These tests deliberately import the production WaveClass.
+"""
+
+from pathlib import Path
+import sys
+
+import numpy as np
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "source" / "objects"))
+
+from waveClass import WaveClass  # noqa: E402
+from paraviewClass import ParaviewClass  # noqa: E402
+
+
+def test_regular_wave_matches_matlab_fixture():
+    wave = WaveClass("regular")
+    wave.T = 8.0
+    wave.H = 2.5
+    wave.waveDir = [0]
+    wave.wavegauge1loc = [5, 5]
+    wave.wavegauge2loc = [10, 0]
+    wave.wavegauge3loc = [0, -10]
+    wave.waveSetup(
+        [5.19999512307279, 0.0199999977946844],
+        "infinite", 100.0, 0.1, 2000, 9.81, 1000.0, 200.0,
+    )
+
+    fixture = ROOT / "tests/test_objects/test_waveclass/testData/regular_1_test"
+    for attribute, filename in (
+        ("waveAmpTime", "waveAmpTime.txt"),
+        ("waveAmpTime1", "waveAmpTime1.txt"),
+        ("waveAmpTime2", "waveAmpTime2.txt"),
+        ("waveAmpTime3", "waveAmpTime3.txt"),
+    ):
+        expected = np.loadtxt(fixture / filename).T
+        np.testing.assert_allclose(getattr(wave, attribute), expected, rtol=0, atol=1e-12)
+
+
+def test_finite_depth_regular_power_follows_matlab_group_velocity():
+    wave = WaveClass("regular")
+    wave.w = 2 * np.pi / 8
+    wave.A = 1.25
+    wave.deepWaterWave = 0
+    wave.waterDepth = 25.0
+    wave.waveNumber(9.81)
+    wave.wavePowerReg(9.81, 1000.0)
+
+    k = wave.k
+    np.testing.assert_allclose(wave.w**2, 9.81 * k * np.tanh(k * 25.0), rtol=1e-13)
+    phase_speed = wave.w / k
+    group_speed = phase_speed / 2 * (1 + 2 * k * 25.0 / np.sinh(2 * k * 25.0))
+    expected_power = 0.5 * 1000.0 * 9.81 * wave.A**2 * group_speed
+    np.testing.assert_allclose(wave.Pw, expected_power, rtol=1e-13)
+
+
+def test_historical_equal_energy_matlab_reference():
+    wave = WaveClass("irregular")
+    wave.w = np.array([
+        0.525743641856087, 0.541511547017433, 0.551933697209493,
+        0.559973049643924, 0.566624163384781, 0.572373957973840,
+        0.577471073177114, 0.582081268838611, 0.586297784870588,
+        0.590203501195047, 0.593850217763243, 0.597279374536177,
+        0.600522051484601, 0.603609328579267, 0.606551565810425,
+    ])
+    wave.dw = np.array([
+        0.505743644061402, 0.0157679051613465, 0.0104221501920596,
+        0.00803935243443155, 0.00665111374085714, 0.00574979458905867,
+        0.00509711520327372, 0.00461019566149745, 0.00421651603197637,
+        0.00390571632445969, 0.00364671656819582, 0.00342915677293409,
+        0.00324267694842406, 0.00308727709466572, 0.00294223723115805,
+    ])
+    wave.T = 8
+    wave.H = 2.5
+    wave.spectrumType = "BS"
+    wave.freqDisc = "EqualEnergy"
+    wave.deepWaterWave = 1
+    wave.numFreq = 4
+    wave.irregWaveSpectrum(9.81, 1000.0)
+
+    np.testing.assert_allclose(
+        wave.w, [0.566624163384781, 0.582081268838611,
+                 0.590203501195047, 0.600522051484601], rtol=1e-13,
+    )
+    np.testing.assert_allclose(
+        wave.S, [0.126744401973820, 0.177305360376672,
+                 0.206784788616044, 0.246458761526240], rtol=1e-8,
+    )
+    np.testing.assert_allclose(wave.Pw, 16836.8900561635, rtol=1e-13)
+
+
+def test_wave_surface_grid_matches_matlab_regular_and_irregular_equations():
+    X = np.array([[0.0, 2.0], [0.0, 2.0]])
+    Y = np.array([[0.0, 0.0], [3.0, 3.0]])
+
+    no_wave = WaveClass("noWave")
+    np.testing.assert_array_equal(
+        ParaviewClass(no_wave).waveElevationGrid(2.0, X, Y), np.zeros_like(X)
+    )
+
+    regular = WaveClass("regular")
+    regular.A = 1.25
+    regular.k = 0.3
+    regular.w = 0.8
+    regular.waveDir = [90]
+    expected = 1.25 * np.cos(-0.3 * Y + 0.8 * 2.0)
+    np.testing.assert_allclose(
+        ParaviewClass(regular).waveElevationGrid(2.0, X, Y), expected, atol=1e-15
+    )
+
+    irregular = WaveClass("irregular")
+    irregular.A = np.array([2.0, 1.0])
+    irregular.dw = np.array([0.1, 0.2])
+    irregular.w = np.array([0.8, 1.2])
+    irregular.k = np.array([0.3, 0.5])
+    irregular.waveDir = [0, 90]
+    irregular.waveSpread = [0.6, 0.4]
+    irregular.phase = np.array([[0.0, 0.1], [0.2, 0.3]])
+    expected = np.zeros_like(X)
+    for direction_index, position in enumerate((X, Y)):
+        for frequency_index in range(2):
+            expected += np.sqrt(
+                irregular.A[frequency_index] * irregular.dw[frequency_index]
+                * irregular.waveSpread[direction_index]
+            ) * np.cos(
+                -irregular.k[frequency_index] * position
+                + irregular.w[frequency_index] * 2.0
+                + irregular.phase[direction_index, frequency_index]
+            )
+    np.testing.assert_allclose(
+        ParaviewClass(irregular).waveElevationGrid(2.0, X, Y), expected, atol=1e-15
+    )

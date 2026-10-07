@@ -1,0 +1,38 @@
+{
+  "name": "RM3 regular-wave floating joint",
+  "simulation": {
+    "dt": 0.1,
+    "end_time": 400,
+    "ramp_time": 100
+  },
+  "wave": {
+    "type": "regular",
+    "height": 2.5,
+    "period": 8,
+    "direction": 0
+  },
+  "bodies": [
+    {
+      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_body": 1,
+      "mass": "equilibrium",
+      "pitch_inertia": 21306090.66
+    },
+    {
+      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_body": 2,
+      "mass": "equilibrium",
+      "pitch_inertia": 94407091.24
+    }
+  ],
+  "constraint": {
+    "kind": "floating_joint",
+    "location": [0, 0, 0]
+  },
+  "pto": {
+    "kind": "relative_heave",
+    "damping": 1200000,
+    "stiffness": 0
+  },
+  "body_to_body": false
+}

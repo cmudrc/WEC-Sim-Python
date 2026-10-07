@@ -1,0 +1,162 @@
+"""Check configurable PTO attachment geometry and public case outputs."""
+
+import json
+from pathlib import Path
+import subprocess
+import sys
+
+import numpy as np
+import pytest
+
+from source.objects.ptoConnections import build_linear_ptos
+from source.objects.caseDynamics import run_case
+from source.objects.linearCoordinates import build_coordinate_maps
+
+
+ROOT = Path(__file__).resolve().parents[1]
+RM3 = ROOT / "source/objects/rm3.h5"
+EXAMPLE = ROOT / "examples/python/configurable_rm3_pto.json"
+
+
+def test_two_body_attachment_offsets_create_pitch_moment():
+    first = np.array([
+        [0, 0, 0], [0, 0, 0], [1, 0, 0],
+        [0, 0, 0], [0, 0, 1], [0, 0, 0],
+    ])
+    second = np.array([
+        [0, 0, 0], [0, 0, 0], [0, 1, 0],
+        [0, 0, 0], [0, 0, 0], [0, 0, 0],
+    ])
+    specs = [{
+        "name": "main", "kind": "linear_actuator",
+        "from": {"body": "float", "point": [2, 0, 0]},
+        "to": {"body": "spar", "point": [-1, 0, 0]},
+        "axis": [0, 0, 1], "stiffness": 1000, "damping": 100,
+        "equilibrium_position": 0.1,
+    }]
+    connections, stiffness, damping, bias = build_linear_ptos(
+        specs, [first, second], [np.zeros(3), np.zeros(3)],
+        ["float", "spar"],
+    )
+    jacobian = np.array([-1, 1, 2])
+    np.testing.assert_allclose(connections[0].stroke_jacobian, jacobian)
+    np.testing.assert_allclose(stiffness, 1000 * np.outer(jacobian, jacobian))
+    np.testing.assert_allclose(damping, 100 * np.outer(jacobian, jacobian))
+    np.testing.assert_allclose(bias, 100 * jacobian)
+    outputs = dict(connections[0].outputs(np.zeros((1, 3)), np.zeros((1, 3))))
+    np.testing.assert_allclose(outputs["pto_main_force"], [100])
+    np.testing.assert_allclose(outputs["pto_main_absorbed_power"], [0])
+
+
+def test_world_anchor_sets_default_axis():
+    mapping = np.zeros((6, 1))
+    mapping[2, 0] = 1
+    specs = [{
+        "name": "anchor", "kind": "linear_actuator",
+        "from": {"body": 1, "point": [0, 0, 0]},
+        "to": {"ground": [0, 0, 2]}, "stiffness": 1000,
+    }]
+    connections, _, _, _ = build_linear_ptos(
+        specs, [mapping], [np.zeros(3)], ["body1"],
+    )
+    np.testing.assert_allclose(connections[0].stroke_jacobian, [-1])
+    np.testing.assert_allclose(
+        connections[0].force(np.array([[0.25]]), np.array([[0]])),
+        [250],
+    )
+
+
+def test_named_pitch_pivot_moves_body_center():
+    constraint = {"coordinates": [{
+        "name": "pitch", "motions": [{
+            "body": "float", "dof": "pitch",
+            "pivot": {"world": [0, 0, 0]},
+        }],
+    }]}
+    maps, names = build_coordinate_maps(
+        constraint, [{}], ["float"], [np.array([0, 0, -0.72])],
+    )
+    assert names == ("pitch",)
+    np.testing.assert_allclose(maps[0][:, 0], [-0.72, 0, 0, 0, 1, 0])
+    constraint["coordinates"][0]["motions"][0]["pivot"] = {
+        "point": [0, 0, 0.72],
+    }
+    local_maps, _ = build_coordinate_maps(
+        constraint, [{}], ["float"], [np.array([0, 0, -0.72])],
+    )
+    np.testing.assert_allclose(local_maps[0], maps[0])
+
+
+def test_connection_case_writes_stroke_force_and_power(tmp_path):
+    case = {
+        "simulation": {"dt": 0.1, "end_time": 0.1, "ramp_time": 0},
+        "wave": {"type": "regular", "height": 0, "period": 8},
+        "bodies": [
+            {"name": "float", "hydro_file": str(RM3),
+             "inertia": [0, 1e6, 0]},
+            {"name": "spar", "hydro_file": str(RM3)},
+        ],
+        "constraint": {
+            "kind": "linear_subspace",
+            "coordinates": [
+                {"name": "float_heave", "motions": [
+                    {"body": "float", "dof": "heave"}]},
+                {"name": "spar_heave", "motions": [
+                    {"body": "spar", "dof": "heave"}]},
+                {"name": "float_pitch", "motions": [
+                    {"body": "float", "dof": "pitch",
+                     "pivot": {"world": [0, 0, 0]}}]},
+            ],
+            "initial_coordinate": {"float_pitch": 0},
+        },
+        "ptos": [{
+            "name": "main", "kind": "linear_actuator",
+            "from": {"body": "float", "point": [2, 0, 0.72]},
+            "to": {"body": "spar", "point": [-1, 0, 21.29]},
+            "axis": [0, 0, 1], "stiffness": 1000,
+            "equilibrium_position": 0.1,
+        }],
+    }
+    case_file = tmp_path / "case.json"
+    output = tmp_path / "motion.csv"
+    case_file.write_text(json.dumps(case), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "source.objects.wecSimPython",
+         str(case_file), "--output", str(output)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    values = np.loadtxt(output, delimiter=",", skiprows=1)
+    columns = output.read_text(encoding="utf-8").splitlines()[0].split(",")
+    data = dict(zip(columns, values.T))
+    np.testing.assert_allclose(data["pto_main_stroke"][0], 0, atol=1e-12)
+    np.testing.assert_allclose(data["pto_main_force"][0], 100, atol=1e-12)
+    np.testing.assert_allclose(data["pto_coordinate1_force"][0], -100, atol=1e-12)
+    np.testing.assert_allclose(data["pto_coordinate2_force"][0], 100, atol=1e-12)
+    np.testing.assert_allclose(data["pto_coordinate3_force"][0], 200, atol=1e-12)
+    assert "coordinate_float_pitch_position" in data
+    assert "pto_main_absorbed_power" in data
+    assert np.isfinite(values).all()
+
+
+def test_connection_rejects_unknown_body():
+    mapping = np.zeros((6, 1))
+    mapping[2, 0] = 1
+    specs = [{
+        "name": "bad", "kind": "linear_actuator",
+        "from": {"body": "missing", "point": [0, 0, 0]},
+        "to": {"ground": [0, 0, 2]}, "stiffness": 1000,
+    }]
+    with pytest.raises(ValueError, match="identify a body"):
+        build_linear_ptos(specs, [mapping], [np.zeros(3)], ["body1"])
+
+
+def test_configurable_example_runs_with_named_coordinates():
+    case = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    case["simulation"]["end_time"] = 0.2
+    response = run_case(case, base_dir=EXAMPLE.parent)
+    outputs = dict(response.extra_outputs)
+    assert response.body_position.shape == (3, 2, 6)
+    assert "coordinate_shared_pitch_position" in outputs
+    assert "pto_main_stroke" in outputs
+    assert np.isfinite(outputs["pto_main_force"]).all()
