@@ -8,9 +8,22 @@ if ~isfolder(outDir)
 end
 
 switch string(model)
-    case {"RM3", "OSWEC"}
+    case "RM3"
         cases = string(model);
         caseDirs = string(fullfile(repoRoot, 'matlab-ref', 'examples', model));
+    case "OSWEC"
+        cases = string(model);
+        caseDirs = string(fullfile(repoRoot, 'matlab-ref', 'examples', model));
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        oldSetting = 'waves.spread = [0.1,0.2,0.7];';
+        assert(contains(contents, oldSetting), 'The pinned OSWEC input changed');
+        contents = strrep(contents, oldSetting, ...
+            sprintf('%s\nwaves.phaseSeed = 1;', oldSetting));
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not seed the pinned OSWEC input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
     case "Sphere"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
         cd(hydroDir);
@@ -124,8 +137,9 @@ for iCase = 1:numel(cases)
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
     if string(model) == "OSWEC"
-        % The published case shuffles its random phase on each run. Save the
-        % actual components so wave and force checks use the paired realization.
+        % The published case shuffles its random phase. The baseline sets
+        % phaseSeed=1 and saves the realized components for paired checks.
+        assert(waves.phaseSeed == 1, 'OSWEC phase seed was not applied');
         components = [waves.omega(:), waves.amplitude(:), ...
             waves.dOmega(:), waves.phase];
         assert(all(isfinite(components), 'all'), 'Nonfinite wave components');

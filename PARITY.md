@@ -91,8 +91,9 @@ passed all RM3, OSWEC, and Sphere jobs, including Python preprocessing of
 the current RM3 and OSWEC HDF5 inputs for both bodies and the focused dynamics
 comparisons described above.
 The RM3 baseline also checks a reduced Python heave model and a coupled
-surge/heave/pitch model. The OSWEC baseline
-saves its random phase matrix and checks Python PM binning, wave elevation,
+surge/heave/pitch model. The OSWEC baseline sets the published case's
+`waves.phaseSeed` to 1 so repeat runs use one reproducible realization,
+saves its realized phase matrix, and checks Python PM binning, wave elevation,
 directional excitation, and hinged-pitch motion against that same realization.
 The Python wave generator can use its own integer seed for standalone runs,
 but its random sequence differs from MATLAB's Threefry generator. The
