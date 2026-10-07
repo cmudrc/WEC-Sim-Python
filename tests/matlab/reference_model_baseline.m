@@ -28,6 +28,16 @@ switch string(model)
         cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", "B2B_Case4"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "RM3_Radiation_Options"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        cases = ["constant", "FIR", "state_space", "convolution"];
+        caseDirs = repmat(string(fullfile(repoRoot, 'applications', ...
+            'Radiation_Force_Options')), size(cases));
     case "RM3_MCR"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
         cd(hydroDir);
@@ -111,7 +121,11 @@ end
 
 for iCase = 1:numel(cases)
     cd(caseDirs(iCase));
-    wecSim;
+    if string(model) == "RM3_Radiation_Options"
+        [output, simu] = run_radiation_option(cases(iCase));
+    else
+        wecSim;
+    end
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
     if string(model) == "OSWEC"
@@ -129,6 +143,10 @@ for iCase = 1:numel(cases)
         response = output.bodies(iBody);
         values = [response.time(:), response.position, response.velocity, ...
             response.forceTotal, response.forceExcitation];
+        if string(model) == "RM3_Radiation_Options"
+            values = [values, response.forceRadiationDamping, ...
+                response.forceAddedMass];
+        end
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
@@ -156,4 +174,24 @@ for iCase = 1:numel(cases)
     close_system(erase(simu.simMechanicsFile, '.slx'), 0);
     clear output;
 end
+end
+
+function [output, simu] = run_radiation_option(option)
+% Isolate each published radiation option's script workspace.
+enable_convolution = 0;
+enable_FIR = 0;
+enable_ss = 0;
+switch option
+    case "constant"
+        enable_convolution = 0;
+    case "FIR"
+        enable_FIR = 1;
+    case "state_space"
+        enable_ss = 1;
+    case "convolution"
+        enable_convolution = 1;
+    otherwise
+        error('Unknown RM3 radiation option: %s', option);
+end
+wecSim;
 end

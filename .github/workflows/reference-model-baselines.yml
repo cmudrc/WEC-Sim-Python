@@ -11,6 +11,7 @@ on:
       - 'tests/test_rm3_multidof_parity.py'
       - 'tests/test_rm3_b2b_parity.py'
       - 'tests/test_rm3_b2b_cic_parity.py'
+      - 'tests/test_rm3_radiation_options_parity.py'
       - 'tests/test_rm3_mcr_parity.py'
       - 'tests/test_sphere_pto_config_parity.py'
       - 'tests/test_case_dynamics_parity.py'
@@ -34,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
+        model: [RM3, OSWEC, Sphere, RM3_B2B, RM3_Radiation_Options, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +49,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MCR'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -63,6 +64,7 @@ jobs:
             Body-to-Body_Interactions/B2B_Case2
             Body-to-Body_Interactions/B2B_Case3
             Body-to-Body_Interactions/B2B_Case4
+            Radiation_Force_Options
             Controls/Passive (P)
             Multiple_Condition_Runs/RM3_MCROPT1
       - uses: matlab-actions/setup-matlab@v3
