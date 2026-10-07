@@ -131,7 +131,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
          "ptos", "body_to_body"},
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
-                   {"dt", "end_time", "ramp_time", "rho", "g", "radiation_memory"})
+                   {"dt", "end_time", "ramp_time", "rho", "g", "radiation_memory",
+                    "state_space"})
     dt = _number(sim["dt"], "simulation.dt", positive=True)
     end_time = _number(sim["end_time"], "simulation.end_time", nonnegative=True)
     ramp_time = _number(sim.get("ramp_time", 100), "simulation.ramp_time", nonnegative=True)
@@ -283,13 +284,21 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         direction = _number(wave.get("direction", 0), "wave.direction")
         if direction != 0:
             raise ValueError("floating-joint dynamics currently support 0-degree waves")
-        if wave["type"] == "regular" and "radiation_memory" in sim:
+        state_space = sim.get("state_space", False)
+        if not isinstance(state_space, bool):
+            raise ValueError("simulation.state_space must be a boolean")
+        if wave["type"] == "regular" and ("radiation_memory" in sim or state_space):
             raise ValueError("regular-wave floating-joint dynamics use constant radiation")
         if wave["type"] == "regularCIC":
-            radiation_memory = _number(
-                sim.get("radiation_memory", 60), "simulation.radiation_memory",
-                positive=True,
-            )
+            if state_space:
+                if "radiation_memory" in sim:
+                    raise ValueError("state_space and radiation_memory are alternative radiation models")
+                radiation_memory = None
+            else:
+                radiation_memory = _number(
+                    sim.get("radiation_memory", 60), "simulation.radiation_memory",
+                    positive=True,
+                )
         else:
             radiation_memory = None
         inertias = tuple(
@@ -301,6 +310,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             b2b=b2b, radiation_memory=radiation_memory,
+            state_space=state_space,
             joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )

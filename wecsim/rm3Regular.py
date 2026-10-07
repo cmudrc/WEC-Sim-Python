@@ -11,7 +11,9 @@ from pathlib import Path
 import numpy as np
 
 from .bodyClass import BodyClass
-from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
+from .generalDynamics import (
+    BodyMotion, DynamicBody, GeneralizedDynamics, RadiationStateSpace,
+)
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,7 @@ def solve_rm3_regular(
     pto_equilibrium: float = 0.0,
     b2b: bool = False,
     radiation_memory: float | None = None,
+    state_space: bool = False,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -48,6 +51,8 @@ def solve_rm3_regular(
     each step. Without ``radiation_memory``, fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
+    With ``state_space=True``, the HDF5 fitted radiation states use RK4 with
+    the body coordinates, as in the MATLAB state-space reference cases.
     ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
@@ -65,6 +70,10 @@ def solve_rm3_regular(
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
     if radiation_memory is not None and radiation_memory <= 0:
         raise ValueError("radiation_memory must be positive")
+    if state_space and radiation_memory is not None:
+        raise ValueError("state_space and radiation_memory are alternative radiation models")
+    if not isinstance(state_space, bool):
+        raise ValueError("state_space must be a boolean")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
@@ -93,13 +102,13 @@ def solve_rm3_regular(
             "characteristicArea": np.zeros(6),
         }
         body.linearDamping = np.zeros((6, 6))
-        if radiation_memory is None:
+        if radiation_memory is None and not state_space:
             body.hydroForcePre(
                 omega, [0], 1, np.array([0.0]), [], dt, rho, g,
                 "regular", np.vstack((time, np.zeros_like(time))),
                 index, 2, 0, 0, int(b2b),
             )
-        else:
+        elif radiation_memory is not None:
             irf_time = body.hydroData["hydro_coeffs"]["radiation_damping"][
                 "impulse_response_fun"]["t"]
             if radiation_memory > np.max(irf_time) + 1e-10:
@@ -109,6 +118,12 @@ def solve_rm3_regular(
                 dt, rho, g, "regularCIC",
                 np.vstack((time, np.zeros_like(time))),
                 index, 2, 0, 0, int(b2b),
+            )
+        else:
+            body.hydroForcePre(
+                omega, [0], 1, np.array([0.0]), [], dt, rho, g,
+                "regularCIC", np.vstack((time, np.zeros_like(time))),
+                index, 2, 1, 0, int(b2b),
             )
         mass = float(np.asarray(body.mass).item())
         center = np.asarray(body.cg).ravel()
@@ -120,12 +135,13 @@ def solve_rm3_regular(
         if b2b:
             added_mass = tuple(np.asarray(hydro["fAddedMass"])[:, 6*j:6*(j+1)] for j in range(2))
             damping = (tuple(np.asarray(hydro["fDamping"])[:, 6*j:6*(j+1)] for j in range(2))
-                       if radiation_memory is None else tuple(np.zeros((6, 6)) for _ in range(2)))
+                       if radiation_memory is None and not state_space
+                       else tuple(np.zeros((6, 6)) for _ in range(2)))
         else:
             added_mass = [np.zeros((6, 6)), np.zeros((6, 6))]
             damping = [np.zeros((6, 6)), np.zeros((6, 6))]
             added_mass[index - 1] = np.asarray(hydro["fAddedMass"])
-            if radiation_memory is None:
+            if radiation_memory is None and not state_space:
                 damping[index - 1] = np.asarray(hydro["fDamping"])
         if radiation_memory is None:
             kernel = None
@@ -136,6 +152,30 @@ def solve_rm3_regular(
             else:
                 kernel = np.zeros((len(raw_kernel), 6, 12))
                 kernel[:, :, 6 * (index - 1):6 * index] = raw_kernel
+        if state_space:
+            raw = body.hydroData["hydro_coeffs"]["radiation_damping"]["state_space"]
+            if not all(np.asarray(raw[key]["all"]).size for key in ("A", "B", "C")):
+                raise ValueError("RM3 HDF5 lacks fitted radiation state-space matrices")
+            order = np.asarray(raw["it"], dtype=int)
+            A = np.zeros_like(raw["A"]["all"])
+            B = np.zeros(A.shape[:3])
+            C = np.zeros_like(B)
+            for output in range(6):
+                for input_dof in range(12):
+                    if not b2b and input_dof // 6 != index - 1:
+                        continue
+                    count = order[output, input_dof]
+                    A[output, input_dof, :count, :count] = (
+                        raw["A"]["all"][output, input_dof, :count, :count]
+                    )
+                    B[output, input_dof, :count] = (
+                        raw["B"]["all"][output, input_dof, :count, 0]
+                    )
+                    C[output, input_dof, :count] = (
+                        rho * raw["C"]["all"][output, input_dof, 0, :count]
+                    )
+        else:
+            A = B = C = None
         data.append({
             "center_z": float(center[2]),
             "lever": lever,
@@ -143,6 +183,9 @@ def solve_rm3_regular(
             "added_mass": added_mass,
             "damping": damping,
             "kernel": kernel,
+            "radiation_A": A,
+            "radiation_B": B,
+            "radiation_C": C,
             "restoring": np.asarray(hydro["linearHydroRestCoef"]),
             "re": np.asarray(hydro["fExt"]["re"]),
             "im": np.asarray(hydro["fExt"]["im"]),
@@ -195,12 +238,19 @@ def solve_rm3_regular(
             radiation_kernel=body["kernel"],
         ))
 
+    radiation_model = None
+    if state_space:
+        radiation_model = RadiationStateSpace(*(
+            np.stack([body[f"radiation_{name}"] for body in data])
+            for name in ("A", "B", "C")
+        ))
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), 4,
         pto_stiffness=pto_stiffness * pto_coupling,
         pto_damping=pto_damping * pto_coupling,
         pto_equilibrium=np.array([0, pto_equilibrium / 2,
                                   -pto_equilibrium / 2, 0]),
+        radiation_state_space=radiation_model,
     )
     solved = system.integrate(dt=dt, end_time=end_time)
     q = solved.coordinate

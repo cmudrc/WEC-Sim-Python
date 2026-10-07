@@ -4,12 +4,13 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from wecsim.generalDynamics import (
-    BodyMotion, DynamicBody, GeneralizedDynamics,
+    BodyMotion, DynamicBody, GeneralizedDynamics, RadiationStateSpace,
 )
 
 
 def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
-                pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0):
+                radiation_state_space=None, pto_damping=0.0,
+                pto_stiffness=0.0, pto_equilibrium=0.0):
     jacobian = np.zeros((6, 1))
     jacobian[2, 0] = 1
     rigid_mass = np.zeros((6, 6))
@@ -37,6 +38,7 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
         (body,), 1, pto_damping=np.array([[pto_damping]]),
         pto_stiffness=np.array([[pto_stiffness]]),
         pto_equilibrium=np.array([pto_equilibrium]),
+        radiation_state_space=radiation_state_space,
     )
 
 
@@ -91,3 +93,32 @@ def test_radiation_memory_matches_augmented_state_equation():
     assert expected.success
     assert np.max(np.abs(response.coordinate[:, 0] - expected.y[0])) < 3e-4
     assert np.max(np.abs(response.speed[:, 0] - expected.y[1])) < 6e-4
+
+
+def test_radiation_state_space_matches_augmented_ode():
+    strength, decay = 1.5, 0.8
+    A = np.zeros((1, 6, 6, 1, 1))
+    B = np.zeros((1, 6, 6, 1))
+    C = np.zeros_like(B)
+    A[0, 2, 2, 0, 0] = -decay
+    B[0, 2, 2, 0] = 1.0
+    C[0, 2, 2, 0] = strength
+    system = _oscillator(
+        radiation_state_space=RadiationStateSpace(A, B, C),
+    )
+    response = system.integrate(
+        dt=0.01, end_time=5, initial_coordinate=np.array([1.0]),
+    )
+
+    def derivative(t, state):
+        q, v, radiation = state
+        return [v, (-8 * q - strength * radiation) / 2,
+                v - decay * radiation]
+
+    expected = solve_ivp(
+        derivative, (0, 5), [1, 0, 0], t_eval=response.time,
+        rtol=1e-11, atol=1e-13,
+    )
+    assert expected.success
+    assert np.max(np.abs(response.coordinate[:, 0] - expected.y[0])) < 2e-8
+    assert np.max(np.abs(response.speed[:, 0] - expected.y[1])) < 3e-8

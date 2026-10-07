@@ -3,8 +3,9 @@
 The mechanical layout is supplied through body kinematics. Each body maps
 generalized coordinates into its six WEC-Sim rigid-body coordinates, while
 the engine assembles rigid inertia, cross-body added mass, restoring,
-excitation, radiation, and linear PTO forces. Constant-frequency radiation
-uses RK4; an impulse-response kernel uses an implicit trapezoidal step.
+excitation, radiation, and linear PTO forces. Constant-frequency and fitted
+state-space radiation use RK4; an impulse-response kernel uses an implicit
+trapezoidal step.
 """
 
 from dataclasses import dataclass
@@ -36,6 +37,21 @@ class DynamicBody:
 
 
 @dataclass(frozen=True)
+class RadiationStateSpace:
+    """Per-body, per-output, per-input radiation filters from a WAMIT HDF5.
+
+    Arrays have shapes (body, output DOF, input DOF, state, state) for A
+    and (body, output DOF, input DOF, state) for B and C. Unused trailing
+    states are zero padded. C contains the water-density scaling; the
+    WEC-Sim radiation force is the negative of C times the filter state.
+    """
+
+    A: np.ndarray
+    B: np.ndarray
+    C: np.ndarray
+
+
+@dataclass(frozen=True)
 class DynamicsResponse:
     time: np.ndarray
     coordinate: np.ndarray
@@ -63,6 +79,7 @@ class GeneralizedDynamics:
         pto_damping: np.ndarray | None = None,
         pto_equilibrium: np.ndarray | None = None,
         pto_bias: np.ndarray | None = None,
+        radiation_state_space: RadiationStateSpace | None = None,
     ):
         if not bodies or coordinate_count < 1:
             raise ValueError("a device needs bodies and independent coordinates")
@@ -84,6 +101,7 @@ class GeneralizedDynamics:
         self.pto_bias = (
             np.zeros(n) if pto_bias is None else np.asarray(pto_bias, dtype=float)
         )
+        self.radiation_state_space = radiation_state_space
         if (self.pto_stiffness.shape != (n, n)
                 or self.pto_damping.shape != (n, n)
                 or self.pto_equilibrium.shape != (n,)
@@ -111,6 +129,17 @@ class GeneralizedDynamics:
                 or not np.isfinite(kernel).all()
             ):
                 raise ValueError("radiation kernel must have shape (lags, 6, 6 * bodies)")
+        if radiation_state_space is not None:
+            if any(body.radiation_kernel is not None for body in self.bodies):
+                raise ValueError("use one radiation representation per device")
+            shape = (len(bodies), 6, 6 * len(bodies))
+            A, B, C = (np.asarray(getattr(radiation_state_space, name))
+                       for name in ("A", "B", "C"))
+            if (A.ndim != 5 or A.shape[:3] != shape
+                    or A.shape[3] < 1 or A.shape[3] != A.shape[4]
+                    or B.shape != A.shape[:4] or C.shape != A.shape[:4]
+                    or not all(np.isfinite(matrix).all() for matrix in (A, B, C))):
+                raise ValueError("radiation state-space blocks have incompatible shapes")
 
     def acceleration(
         self,
@@ -187,6 +216,8 @@ class GeneralizedDynamics:
         memory = any(body.radiation_kernel is not None for body in self.bodies)
         if memory:
             self._integrate_memory(time, q, v, a, dt)
+        elif self.radiation_state_space is not None:
+            self._integrate_state_space(time, q, v, a, dt)
         else:
             self._integrate_regular(time, q, v, a, dt)
         positions = np.zeros((steps + 1, len(self.bodies), 6))
@@ -218,6 +249,50 @@ class GeneralizedDynamics:
             q[step + 1], v[step + 1] = next_state[:n], next_state[n:]
         for step, t in enumerate(time):
             a[step] = self.acceleration(t, q[step], v[step])
+
+    def _integrate_state_space(self, time, q, v, a, dt):
+        model = self.radiation_state_space
+        state = np.zeros_like(model.B)
+
+        def derivative(at_time, coordinate, speed, radiation_state):
+            velocity = np.concatenate([
+                body.motion(coordinate, speed).jacobian @ speed
+                for body in self.bodies
+            ])
+            radiation_force = np.einsum(
+                "bojn,bojn->bo", model.C, radiation_state,
+            )
+            acceleration = self.acceleration(
+                at_time, coordinate, speed,
+                known_radiation=tuple(radiation_force),
+            )
+            state_rate = (
+                np.einsum("bojnm,bojm->bojn", model.A, radiation_state)
+                + model.B * velocity[None, None, :, None]
+            )
+            return speed, acceleration, state_rate
+
+        for step in range(len(time)):
+            t = time[step]
+            k1q, k1v, k1x = derivative(t, q[step], v[step], state)
+            a[step] = k1v
+            if step == len(time) - 1:
+                break
+            k2q, k2v, k2x = derivative(
+                t + dt / 2, q[step] + dt * k1q / 2,
+                v[step] + dt * k1v / 2, state + dt * k1x / 2,
+            )
+            k3q, k3v, k3x = derivative(
+                t + dt / 2, q[step] + dt * k2q / 2,
+                v[step] + dt * k2v / 2, state + dt * k2x / 2,
+            )
+            k4q, k4v, k4x = derivative(
+                t + dt, q[step] + dt * k3q,
+                v[step] + dt * k3v, state + dt * k3x,
+            )
+            q[step + 1] = q[step] + dt * (k1q + 2 * k2q + 2 * k3q + k4q) / 6
+            v[step + 1] = v[step] + dt * (k1v + 2 * k2v + 2 * k3v + k4v) / 6
+            state += dt * (k1x + 2 * k2x + 2 * k3x + k4x) / 6
 
     def _integrate_memory(self, time, q, v, a, dt):
         count = len(self.bodies)

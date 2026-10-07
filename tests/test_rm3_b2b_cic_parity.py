@@ -26,14 +26,16 @@ def _max_error(actual, expected, limit, label):
     assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
 
 
-@pytest.mark.parametrize("case,b2b", [
-    ("B2B_Case3", False), ("B2B_Case4", True),
+@pytest.mark.parametrize("case,b2b,state_space", [
+    ("B2B_Case3", False, False), ("B2B_Case4", True, False),
+    ("B2B_Case5", False, True), ("B2B_Case6", True, True),
 ])
-def test_rm3_regular_cic_against_matlab(case, b2b):
+def test_rm3_regular_cic_against_matlab(case, b2b, state_space):
     hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     config = {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
-                       "radiation_memory": 60},
+                       **({"state_space": True} if state_space
+                          else {"radiation_memory": 60})},
         "wave": {"type": "regularCIC", "height": 2.5, "period": 8},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,
@@ -53,9 +55,9 @@ def test_rm3_regular_cic_against_matlab(case, b2b):
         )
         np.testing.assert_allclose(response.time, expected[:, 0], rtol=0, atol=1e-10)
         for dof, label, position_limit, velocity_limit in (
-            (0, "surge", 0.075, 0.04),
+            (0, "surge", 0.09 if state_space else 0.075, 0.04),
             (2, "heave", 0.005, 0.0035),
-            (4, "pitch", 0.0015, 0.0011),
+            (4, "pitch", 0.0018 if state_space else 0.0015, 0.0011),
         ):
             _max_error(response.body_position[:, body - 1, dof],
                        expected[:, 1 + dof], position_limit,

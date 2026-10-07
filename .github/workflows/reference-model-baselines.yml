@@ -63,6 +63,8 @@ jobs:
             Body-to-Body_Interactions/B2B_Case2
             Body-to-Body_Interactions/B2B_Case3
             Body-to-Body_Interactions/B2B_Case4
+            Body-to-Body_Interactions/B2B_Case5
+            Body-to-Body_Interactions/B2B_Case6
             Controls/Passive (P)
             Multiple_Condition_Runs/RM3_MCROPT1
       - uses: matlab-actions/setup-matlab@v3
