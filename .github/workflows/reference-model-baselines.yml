@@ -10,6 +10,9 @@ on:
       - 'tests/test_rm3_heave_dynamics_parity.py'
       - 'tests/test_rm3_multidof_parity.py'
       - 'tests/test_rm3_b2b_parity.py'
+      - 'tests/test_rm3_b2b_cic_parity.py'
+      - 'tests/test_rm3_mcr_parity.py'
+      - 'tests/test_sphere_pto_config_parity.py'
       - 'tests/test_case_dynamics_parity.py'
       - 'tests/test_oswec_hinge_dynamics_parity.py'
       - 'tests/test_oswec_irregular_wave_parity.py'
@@ -31,7 +34,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, Sphere, RM3_B2B]
+        model: [RM3, OSWEC, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -45,7 +48,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'RM3_B2B'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MCR'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -58,10 +61,14 @@ jobs:
             _Common_Input_Files/RM3
             Body-to-Body_Interactions/B2B_Case1
             Body-to-Body_Interactions/B2B_Case2
+            Body-to-Body_Interactions/B2B_Case3
+            Body-to-Body_Interactions/B2B_Case4
+            Controls/Passive (P)
+            Multiple_Condition_Runs/RM3_MCROPT1
       - uses: matlab-actions/setup-matlab@v3
         with:
           release: R2025b
-          products: Simulink Simscape Simscape_Multibody
+          products: ${{ (matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config') && 'Simulink Simscape Simscape_Multibody Control_System_Toolbox' || 'Simulink Simscape Simscape_Multibody' }}
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('tests/matlab'); reference_model_baseline('${{ matrix.model }}')
@@ -99,6 +106,16 @@ jobs:
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_rm3_b2b_cic_parity.py
+        if: matrix.model == 'RM3_B2B'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_rm3_mcr_parity.py
+        if: matrix.model == 'RM3_MCR'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_oswec_hinge_dynamics_parity.py
         if: matrix.model == 'OSWEC'
         env:
@@ -113,6 +130,16 @@ jobs:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_live_sphere_io.py tests/test_sphere_dynamics_parity.py
         if: matrix.model == 'Sphere'
+        env:
+          WEC_SIM_SPHERE_H5: applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_sphere_passive_parity.py
+        if: matrix.model == 'Sphere_Passive'
+        env:
+          WEC_SIM_SPHERE_H5: applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_sphere_pto_config_parity.py
+        if: matrix.model == 'Sphere_PTO_Config'
         env:
           WEC_SIM_SPHERE_H5: applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output

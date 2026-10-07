@@ -262,7 +262,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "floating_joint":
-        if len(bodies) != 2 or wave["type"] != "regular":
+        if len(bodies) != 2 or wave["type"] not in ("regular", "regularCIC"):
             raise ValueError("floating joint needs two bodies and regular waves")
         if hydro[0] != hydro[1]:
             raise ValueError("the current floating-joint layout needs one shared HDF5")
@@ -283,8 +283,15 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         direction = _number(wave.get("direction", 0), "wave.direction")
         if direction != 0:
             raise ValueError("floating-joint dynamics currently support 0-degree waves")
-        if "radiation_memory" in sim:
+        if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave floating-joint dynamics use constant radiation")
+        if wave["type"] == "regularCIC":
+            radiation_memory = _number(
+                sim.get("radiation_memory", 60), "simulation.radiation_memory",
+                positive=True,
+            )
+        else:
+            radiation_memory = None
         inertias = tuple(
             _number(body.get("pitch_inertia"), "body.pitch_inertia", positive=True)
             for body in bodies
@@ -293,7 +300,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             hydro[0], wave_height=height, wave_period=period,
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
-            b2b=b2b, joint_z=location[2],
+            b2b=b2b, radiation_memory=radiation_memory,
+            joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )
         ramp = np.ones(len(solved.time))

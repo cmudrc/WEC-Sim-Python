@@ -32,6 +32,7 @@ def solve_rm3_regular(
     pto_stiffness: float = 0.0,
     pto_equilibrium: float = 0.0,
     b2b: bool = False,
+    radiation_memory: float | None = None,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -44,14 +45,17 @@ def solve_rm3_regular(
     The bodies use equilibrium displaced-volume masses, fixed-frequency
     added mass and radiation damping, hydrostatic restoring, and regular-wave
     excitation. Rigid-body rotation changes their surge/heave Jacobians at
-    each step. A fixed-step classical RK4 method follows the MATLAB example's
-    ``ode4`` setting. ``b2b=True`` includes the regular-wave cross-body added
-    mass and radiation-damping blocks. Sway, roll, yaw, and full Simscape
-    joint forces are outside this reduced model.
+    each step. Without ``radiation_memory``, fixed-frequency damping uses
+    classical RK4. With radiation memory, infinite-frequency added mass and
+    the radiation impulse-response kernel use a trapezoidal history step.
+    ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
+    full Simscape joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
               pto_equilibrium,
               joint_z, dt, end_time, ramp_time, rho, g, *pitch_inertias]
+    if radiation_memory is not None:
+        inputs.append(radiation_memory)
     if not np.isfinite(inputs).all():
         raise ValueError("solver inputs must be finite")
     if (len(pitch_inertias) != 2 or wave_height < 0 or wave_period <= 0
@@ -59,6 +63,8 @@ def solve_rm3_regular(
             or pto_damping < 0 or pto_stiffness < 0 or dt <= 0
             or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0):
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
+    if radiation_memory is not None and radiation_memory <= 0:
+        raise ValueError("radiation_memory must be positive")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
@@ -66,6 +72,11 @@ def solve_rm3_regular(
         raise ValueError("end_time must be an integer multiple of dt")
     time = np.arange(steps + 1) * dt
     omega = 2 * np.pi / wave_period
+    if radiation_memory is not None:
+        memory_steps = round(radiation_memory / dt)
+        if not np.isclose(memory_steps * dt, radiation_memory, rtol=0, atol=1e-10):
+            raise ValueError("radiation_memory must be an integer multiple of dt")
+        convolution_time = np.arange(memory_steps + 1) * dt
     data = []
     for index, pitch_inertia in enumerate(pitch_inertias, start=1):
         body = BodyClass(str(h5_file))
@@ -82,11 +93,23 @@ def solve_rm3_regular(
             "characteristicArea": np.zeros(6),
         }
         body.linearDamping = np.zeros((6, 6))
-        body.hydroForcePre(
-            omega, [0], 1, np.array([0.0]), [], dt, rho, g,
-            "regular", np.vstack((time, np.zeros_like(time))),
-            index, 2, 0, 0, int(b2b),
-        )
+        if radiation_memory is None:
+            body.hydroForcePre(
+                omega, [0], 1, np.array([0.0]), [], dt, rho, g,
+                "regular", np.vstack((time, np.zeros_like(time))),
+                index, 2, 0, 0, int(b2b),
+            )
+        else:
+            irf_time = body.hydroData["hydro_coeffs"]["radiation_damping"][
+                "impulse_response_fun"]["t"]
+            if radiation_memory > np.max(irf_time) + 1e-10:
+                raise ValueError("radiation_memory exceeds the HDF5 kernel")
+            body.hydroForcePre(
+                omega, [0], len(convolution_time), convolution_time, [],
+                dt, rho, g, "regularCIC",
+                np.vstack((time, np.zeros_like(time))),
+                index, 2, 0, 0, int(b2b),
+            )
         mass = float(np.asarray(body.mass).item())
         center = np.asarray(body.cg).ravel()
         if not np.isclose(center[0:2], 0.0, atol=1e-10).all():
@@ -96,18 +119,30 @@ def solve_rm3_regular(
         hydro = body.hydroForce
         if b2b:
             added_mass = tuple(np.asarray(hydro["fAddedMass"])[:, 6*j:6*(j+1)] for j in range(2))
-            damping = tuple(np.asarray(hydro["fDamping"])[:, 6*j:6*(j+1)] for j in range(2))
+            damping = (tuple(np.asarray(hydro["fDamping"])[:, 6*j:6*(j+1)] for j in range(2))
+                       if radiation_memory is None else tuple(np.zeros((6, 6)) for _ in range(2)))
         else:
             added_mass = [np.zeros((6, 6)), np.zeros((6, 6))]
             damping = [np.zeros((6, 6)), np.zeros((6, 6))]
             added_mass[index - 1] = np.asarray(hydro["fAddedMass"])
-            damping[index - 1] = np.asarray(hydro["fDamping"])
+            if radiation_memory is None:
+                damping[index - 1] = np.asarray(hydro["fDamping"])
+        if radiation_memory is None:
+            kernel = None
+        else:
+            raw_kernel = np.asarray(hydro["irkb"])
+            if b2b:
+                kernel = raw_kernel
+            else:
+                kernel = np.zeros((len(raw_kernel), 6, 12))
+                kernel[:, :, 6 * (index - 1):6 * index] = raw_kernel
         data.append({
             "center_z": float(center[2]),
             "lever": lever,
             "rigid_mass": rigid_mass,
             "added_mass": added_mass,
             "damping": damping,
+            "kernel": kernel,
             "restoring": np.asarray(hydro["linearHydroRestCoef"]),
             "re": np.asarray(hydro["fExt"]["re"]),
             "im": np.asarray(hydro["fExt"]["im"]),
@@ -157,6 +192,7 @@ def solve_rm3_regular(
             reference_position=np.array([0, 0, body["center_z"], 0, 0, 0]),
             motion=motion,
             excitation=excitation,
+            radiation_kernel=body["kernel"],
         ))
 
     system = GeneralizedDynamics(

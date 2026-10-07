@@ -25,9 +25,86 @@ switch string(model)
         if ~isfile('rm3.h5')
             bemio;
         end
-        cases = ["B2B_Case1", "B2B_Case2"];
+        cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", "B2B_Case4"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "RM3_MCR"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        sourceDir = fullfile(repoRoot, 'applications', 'Multiple_Condition_Runs', 'RM3_MCROPT1');
+        cases = strings(1, 8);
+        caseDirs = strings(1, 8);
+        iCase = 0;
+        for damping = [1200000, 2400000]
+            for period = [6, 8]
+                for height = [1.5, 2.5]
+                    iCase = iCase + 1;
+                    cases(iCase) = sprintf('H%d_T%d_D%d', ...
+                        round(10 * height), period, round(damping / 100000));
+                    caseDirs(iCase) = fullfile(repoRoot, 'applications', ...
+                        'Multiple_Condition_Runs', 'paired_' + cases(iCase));
+                    [copied, copyMessage] = copyfile(sourceDir, caseDirs(iCase));
+                    assert(copied, copyMessage);
+                    inputFile = fullfile(caseDirs(iCase), 'wecSimInputFile.m');
+                    contents = fileread(inputFile);
+                    oldSettings = ["waves.height = 1.5:1:2.5;", ...
+                        "waves.period = 6:2:8;", ...
+                        "pto(1).damping=1200000:1200000:2400000;"];
+                    newSettings = ["waves.height = " + string(height) + ";", ...
+                        "waves.period = " + string(period) + ";", ...
+                        "pto(1).damping=" + string(damping) + ";"];
+                    for iSetting = 1:numel(oldSettings)
+                        assert(contains(contents, oldSettings(iSetting)), ...
+                            'The pinned RM3 MCR input changed');
+                        contents = strrep(contents, char(oldSettings(iSetting)), ...
+                            char(newSettings(iSetting)));
+                    end
+                    fid = fopen(inputFile, 'w');
+                    assert(fid ~= -1, 'Could not write the RM3 MCR input');
+                    fprintf(fid, '%s', contents);
+                    fclose(fid);
+                end
+            end
+        end
+    case "Sphere_Passive"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Passive_P";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', 'Passive (P)'));
+    case "Sphere_PTO_Config"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        sourceDir = fullfile(repoRoot, 'applications', 'Controls', 'Passive (P)');
+        caseDir = fullfile(repoRoot, 'applications', 'Controls', 'Passive_Config');
+        [copied, copyMessage] = copyfile(sourceDir, caseDir);
+        assert(copied, copyMessage);
+        inputFile = fullfile(caseDir, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        oldSettings = ["pto(1).stiffness = 0;", "pto(1).damping = 0;", ...
+            "pto(1).location = [0 0 0];"];
+        newSettings = ["pto(1).stiffness = 50000;", ...
+            "pto(1).damping = 100000;", "pto(1).location = [1 0 0];"];
+        for iSetting = 1:numel(oldSettings)
+            assert(contains(contents, oldSettings(iSetting)), ...
+                'The pinned passive-controller input changed');
+            contents = strrep(contents, char(oldSettings(iSetting)), ...
+                char(newSettings(iSetting)));
+        end
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not write the configured PTO input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
+        cases = "Configured";
+        caseDirs = string(caseDir);
     otherwise
         error('Unknown reference model: %s', model);
 end
@@ -55,6 +132,16 @@ for iCase = 1:numel(cases)
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
+    end
+    if ismember(string(model), ["Sphere_Passive", "Sphere_PTO_Config"])
+        assert(exist('controller1_out', 'var') == 1, ...
+            'The passive controller produced no logged output');
+        controllerValues = [controller1_out.time(:), controller1_out.signals.values];
+        assert(size(controllerValues, 2) == 13, ...
+            'Expected six force and six power components from passive controller');
+        assert(all(isfinite(controllerValues), 'all'), ...
+            'The passive controller output contains nonfinite values');
+        writematrix(controllerValues, fullfile(outDir, string(model) + "_controller.csv"));
     end
     if isstruct(output.ptos) && isfield(output.ptos, 'time')
         for iPto = 1:numel(output.ptos)
