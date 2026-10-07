@@ -64,9 +64,8 @@ examples, all five Sphere free-decay cases, RM3 body-to-body Cases 1–6,
 all eight physical conditions from RM3 Multiple Condition Runs Option 1,
 the published Sphere passive-controller case, and a configured Sphere PTO
 case derived from that published input.
-The [expanded seven-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37623353777)
-passed against fresh MATLAB R2025b outputs for Cases 1–4; the workflow now
-includes Cases 5 and 6. The MCR input was expanded into
+The [expanded seven-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37629946200)
+passed against fresh MATLAB R2025b outputs, including Cases 5 and 6. The MCR input was expanded into
 eight scalar simulations; the Python checks compare their dynamics and PTO
 signals, not the `wecSimMCR` orchestration or its power-matrix postprocessing.
 It records time, position, velocity, total force, and excitation force for
