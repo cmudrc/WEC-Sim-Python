@@ -17,17 +17,19 @@ pytestmark = pytest.mark.skipif(
 def test_finer_step_export_has_force_and_acceleration_history():
     reference = Path(REFERENCE)
     models = {
-        "RM3_END_STOPS_STEP": (0.05, "End_Stops_dt005"),
-        "RM3_END_STOPS_STEP_FINE": (0.025, "End_Stops_dt0025"),
-        "RM3_END_STOPS_STEP_FINER": (0.0125, "End_Stops_dt00125"),
+        "RM3_END_STOPS_STEP": (0.05, 120, "End_Stops_dt005"),
+        "RM3_END_STOPS_STEP_FINE": (0.025, 120, "End_Stops_dt0025"),
+        "RM3_END_STOPS_STEP_FINER": (0.0125, 120, "End_Stops_dt00125"),
+        "RM3_END_STOPS_FULL_FINE": (0.025, 400, "End_Stops_dt0025_full"),
+        "RM3_END_STOPS_FULL_FINER": (0.0125, 400, "End_Stops_dt00125_full"),
     }
     assert MODEL in models
-    step, case = models[MODEL]
-    sample_count = round(120 / step) + 1
+    step, end_time, case = models[MODEL]
+    sample_count = round(end_time / step) + 1
     np.testing.assert_array_equal(
         np.loadtxt(reference / f"{MODEL}_run_settings.csv",
                    delimiter=","),
-        [step, 120, 100],
+        [step, end_time, 100],
     )
     time = np.arange(sample_count) * step
     pto = np.loadtxt(
