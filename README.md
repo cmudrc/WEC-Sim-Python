@@ -103,6 +103,10 @@ an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
 `radiation_memory` for convolution cases. The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+The `regularCIC` floating-joint path has paired MATLAB checks for RM3
+body-to-body Cases 3 and 4 and all eight physical settings in the published
+RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation
+state-space Cases 5 and 6 remain outside that validated path.
 For `linear_subspace`, the map's rows are surge, sway, heave, roll, pitch,
 and yaw; its columns are independent generalized coordinates. A two-body
 heave case, for example, maps the first body's heave to coordinate 1 and the
@@ -177,8 +181,9 @@ nonzero offsets have analytical and case-level tests. Each actuator in `ptos`
 can instead set `damping`, `stiffness`, and either `equilibrium_position` or
 `pretension`. Connection geometry and nonzero offsets have case-level and
 analytical checks. A paired MATLAB Sphere case covers nonzero stiffness,
-extra damping, and a body-local attachment shifted 1 m in x. Its heave-only
-motion does not validate the attachment's rotational moment arm.
+extra damping while specifying a body-local attachment shifted 1 m in x.
+Its heave-only motion cannot validate attachment-location dynamics or a
+rotational moment arm.
 Force limits, hard stops, time-varying controllers, and hydraulic PTO models
 are not implemented.
 
