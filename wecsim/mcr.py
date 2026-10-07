@@ -154,8 +154,8 @@ def mcr_wave_statistics(
                 grid[row_index, column_index] = float(value)
             except (TypeError, ValueError) as exc:
                 raise ValueError("wave-statistics cells must be numeric") from exc
-    if not np.isfinite(grid).all() or np.any(grid[1:, 1:] < 0):
-        raise ValueError("wave-statistics weights must be finite and nonnegative")
+    if not np.isfinite(grid).all():
+        raise ValueError("wave-statistics cells must be finite")
     periods = grid[0, 1:]
     heights = grid[1:, 0]
     if (np.any(periods <= 0) or np.any(heights < 0)

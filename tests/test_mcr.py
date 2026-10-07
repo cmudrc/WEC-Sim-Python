@@ -7,10 +7,10 @@ from wecsim import MCRCondition, MCRTrace, mcr_grid, mcr_wave_statistics, run_mc
 
 
 def test_wave_statistics_selects_positive_cells_in_matlab_order():
-    # Periods are columns, heights are rows. Zero cells do not run.
+    # Periods are columns, heights are rows. Nonpositive cells do not run.
     statistics = np.array([
         [0, 6, 8],
-        [1.5, 0.25, 0],
+        [1.5, 0.25, -1],
         [2.5, 0, 0.75],
     ])
     selected = mcr_wave_statistics(statistics, [1_200_000, 2_400_000])
