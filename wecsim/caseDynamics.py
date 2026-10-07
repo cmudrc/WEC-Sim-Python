@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Mapping
 
 import numpy as np
+from scipy.io import loadmat
 
 from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
@@ -149,6 +150,58 @@ def _hard_stops(spec):
     return LinearHardStops(**values)
 
 
+def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
+    """Build RM3 body forces from one sampled MATLAB elevation record."""
+    _section(wave, "imported wave", {"type", "file"},
+             {"type", "file", "variable", "direction", "reapply_force_ramp"})
+    raw = wave["file"]
+    if not isinstance(raw, (str, Path)) or not str(raw):
+        raise ValueError("wave.file must be a MAT file path")
+    path = (base / raw).resolve(strict=True)
+    if not path.is_file():
+        raise ValueError(f"wave.file is not a file: {path}")
+    variable = wave.get("variable", "etaData")
+    if not isinstance(variable, str) or not variable:
+        raise ValueError("wave.variable must be a nonempty MAT variable name")
+    direction = _number(wave.get("direction", 0), "wave.direction")
+    if direction != 0:
+        raise ValueError("floating-joint imported elevation currently supports 0-degree waves")
+    second_ramp = wave.get("reapply_force_ramp", False)
+    if not isinstance(second_ramp, bool):
+        raise ValueError("wave.reapply_force_ramp must be a boolean")
+    mat = loadmat(path, variable_names=[variable])
+    if variable not in mat:
+        raise ValueError(f"wave.variable {variable!r} is absent from {path}")
+    samples = np.asarray(mat[variable])
+    if not np.issubdtype(samples.dtype, np.number) or not np.isrealobj(samples):
+        raise ValueError("imported elevation must contain real numeric samples")
+    samples = samples.astype(float, copy=False)
+    if (samples.ndim != 2 or samples.shape[1] != 2 or samples.shape[0] < 2
+            or not np.isfinite(samples).all()
+            or not np.all(np.diff(samples[:, 0]) > 0)):
+        raise ValueError("imported elevation must be a finite, increasing N-by-2 time/elevation array")
+    if samples[0, 0] > time[0] + 1e-10 or samples[-1, 0] < time[-1] - 1e-10:
+        raise ValueError("imported elevation must cover the full simulation time")
+    ramp = np.ones_like(time)
+    if ramp_time > 0:
+        early = time < ramp_time
+        ramp[early] = (1 - np.cos(np.pi * time[early] / ramp_time)) / 2
+    elevation = np.interp(time, samples[:, 0], samples[:, 1]) * ramp
+    force = np.zeros((len(time), 2, 6))
+    for number in (1, 2):
+        body = BodyClass(str(hydro_file))
+        body.bodyNumber = number
+        body.bodyTotal = 2
+        body.readH5file()
+        body.hydroForce["userDefinedFe"] = np.zeros((len(time), 6))
+        body.userDefinedExcitation(np.vstack((time, elevation)), dt, [direction], rho, g)
+        force[:, number - 1] = body.hydroForce["userDefinedFe"]
+    if second_ramp:
+        # The pinned MATLAB body block ramps force after waveClass ramped elevation.
+        force *= ramp[:, None, None]
+    return elevation, force, path
+
+
 def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     """Run one explicitly supported wave/device configuration.
 
@@ -161,7 +214,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     case = _section(
         case, "case", {"simulation", "wave", "bodies", "constraint"},
         {"name", "simulation", "wave", "bodies", "constraint", "pto",
-         "ptos", "body_to_body"},
+         "ptos", "body_to_body", "mooring"},
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
                    {"dt", "end_time", "ramp_time", "rho", "g",
@@ -173,7 +226,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     g = _number(sim.get("g", 9.81), "simulation.g", positive=True)
     wave = _section(case["wave"], "wave", {"type"},
                     {"type", "height", "period", "direction", "directions",
-                     "spreading", "seed", "phase_file", "frequency_count"})
+                     "spreading", "seed", "phase_file", "frequency_count",
+                     "file", "variable", "reapply_force_ramp"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates"})
@@ -197,6 +251,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("a fixed nonhydrodynamic body requires a two-body fixed_hinge")
     if "ptos" in case and kind != "linear_subspace":
         raise ValueError("configurable PTO connections require linear_subspace")
+    if "mooring" in case and kind != "floating_joint":
+        raise ValueError("the joint surge mooring requires a floating_joint")
 
     if kind == "linear_subspace":
         return _run_linear_subspace(
@@ -348,8 +404,9 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "floating_joint":
-        if len(bodies) != 2 or wave["type"] not in ("regular", "regularCIC", "none"):
-            raise ValueError("floating joint needs two bodies and regular waves or no wave")
+        if len(bodies) != 2 or wave["type"] not in (
+                "regular", "regularCIC", "none", "elevationImport"):
+            raise ValueError("floating joint needs two bodies and regular waves, imported elevation, or no waves")
         if hydro[0] != hydro[1]:
             raise ValueError("the current floating-joint layout needs one shared HDF5")
         for number, body in enumerate(bodies, start=1):
@@ -377,9 +434,29 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pto_spec = {key: value for key, value in pto_spec.items()
                         if key != "hard_stops"}
         damping, stiffness, equilibrium = _pto(pto_spec, "relative_heave")
+        mooring_stiffness = 0.0
+        if "mooring" in case:
+            mooring = _section(case["mooring"], "mooring", {"kind", "stiffness"},
+                               {"kind", "stiffness"})
+            if mooring["kind"] != "joint_surge_spring":
+                raise ValueError("floating_joint currently supports joint_surge_spring mooring")
+            mooring_stiffness = _number(mooring["stiffness"],
+                                        "mooring.stiffness", positive=True)
+        imported_force = None
+        auxiliary_files = ()
         if wave["type"] == "none":
             if set(wave) != {"type"} or "ramp_time" in sim:
                 raise ValueError("no-wave floating joint has no wave or ramp settings")
+            height, period, direction = 0.0, 8.0, 0.0
+        elif wave["type"] == "elevationImport":
+            steps = round(end_time / dt)
+            if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
+                raise ValueError("end_time must be an integer multiple of dt")
+            time = np.arange(steps + 1) * dt
+            elevation, imported_force, wave_path = _imported_elevation(
+                wave, base, hydro[0], time, dt, ramp_time, rho, g,
+            )
+            auxiliary_files = (wave_path,)
             height, period, direction = 0.0, 8.0, 0.0
         else:
             height = _number(wave.get("height"), "wave.height", nonnegative=True)
@@ -397,10 +474,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
         if wave["type"] == "regular" and radiation_method != "constant":
             raise ValueError("regular waves need constant radiation")
-        if (wave["type"] in ("regularCIC", "none")
+        if (wave["type"] in ("regularCIC", "none", "elevationImport")
                 and radiation_method not in ("convolution", "fir")):
             raise ValueError("radiation memory needs convolution or FIR radiation")
-        if wave["type"] in ("regularCIC", "none"):
+        if wave["type"] == "elevationImport" and radiation_method != "convolution":
+            raise ValueError("imported elevation currently requires convolution radiation")
+        if wave["type"] in ("regularCIC", "none", "elevationImport"):
             radiation_memory = _number(
                 sim.get("radiation_memory", 60), "simulation.radiation_memory",
                 positive=True,
@@ -416,28 +495,38 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             pto_hard_stops=hard_stops,
+            mooring_surge_stiffness=mooring_stiffness,
             b2b=b2b, radiation_memory=radiation_memory,
             radiation_method=radiation_method,
             added_mass_scheme=sim.get("added_mass_scheme", "implicit"),
             no_wave=wave["type"] == "none",
+            excitation_force=imported_force,
             initial_coordinate=initial_q, initial_speed=initial_v,
             joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )
         if wave["type"] == "none":
             elevation = None
-        else:
+        elif wave["type"] != "elevationImport":
             ramp = np.ones(len(solved.time))
             if ramp_time > 0:
                 early = solved.time < ramp_time
                 ramp[early] = (1 - np.cos(np.pi * solved.time[early] / ramp_time)) / 2
             elevation = height / 2 * ramp * np.cos(2 * np.pi * solved.time / period)
+        extra_outputs = []
+        if hard_stops is not None:
+            extra_outputs.append(("pto_stop_force", solved.pto_stop_force))
+        if mooring_stiffness:
+            extra_outputs.extend((
+                ("mooring_surge_position", solved.mooring_surge_position),
+                ("mooring_surge_force", solved.mooring_surge_force),
+            ))
         return CaseResponse(
             solved.time, solved.body_position, solved.body_velocity, hydro,
             pto_force=solved.pto_force, pto_label="pto_relative_heave_force",
             wave_elevation=elevation,
-            extra_outputs=(("pto_stop_force", solved.pto_stop_force),)
-            if hard_stops is not None else (),
+            auxiliary_files=auxiliary_files,
+            extra_outputs=tuple(extra_outputs),
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")

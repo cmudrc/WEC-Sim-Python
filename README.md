@@ -149,8 +149,35 @@ linear spring at its floating joint and `excitation_force` for sampled imported
 waves. The pinned `MooringMatrix` case pairs these forces and the full 400 s
 body, PTO, and mooring trajectories with MATLAB. Its source body block applies
 the wave ramp again after the imported-elevation convolution; the paired test
-reproduces that source-specific step explicitly. The generic case runner does
-not yet load imported-elevation MAT files or general mooring connections.
+reproduces that source-specific step explicitly. The same setup can be passed
+to the public Python case runner without precomputing a force array:
+
+```python
+from wecsim import run_case
+
+case = {
+    "simulation": {"dt": 0.01, "end_time": 400, "ramp_time": 40,
+                   "radiation_memory": 60},
+    "wave": {"type": "elevationImport", "file": "Mooring/MooringMatrix/etaData.mat",
+             "variable": "etaData", "reapply_force_ramp": True},
+    "bodies": [
+        {"hydro_file": "_Common_Input_Files/RM3/hydroData/rm3.h5",
+         "hydro_body": 1, "mass": "equilibrium", "pitch_inertia": 21_306_090.66},
+        {"hydro_file": "_Common_Input_Files/RM3/hydroData/rm3.h5",
+         "hydro_body": 2, "mass": "equilibrium", "pitch_inertia": 94_407_091.24},
+    ],
+    "constraint": {"kind": "floating_joint", "location": [0, 0, 0],
+                   "initial_coordinate": {"spar_heave": -0.21}},
+    "pto": {"kind": "relative_heave", "damping": 1_200_000},
+    "mooring": {"kind": "joint_surge_spring", "stiffness": 100_000},
+}
+response = run_case(case, base_dir="path/to/WEC-Sim_Applications")
+```
+
+`reapply_force_ramp=True` reproduces the pinned MATLAB body block's second
+force ramp; its default is `False`. The current mooring setting is a surge
+spring at this joint. Arbitrary mooring matrices and attachment locations
+remain unsupported.
 
 The RM3 floating-joint solver accepts optional PTO hard stops in Python:
 

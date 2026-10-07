@@ -7,6 +7,7 @@ import sys
 
 import numpy as np
 import pytest
+from scipy.io import savemat
 
 from wecsim.caseDynamics import run_case
 
@@ -121,3 +122,14 @@ def test_unsupported_physics_fails_explicitly(change, explanation):
     case.update(change)
     with pytest.raises(ValueError, match=explanation):
         run_case(case, base_dir=EXAMPLE.parent)
+
+
+def test_imported_wave_rejects_incomplete_time_coverage(tmp_path):
+    case = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    case["simulation"].update(dt=0.1, end_time=1, ramp_time=0)
+    case["wave"] = {"type": "elevationImport", "file": "short.mat"}
+    for body in case["bodies"]:
+        body["hydro_file"] = str((EXAMPLE.parent / body["hydro_file"]).resolve())
+    savemat(tmp_path / "short.mat", {"etaData": [[0, 0], [0.5, 0]]})
+    with pytest.raises(ValueError, match="cover the full simulation time"):
+        run_case(case, base_dir=tmp_path)
