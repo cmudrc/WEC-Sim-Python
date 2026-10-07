@@ -39,6 +39,61 @@ def _run(tmp_path, case):
     return values, {name: values[:, i] for i, name in enumerate(columns)}, metadata
 
 
+def _max_error(actual, expected, limit, signal):
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    assert actual.shape == expected.shape, f"{signal}: mismatched time series"
+    assert np.isfinite(expected).all(), f"{signal}: nonfinite MATLAB reference"
+    error = np.max(np.abs(actual - expected))
+    assert error < limit, f"{signal}: max error {error:.6g} exceeds {limit:.6g}"
+
+
+def _assert_inactive_dofs(columns, expected, body, inactive):
+    for axis, dof in inactive:
+        prefix = f"body{body}_{axis}"
+        _max_error(columns[f"{prefix}_position"], expected[:, 1 + dof],
+                   1e-10, f"{prefix} stationary position")
+        _max_error(columns[f"{prefix}_velocity"], expected[:, 7 + dof],
+                   1e-10, f"{prefix} stationary velocity")
+
+
+def _assert_rm3_body(columns, expected, body, *, pitch_limit):
+    np.testing.assert_allclose(columns["time"], expected[:, 0], rtol=0, atol=1e-10)
+    for axis, dof, position_limit, velocity_limit in (
+        ("surge", 0, 0.04, 0.035),
+        ("heave", 2, 0.005, 0.004),
+        ("pitch", 4, pitch_limit, 0.001),
+    ):
+        prefix = f"body{body}_{axis}"
+        _max_error(columns[f"{prefix}_position"], expected[:, 1 + dof],
+                   position_limit, f"{prefix} position")
+        _max_error(columns[f"{prefix}_velocity"], expected[:, 7 + dof],
+                   velocity_limit, f"{prefix} velocity")
+    _assert_inactive_dofs(columns, expected, body,
+                          (("sway", 1), ("roll", 3), ("yaw", 5)))
+
+
+def _assert_rm3_pto(columns, expected, *, force_limit):
+    np.testing.assert_allclose(columns["time"], expected[:, 0], rtol=0, atol=1e-10)
+    # Undo the two body-center rotation terms to recover joint-relative PTO
+    # motion. The HDF5 centers and the floating joint lie on the z axis.
+    center_gap = (columns["body1_heave_position"][0]
+                  - columns["body2_heave_position"][0])
+    pitch = columns["body1_pitch_position"]
+    pitch_speed = columns["body1_pitch_velocity"]
+    stroke = (columns["body1_heave_position"]
+              - columns["body2_heave_position"] - center_gap
+              - center_gap * (np.cos(pitch) - 1))
+    speed = (columns["body1_heave_velocity"]
+             - columns["body2_heave_velocity"]
+             + center_gap * np.sin(pitch) * pitch_speed)
+    force = columns["pto_relative_heave_force"]
+    _max_error(stroke, expected[:, 3], 0.009, "RM3 PTO stroke")
+    _max_error(speed, expected[:, 9], 0.0055, "RM3 PTO speed")
+    _max_error(force, expected[:, 15], force_limit, "RM3 PTO force")
+    _max_error(force * speed, expected[:, 21], 7_500, "RM3 PTO power")
+
+
 def _rm3_case(hydro, *, b2b=False):
     return {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100},
@@ -64,15 +119,9 @@ def test_rm3_general_runner(tmp_path):
         expected = np.loadtxt(
             Path(REFERENCE) / f"RM3_RM3_body{body}.csv", delimiter=",",
         )
-        for axis, dof, limit in (("surge", 0, 0.04), ("heave", 2, 0.005),
-                                 ("pitch", 4, 0.001)):
-            assert np.max(np.abs(
-                columns[f"body{body}_{axis}_position"] - expected[:, 1 + dof]
-            )) < limit
+        _assert_rm3_body(columns, expected, body, pitch_limit=0.001)
     expected_pto = np.loadtxt(Path(REFERENCE) / "RM3_RM3_pto1.csv", delimiter=",")
-    assert np.max(np.abs(
-        columns["pto_relative_heave_force"] - expected_pto[:, 15]
-    )) < 5_000
+    _assert_rm3_pto(columns, expected_pto, force_limit=5_000)
 
 
 @pytest.mark.skipif(MODEL != "RM3" or not (CORE and REFERENCE),
@@ -98,6 +147,7 @@ def test_rm3_linear_subspace_general_runner(tmp_path):
         expected = np.loadtxt(
             Path(REFERENCE) / f"RM3_RM3_body{body}.csv", delimiter=",",
         )
+        np.testing.assert_allclose(columns["time"], expected[:, 0], rtol=0, atol=1e-10)
         assert np.max(np.abs(
             columns[f"body{body}_heave_position"] - expected[:, 3]
         )) < 0.0065
@@ -106,6 +156,13 @@ def test_rm3_linear_subspace_general_runner(tmp_path):
         )) < 0.0065
     expected_pto = np.loadtxt(Path(REFERENCE) / "RM3_RM3_pto1.csv", delimiter=",")
     assert np.max(np.abs(columns["pto_coordinate1_force"] - expected_pto[:, 15])) < 9_000
+    stroke = ((columns["body1_heave_position"] - columns["body1_heave_position"][0])
+              - (columns["body2_heave_position"] - columns["body2_heave_position"][0]))
+    speed = columns["body1_heave_velocity"] - columns["body2_heave_velocity"]
+    _max_error(stroke, expected_pto[:, 3], 0.01, "linear RM3 PTO stroke")
+    _max_error(speed, expected_pto[:, 9], 0.008, "linear RM3 PTO speed")
+    _max_error(columns["pto_coordinate1_force"] * speed, expected_pto[:, 21],
+               12_000, "linear RM3 PTO power")
     np.testing.assert_allclose(
         columns["pto_coordinate1_force"], -columns["pto_coordinate2_force"],
         rtol=0, atol=1e-9,
@@ -128,6 +185,12 @@ def test_rm3_linear_subspace_general_runner(tmp_path):
     assert np.max(np.abs(
         -python.ptos["main"].force - expected_pto[:, 15]
     )) < 9_000
+    _max_error(-python.ptos["main"].stroke, expected_pto[:, 3],
+               0.01, "Python API RM3 PTO stroke")
+    _max_error(-python.ptos["main"].velocity, expected_pto[:, 9],
+               0.008, "Python API RM3 PTO speed")
+    _max_error(-python.ptos["main"].absorbed_power, expected_pto[:, 21],
+               12_000, "Python API RM3 PTO power")
 
 
 @pytest.mark.skipif(MODEL != "RM3_B2B" or not (APPLICATIONS and REFERENCE),
@@ -140,17 +203,11 @@ def test_rm3_body_to_body_general_runner(tmp_path, case, b2b):
         expected = np.loadtxt(
             Path(REFERENCE) / f"RM3_B2B_{case}_body{body}.csv", delimiter=",",
         )
-        for axis, dof, limit in (("surge", 0, 0.04), ("heave", 2, 0.005),
-                                 ("pitch", 4, 0.0012)):
-            assert np.max(np.abs(
-                columns[f"body{body}_{axis}_position"] - expected[:, 1 + dof]
-            )) < limit
+        _assert_rm3_body(columns, expected, body, pitch_limit=0.0012)
     expected_pto = np.loadtxt(
         Path(REFERENCE) / f"RM3_B2B_{case}_pto1.csv", delimiter=",",
     )
-    assert np.max(np.abs(
-        columns["pto_relative_heave_force"] - expected_pto[:, 15]
-    )) < 6_000
+    _assert_rm3_pto(columns, expected_pto, force_limit=6_000)
 
 
 @pytest.mark.skipif(MODEL != "OSWEC" or not (CORE and REFERENCE),
@@ -180,10 +237,29 @@ def test_oswec_general_runner(tmp_path):
     wave = np.loadtxt(reference / "OSWEC_wave_elevation.csv", delimiter=",")
     pto = np.loadtxt(reference / "OSWEC_OSWEC_pto1.csv", delimiter=",")
     np.testing.assert_allclose(columns["time"], expected[:, 0], rtol=0, atol=1e-10)
-    assert np.max(np.abs(columns["wave_elevation"] - wave[:, 1])) < 1e-9
-    assert np.max(np.abs(columns["body1_pitch_position"] - expected[:, 5])) < 0.004
-    assert np.max(np.abs(columns["body1_pitch_velocity"] - expected[:, 11])) < 0.005
-    assert np.max(np.abs(columns["pto_pitch_torque"] - pto[:, 17])) < 60
+    np.testing.assert_allclose(columns["time"], wave[:, 0], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(columns["time"], pto[:, 0], rtol=0, atol=1e-10)
+    _max_error(columns["wave_elevation"], wave[:, 1], 1e-11, "OSWEC wave elevation")
+    for axis, dof, position_limit, velocity_limit in (
+        ("surge", 0, 0.02, 0.03),
+        ("heave", 2, 0.005, 0.005),
+        ("pitch", 4, 0.004, 0.005),
+    ):
+        prefix = f"body1_{axis}"
+        _max_error(columns[f"{prefix}_position"], expected[:, 1 + dof],
+                   position_limit, f"OSWEC {axis} position")
+        _max_error(columns[f"{prefix}_velocity"], expected[:, 7 + dof],
+                   velocity_limit, f"OSWEC {axis} velocity")
+    _assert_inactive_dofs(columns, expected, 1,
+                          (("sway", 1), ("roll", 3), ("yaw", 5)))
+    _max_error(columns["body1_pitch_position"], pto[:, 5], 0.004,
+               "OSWEC PTO angle")
+    _max_error(columns["body1_pitch_velocity"], pto[:, 11], 0.005,
+               "OSWEC PTO angular speed")
+    torque = columns["pto_pitch_torque"]
+    _max_error(torque, pto[:, 17], 60, "OSWEC PTO torque")
+    _max_error(torque * columns["body1_pitch_velocity"], pto[:, 23],
+               max(25, 0.06 * np.max(np.abs(pto[:, 23]))), "OSWEC PTO power")
 
 
 @pytest.mark.skipif(MODEL != "Sphere" or not (SPHERE_H5 and REFERENCE),
@@ -202,10 +278,28 @@ def test_sphere_general_runner(tmp_path, case, displacement):
     }
     _, columns, _ = _run(tmp_path, config)
     expected = np.loadtxt(Path(REFERENCE) / f"Sphere_{case}_body1.csv", delimiter=",")
+    np.testing.assert_allclose(columns["time"], expected[:, 0], rtol=0, atol=1e-10)
+    _assert_inactive_dofs(columns, expected, 1,
+                          (("surge", 0), ("sway", 1), ("roll", 3),
+                           ("pitch", 4), ("yaw", 5)))
+    if displacement == 0:
+        _max_error(columns["body1_heave_position"], expected[:, 3],
+                   1e-10, "stationary Sphere center position")
+        _max_error(expected[:, 3], np.full_like(expected[:, 3], expected[0, 3]),
+                   1e-10, "MATLAB stationary Sphere center")
+        for name, dof in (("body1_heave_velocity", 9),
+                          ("body1_total_heave_force", 15)):
+            _max_error(expected[:, dof], np.zeros_like(expected[:, dof]),
+                       1e-10, f"MATLAB stationary {name}")
+            _max_error(columns[name], expected[:, dof], 1e-10, name)
+        return
     scale = max(1, displacement)
-    assert np.max(np.abs(columns["body1_heave_position"] - expected[:, 3])) < 2e-4 * scale
-    assert np.max(np.abs(columns["body1_heave_velocity"] - expected[:, 9])) < 2e-4 * scale
-    assert np.max(np.abs(columns["body1_total_heave_force"] - expected[:, 15])) < 160 * scale
+    _max_error(columns["body1_heave_position"], expected[:, 3],
+               1.2e-4 * scale, "Sphere heave position")
+    _max_error(columns["body1_heave_velocity"], expected[:, 9],
+               1.6e-4 * scale, "Sphere heave velocity")
+    _max_error(columns["body1_total_heave_force"], expected[:, 15],
+               100 * scale, "Sphere total heave force")
 
 
 @pytest.mark.skipif(MODEL != "Sphere" or not (SPHERE_H5 and REFERENCE),

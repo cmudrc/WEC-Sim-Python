@@ -28,7 +28,15 @@ def test_sphere_heave_free_decay_against_matlab(case, initial_displacement):
     )
     response = solve_heave_free_decay(SPHERE_H5, initial_displacement)
     np.testing.assert_allclose(response.time, expected[:, 0], rtol=0, atol=1e-10)
+    if initial_displacement == 0:
+        np.testing.assert_allclose(expected[:, 3], expected[0, 3], rtol=0, atol=1e-10)
+        np.testing.assert_allclose(expected[:, 9], 0, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(expected[:, 15], 0, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(response.position, expected[:, 3], rtol=0, atol=1e-10)
+        np.testing.assert_allclose(response.velocity, 0, rtol=0, atol=1e-10)
+        np.testing.assert_allclose(response.force_total, 0, rtol=0, atol=1e-10)
+        return
     scale = max(1.0, abs(initial_displacement))
-    assert np.max(np.abs(response.position - expected[:, 3])) < 2e-4 * scale
-    assert np.max(np.abs(response.velocity - expected[:, 9])) < 2e-4 * scale
-    assert np.max(np.abs(response.force_total - expected[:, 15])) < 160 * scale
+    assert np.max(np.abs(response.position - expected[:, 3])) < 1.2e-4 * scale
+    assert np.max(np.abs(response.velocity - expected[:, 9])) < 1.6e-4 * scale
+    assert np.max(np.abs(response.force_total - expected[:, 15])) < 100 * scale
