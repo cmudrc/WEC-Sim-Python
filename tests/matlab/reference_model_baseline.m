@@ -289,6 +289,34 @@ assert(numel(mcr.CPTO) == 8 && all(isfinite(mcr.CPTO)), ...
 writematrix([mcr.cases, mcr.Avgpower(:), mcr.CPTO(:)], ...
     fullfile(outDir, 'RM3_MCR_MAT_summary.csv'));
 
+% Export the actual CData plotted by the pinned userDefinedFunctionsMCR.m.
+% Its axes labels are transposed in the source example, but the tick values
+% and 2-by-2 cell placement identify period rows and wave-height columns.
+powerImages = findall(groot, 'Type', 'image');
+foundD12 = false;
+foundD24 = false;
+for iImage = 1:numel(powerImages)
+    matrix = double(powerImages(iImage).CData);
+    if ~isequal(size(matrix), [2, 2])
+        continue
+    end
+    axesHandle = ancestor(powerImages(iImage), 'axes');
+    titleText = string(axesHandle.Title.String);
+    if contains(titleText, 'Damping = 1200000')
+        assert(~foundD12 && all(isfinite(matrix), 'all'), ...
+            'RM3 MCR first power matrix is invalid');
+        writematrix(matrix, fullfile(outDir, 'RM3_MCR_MAT_power_matrix_D12.csv'));
+        foundD12 = true;
+    elseif contains(titleText, 'Damping = 2400000')
+        assert(~foundD24 && all(isfinite(matrix), 'all'), ...
+            'RM3 MCR second power matrix is invalid');
+        writematrix(matrix, fullfile(outDir, 'RM3_MCR_MAT_power_matrix_D24.csv'));
+        foundD24 = true;
+    end
+end
+assert(foundD12 && foundD24, ...
+    'RM3 MCR did not plot both published PTO power matrices');
+
 for iCase = 1:8
     saved = load(fullfile(caseDir, sprintf('savedData%03d.mat', iCase)), ...
         'output');
@@ -314,4 +342,5 @@ for iCase = 1:8
     end
 end
 close_system('RM3', 0);
+close all;
 end

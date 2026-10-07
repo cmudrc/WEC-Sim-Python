@@ -20,6 +20,9 @@ class RM3RegularResponse:
     body_position: np.ndarray
     body_velocity: np.ndarray
     pto_force: np.ndarray
+    pto_velocity: np.ndarray
+    pto_mechanical_power: np.ndarray
+    pto_absorbed_power: np.ndarray
 
 
 def solve_rm3_regular(
@@ -232,9 +235,13 @@ def solve_rm3_regular(
     )
     q = solved.coordinate
     v = solved.speed
+    pto_velocity = v[:, 1] - v[:, 2]
+    pto_force = (-pto_damping * pto_velocity
+                 - pto_stiffness * (q[:, 1] - q[:, 2] - pto_equilibrium))
     return RM3RegularResponse(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
-        pto_force=(-pto_damping * (v[:, 1] - v[:, 2])
-                   - pto_stiffness * (q[:, 1] - q[:, 2] - pto_equilibrium)),
+        pto_force=pto_force, pto_velocity=pto_velocity,
+        pto_mechanical_power=-pto_force * pto_velocity,
+        pto_absorbed_power=pto_damping * pto_velocity**2,
     )

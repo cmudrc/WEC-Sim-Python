@@ -134,6 +134,37 @@ RM3 Multiple Condition Runs Option 1 sweep. The published RM3 radiation
 options case also checks constant, convolution, and FIR dynamics over 500 s.
 MATLAB's fitted radiation state-space Cases 5 and 6 remain outside that
 validated path.
+
+RM3 multiple-condition runs can be configured in Python without a JSON input:
+
+```python
+from wecsim import mcr_grid, run_rm3_mcr
+
+conditions = mcr_grid(
+    heights=[1.5, 2.5], periods=[6, 8],
+    damping_values=[1_200_000, 2_400_000],
+)
+result = run_rm3_mcr("rm3.h5", conditions)
+power = result.power_matrix(damping=1_200_000)
+print(power.periods, power.heights, power.absorbed_power)
+first_trajectory = result.traces[0].response
+```
+
+`mcr_wave_statistics(path, damping_values)` reads the published Option 2
+Excel grid; `mcr_mat_file(path)` reads the Option 3 MAT-file case table.
+`run_mcr(conditions, simulate, averaging_start_time=...)` accepts a Python
+callback for another configured WEC. The callback returns an `MCRTrace` with
+time samples and signed absorbed PTO power; an optional response object keeps
+the full trajectory available. The published RM3 example averages from
+199.9 s through 400 s and reports positive absorbed power, the opposite of
+MATLAB's signed PTO power column. A spring may return stored energy, so an
+individual absorbed-power sample may be negative.
+
+The paired MATLAB workflow executes the actual Option 3 `wecSimMCR` driver
+and compares its eight body and PTO trajectories, average powers, and power
+matrices. Options 1 and 2 produce the same published case table; the Option 1
+physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
+multiple PTOs, and other MCR postprocessing remain unverified.
 For a no-wave floating joint, `constraint.initial_coordinate` and
 `constraint.initial_speed` accept four values or dictionaries keyed by
 `surge`, `float_heave`, `spar_heave`, and `pitch`. In the published RM3 PTO
