@@ -48,6 +48,14 @@ to the original rigid mass plus HDF5 infinite-frequency added mass in the
 active surge/heave/pitch block. The paired matrix gate passes for both bodies.
 The run still fails the sea-state trajectory gate, so changing the static
 added-mass coefficients would not address the evidenced discrepancy.
+The applied added-mass force in all three saved sea states uses acceleration
+extrapolated from the two preceding 0.1 s samples to the current time minus
+the Simulink block's `1e-7` s Transport Delay. After accounting for the
+postprocessed pitch-inertia correction, that reconstruction matches the
+reported force within `7e-7` N or N m across both bodies. This establishes
+the source's acceleration feedback at output times; it does not yet show that
+the delay alone causes the Python trajectory error. The Python convolution
+solver currently includes added mass in its implicit generalized mass matrix.
 The exact MATLAB joint adds `PTO stroke * sin(pitch)` to the two bodies'
 relative surge, a term absent from the reduced Python geometry. In the saved
 MATLAB traces this term peaks at 0.304, 0.222, and 0.140 m across the three

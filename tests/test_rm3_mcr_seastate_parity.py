@@ -85,6 +85,45 @@ def test_matlab_applied_added_mass_matches_pinned_coefficients():
             )
 
 
+def test_matlab_added_mass_uses_extrapolated_acceleration():
+    """Identify the acceleration reaching Simulink's tiny Transport Delay.
+
+    Its output at each major time step extrapolates the two preceding
+    accelerations to t - 1e-7 s. MATLAB postprocessing adds the pitch inertia
+    removed from the applied matrix back to its reported added-mass force.
+    The HDF5 matrix is not symmetric, so acceleration multiplies its transpose
+    when the samples are represented as rows here.
+    """
+    reference = Path(REFERENCE)
+    active = np.array([0, 2, 4])
+    dt = 0.1
+    delay = 1e-7  # The pinned rigid-body block sets 10e-8 s.
+    extrapolation = 1 - delay / dt
+    for body in (1, 2):
+        original = np.loadtxt(
+            reference / f"RM3_MCR_SEASTATE_body{body}_added_mass_original.csv",
+            delimiter=",",
+        )[np.ix_(active, active)]
+        applied = np.loadtxt(
+            reference / f"RM3_MCR_SEASTATE_body{body}_added_mass_applied.csv",
+            delimiter=",",
+        )[np.ix_(active, active)]
+        for case in (1, 2, 3):
+            trace = np.loadtxt(
+                reference / f"RM3_MCR_SEASTATE_case{case}_body{body}_forces.csv",
+                delimiter=",",
+            )
+            acceleration = trace[:, 19:25][:, active]
+            delayed = (acceleration[1:-1] + extrapolation
+                       * (acceleration[1:-1] - acceleration[:-2]))
+            expected = delayed @ applied.T
+            expected[:, 2] += acceleration[2:, 2] * original[2, 2]
+            _max_error(
+                expected, trace[2:, 7:13][:, active], 1e-6,
+                f"case {case} body {body} delayed added-mass force",
+            )
+
+
 def test_matlab_sea_state_joint_and_force_balance():
     """Identify the joint motion and applied mass convention in the baseline.
 
