@@ -30,6 +30,17 @@ the production Python code. The live wave comparison passed on 6 October
 | OSWEC PM equal-energy waves, directional excitation, pitch, and PTO | Current MATLAB OSWEC example and current OSWEC HDF5 | Python recreates all 500 PM equal-energy bins from the HDF5 range, then synthesizes wave elevation and six-component excitation using the saved MATLAB phase matrix. Local component differences are below `6e-15`, elevation below `2e-13` m, and excitation below `1e-7` N. The fixed-hinge solver's pitch differs by at most 0.0021 rad over 400 s; PTO torque from the paired-force check differs by at most 37 N m. A Python seed produces a separate reproducible realization. This model covers pitch about a fixed hinge, not a general six-DOF device. |
 | Case-driven dynamics runner | Current MATLAB RM3 and OSWEC examples plus Sphere and RM3 body-to-body Applications cases | The former commented-out simulation script is replaced with a JSON-driven runner. One generalized-coordinate engine assembles rigid inertia, hydrodynamic added mass and radiation, hydrostatic restoring, excitation, and linear PTO forces. The heave, fixed-hinge, and floating-joint layouts run the nine paired reference cases. A fourth `linear_subspace` layout maps independent coordinates into arbitrary bodies; its RM3 two-body heave and Sphere free-decay checks also agree with MATLAB. Named linear coordinates and body-local PTO connections extend configuration but have only analytical and case-level geometry checks. Arbitrary Simscape layouts, moorings, nonlinear hydro, and other application cases remain unsupported. |
 
+The paired case-runner checks compare the MATLAB and Python time grids, all
+active body positions and velocities, and stationary degrees of freedom. RM3
+checks also compare PTO stroke,
+speed, force, and mechanical power; OSWEC checks compare PTO angle, angular
+speed, torque, and mechanical power. MATLAB reports absorbed PTO power with a
+negative sign, while the Python API reports positive absorbed power. The
+Sphere checks now require a stationary 0 m case and narrower motion and force
+limits for the displaced cases. Tolerances remain explicit in
+`tests/test_case_dynamics_parity.py` and are calibrated against the pinned
+MATLAB reference output, not against historical Python fixtures.
+
 Source comparisons: [MATLAB wave class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/waveClass.m),
 [MATLAB wave-number function](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/functions/BEMIO/calcWaveNumber.m),
 and [MATLAB body class](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/bodyClass.m).

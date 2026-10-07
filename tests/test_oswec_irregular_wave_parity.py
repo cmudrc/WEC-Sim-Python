@@ -62,8 +62,8 @@ def test_oswec_pm_equal_energy_bins(comparison):
 def test_oswec_wave_elevation_and_excitation(comparison):
     _, _, _, response, matlab_wave, matlab_body = comparison
     np.testing.assert_allclose(response.time, matlab_wave[:, 0], rtol=0, atol=1e-10)
-    assert np.max(np.abs(response.elevation - matlab_wave[:, 1])) < 1e-9
-    assert np.max(np.abs(response.excitation_force - matlab_body[:, 19:25])) < 1e-4
+    assert np.max(np.abs(response.elevation - matlab_wave[:, 1])) < 1e-11
+    assert np.max(np.abs(response.excitation_force - matlab_body[:, 19:25])) < 1e-6
 
 
 def test_oswec_python_excitation_drives_matlab_matched_pitch(comparison):
