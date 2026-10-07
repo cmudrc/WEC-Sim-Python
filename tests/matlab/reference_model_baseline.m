@@ -50,6 +50,16 @@ switch string(model)
         end
         cases = "Nonhydro";
         caseDirs = string(fullfile(repoRoot, 'applications', 'Nonhydro_Body'));
+    case "RM3_PTO_Extension"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        cases = ["float", "spar"];
+        caseDirs = fullfile(repoRoot, 'applications', ...
+            'RM3_PTO_Extension', cases);
     case "RM3_MCR"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
         cd(hydroDir);

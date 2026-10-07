@@ -11,6 +11,7 @@ on:
       - 'tests/test_rm3_multidof_parity.py'
       - 'tests/test_rm3_b2b_parity.py'
       - 'tests/test_rm3_b2b_cic_parity.py'
+      - 'tests/test_rm3_pto_extension_parity.py'
       - 'tests/test_rm3_mcr_parity.py'
       - 'tests/test_sphere_pto_config_parity.py'
       - 'tests/test_case_dynamics_parity.py'
@@ -35,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, OSWEC_Nonhydro, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
+        model: [RM3, OSWEC, OSWEC_Nonhydro, Sphere, RM3_B2B, RM3_PTO_Extension, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -49,7 +50,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MCR' || matrix.model == 'OSWEC_Nonhydro'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_MCR' || matrix.model == 'OSWEC_Nonhydro'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -66,6 +67,7 @@ jobs:
             Body-to-Body_Interactions/B2B_Case2
             Body-to-Body_Interactions/B2B_Case3
             Body-to-Body_Interactions/B2B_Case4
+            RM3_PTO_Extension
             Controls/Passive (P)
             Multiple_Condition_Runs/RM3_MCROPT1
       - uses: matlab-actions/setup-matlab@v3
@@ -111,6 +113,11 @@ jobs:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_rm3_b2b_cic_parity.py
         if: matrix.model == 'RM3_B2B'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_rm3_pto_extension_parity.py
+        if: matrix.model == 'RM3_PTO_Extension'
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output

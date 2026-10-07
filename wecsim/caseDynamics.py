@@ -328,8 +328,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "floating_joint":
-        if len(bodies) != 2 or wave["type"] not in ("regular", "regularCIC"):
-            raise ValueError("floating joint needs two bodies and regular waves")
+        if len(bodies) != 2 or wave["type"] not in ("regular", "regularCIC", "none"):
+            raise ValueError("floating joint needs two bodies and regular waves or no wave")
         if hydro[0] != hydro[1]:
             raise ValueError("the current floating-joint layout needs one shared HDF5")
         for number, body in enumerate(bodies, start=1):
@@ -338,20 +338,34 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 raise ValueError("floating-joint bodies use mass and pitch_inertia")
             if body.get("mass", "equilibrium") != "equilibrium":
                 raise ValueError("floating-joint bodies currently require equilibrium mass")
-        if set(constraint) - {"kind", "location"}:
-            raise ValueError("floating-joint initial conditions are not yet supported")
+        if set(constraint) - {"kind", "location", "initial_coordinate", "initial_speed"}:
+            raise ValueError("unsupported floating-joint constraint setting")
         location = _location(constraint)
+        coordinate_names = ("surge", "float_heave", "spar_heave", "pitch")
+        initial_q = initial_coordinate(
+            constraint.get("initial_coordinate", [0] * 4),
+            coordinate_names, "constraint.initial_coordinate",
+        )
+        initial_v = initial_coordinate(
+            constraint.get("initial_speed", [0] * 4),
+            coordinate_names, "constraint.initial_speed",
+        )
         damping, stiffness, equilibrium = _pto(case.get("pto"), "relative_heave")
-        height = _number(wave.get("height"), "wave.height", nonnegative=True)
-        period = _number(wave.get("period"), "wave.period", positive=True)
-        if set(wave) - {"type", "height", "period", "direction"}:
-            raise ValueError("regular waves use height, period, and direction")
-        direction = _number(wave.get("direction", 0), "wave.direction")
-        if direction != 0:
-            raise ValueError("floating-joint dynamics currently support 0-degree waves")
+        if wave["type"] == "none":
+            if set(wave) != {"type"} or "ramp_time" in sim:
+                raise ValueError("no-wave floating joint has no wave or ramp settings")
+            height, period, direction = 0.0, 8.0, 0.0
+        else:
+            height = _number(wave.get("height"), "wave.height", nonnegative=True)
+            period = _number(wave.get("period"), "wave.period", positive=True)
+            if set(wave) - {"type", "height", "period", "direction"}:
+                raise ValueError("regular waves use height, period, and direction")
+            direction = _number(wave.get("direction", 0), "wave.direction")
+            if direction != 0:
+                raise ValueError("floating-joint dynamics currently support 0-degree waves")
         if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave floating-joint dynamics use constant radiation")
-        if wave["type"] == "regularCIC":
+        if wave["type"] in ("regularCIC", "none"):
             radiation_memory = _number(
                 sim.get("radiation_memory", 60), "simulation.radiation_memory",
                 positive=True,
@@ -367,14 +381,19 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             b2b=b2b, radiation_memory=radiation_memory,
+            no_wave=wave["type"] == "none",
+            initial_coordinate=initial_q, initial_speed=initial_v,
             joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )
-        ramp = np.ones(len(solved.time))
-        if ramp_time > 0:
-            early = solved.time < ramp_time
-            ramp[early] = (1 - np.cos(np.pi * solved.time[early] / ramp_time)) / 2
-        elevation = height / 2 * ramp * np.cos(2 * np.pi * solved.time / period)
+        if wave["type"] == "none":
+            elevation = None
+        else:
+            ramp = np.ones(len(solved.time))
+            if ramp_time > 0:
+                early = solved.time < ramp_time
+                ramp[early] = (1 - np.cos(np.pi * solved.time[early] / ramp_time)) / 2
+            elevation = height / 2 * ramp * np.cos(2 * np.pi * solved.time / period)
         return CaseResponse(
             solved.time, solved.body_position, solved.body_velocity, hydro,
             pto_force=solved.pto_force, pto_label="pto_relative_heave_force",

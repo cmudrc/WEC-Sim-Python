@@ -96,6 +96,7 @@ Supported combinations are:
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation or 60 s impulse-response convolution |
+| `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for free decay |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
@@ -114,6 +115,11 @@ The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
 RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation
 state-space Cases 5 and 6 remain outside that validated path.
+For a no-wave floating joint, `constraint.initial_coordinate` and
+`constraint.initial_speed` accept four values or dictionaries keyed by
+`surge`, `float_heave`, `spar_heave`, and `pitch`. In the published RM3 PTO
+extension examples, `float_heave: 5` or `spar_heave: -5` creates the same
+initial +5 m relative PTO stroke while moving a different body.
 For `linear_subspace`, the map's rows are surge, sway, heave, roll, pitch,
 and yaw; its columns are independent generalized coordinates. A two-body
 heave case, for example, maps the first body's heave to coordinate 1 and the
