@@ -315,7 +315,9 @@ def test_published_three_sea_state_mcr_against_matlab():
     mat_file = root / "Multiple_Condition_Runs/RM3_MCROPT3_SeaState/mcrExample.mat"
     files = mcr_spectrum_files(mat_file)
     hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
-    result = run_rm3_spectrum_mcr(hydro, mat_file)
+    result = run_rm3_spectrum_mcr(
+        hydro, mat_file, added_mass_scheme="simulink_delay",
+    )
     assert result.spectrum_files == files
     assert len(result.traces) == 3
     summary = np.loadtxt(reference / "RM3_MCR_SEASTATE_summary.csv", delimiter=",")

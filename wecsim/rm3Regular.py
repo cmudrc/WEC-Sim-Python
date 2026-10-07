@@ -43,6 +43,7 @@ def solve_rm3_regular(
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
+    added_mass_scheme: str = "implicit",
     excitation_force: np.ndarray | None = None,
     no_wave: bool = False,
     initial_coordinate: np.ndarray | None = None,
@@ -63,8 +64,10 @@ def solve_rm3_regular(
     fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
-    The added-mass force follows WEC-Sim's rigid-body mass split and delayed
-    acceleration feedback with a 1e-7 s delay.
+    ``added_mass_scheme="implicit"`` includes infinite-frequency added mass
+    in the effective inertia. ``"simulink_delay"`` reproduces the pinned
+    WEC-Sim model's rigid-body mass split and 1e-7 s delayed acceleration
+    feedback for numerical comparison. The delay is not a WEC property.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
     ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
@@ -95,6 +98,10 @@ def solve_rm3_regular(
                             else "constant")
     if radiation_method not in ("constant", "convolution", "fir"):
         raise ValueError("unsupported RM3 radiation method")
+    if added_mass_scheme not in ("implicit", "simulink_delay"):
+        raise ValueError("added_mass_scheme must be implicit or simulink_delay")
+    if added_mass_scheme == "simulink_delay" and radiation_method != "convolution":
+        raise ValueError("simulink_delay requires convolution radiation")
     if ((radiation_method == "constant" and radiation_memory is not None)
             or (radiation_method != "constant" and radiation_memory is None)):
         raise ValueError("constant radiation has no memory; convolution and FIR need it")
@@ -263,7 +270,7 @@ def solve_rm3_regular(
                                   -pto_equilibrium / 2, 0]),
         radiation_discretization=("fir" if radiation_method == "fir"
                                   else "trapezoid"),
-        added_mass_delay=(1e-7 if radiation_method == "convolution" else None),
+        added_mass_delay=(1e-7 if added_mass_scheme == "simulink_delay" else None),
     )
     solved = system.integrate(
         dt=dt, end_time=end_time,

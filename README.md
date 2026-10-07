@@ -123,8 +123,13 @@ setting is available for no-wave free decay, without a paired FIR baseline. Both
 `radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
 For this RM3 convolution layout, the solver follows the published pitched
-slider geometry and Simulink's delayed added-mass feedback. The tiny delay is
-a numerical setting of the source model, not a WEC property.
+slider geometry and uses an implicit effective added mass by default. To
+reproduce the pinned MATLAB/Simulink numerical trajectory, set
+`simulation.added_mass_scheme` to `"simulink_delay"` (or pass that keyword to
+`solve_rm3_regular` and the RM3 MCR runners). This explicitly selects the
+source model's mass split and 1e-7 s acceleration delay; the delay is a
+numerical setting, not a WEC property. The published Cases 5 and 6 use a
+suspect fitted state-space radiation model and remain unsupported.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
 `center_gravity`. Its stationary motion appears in the response. With this

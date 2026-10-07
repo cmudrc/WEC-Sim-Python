@@ -53,7 +53,8 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
         "RM3_MCR_MAT": option_3,
     }[LABEL]
     hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
-    result = run_rm3_mcr(hydro, conditions)
+    result = run_rm3_mcr(hydro, conditions,
+                         added_mass_scheme="simulink_delay")
     assert result.conditions == conditions
     assert len(result.traces) == 8
 

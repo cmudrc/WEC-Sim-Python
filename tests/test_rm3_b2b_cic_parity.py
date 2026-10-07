@@ -33,7 +33,8 @@ def test_rm3_regular_cic_against_matlab(case, b2b):
     hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     config = {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
-                       "radiation_memory": 60},
+                       "radiation_memory": 60,
+                       "added_mass_scheme": "simulink_delay"},
         "wave": {"type": "regularCIC", "height": 2.5, "period": 8},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,

@@ -265,6 +265,7 @@ def run_rm3_mcr(
     dt: float = 0.1, end_time: float = 400.0,
     ramp_time: float = 100.0, radiation_memory: float = 60.0,
     averaging_start_time: float = 199.9,
+    added_mass_scheme: str = "implicit",
 ) -> MCRResult:
     """Run the published RM3 floating-joint conditions and PTO power matrix."""
     def simulate(condition):
@@ -274,6 +275,7 @@ def run_rm3_mcr(
             pto_damping=condition.pto_damping,
             pto_stiffness=condition.pto_stiffness,
             radiation_memory=radiation_memory,
+            added_mass_scheme=added_mass_scheme,
             dt=dt, end_time=end_time, ramp_time=ramp_time,
         )
         return MCRTrace(response.time, response.pto_mechanical_power, response)
@@ -288,6 +290,7 @@ def run_rm3_spectrum_mcr(
     ramp_time: float = 100.0, radiation_memory: float = 60.0,
     pto_damping: float = 1_200_000.0,
     averaging_start_time: float = 199.9,
+    added_mass_scheme: str = "implicit",
 ) -> MCRSeaStateResult:
     """Run the published three imported-spectrum RM3 MCR sea states.
 
@@ -315,6 +318,7 @@ def run_rm3_spectrum_mcr(
         response = solve_rm3_regular(
             h5_file, wave_height=0, pto_damping=pto_damping,
             radiation_memory=radiation_memory,
+            added_mass_scheme=added_mass_scheme,
             excitation_force=forcing,
             dt=dt, end_time=end_time, ramp_time=ramp_time,
         )

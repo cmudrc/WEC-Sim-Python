@@ -150,7 +150,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
                    {"dt", "end_time", "ramp_time", "rho", "g",
-                    "radiation_memory", "radiation_method"})
+                    "radiation_memory", "radiation_method", "added_mass_scheme"})
     dt = _number(sim["dt"], "simulation.dt", positive=True)
     end_time = _number(sim["end_time"], "simulation.end_time", nonnegative=True)
     ramp_time = _number(sim.get("ramp_time", 100), "simulation.ramp_time", nonnegative=True)
@@ -173,6 +173,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     kind = constraint["kind"]
     if "radiation_method" in sim and kind != "floating_joint":
         raise ValueError("radiation_method currently applies to floating_joint")
+    if "added_mass_scheme" in sim and kind != "floating_joint":
+        raise ValueError("added_mass_scheme currently applies to floating_joint")
     if any(path is None for path in hydro) and not (
         kind == "fixed_hinge" and len(bodies) == 2
         and hydro[0] is not None and hydro[1] is None
@@ -394,6 +396,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             b2b=b2b, radiation_memory=radiation_memory,
             radiation_method=radiation_method,
+            added_mass_scheme=sim.get("added_mass_scheme", "implicit"),
             no_wave=wave["type"] == "none",
             initial_coordinate=initial_q, initial_speed=initial_v,
             joint_z=location[2],

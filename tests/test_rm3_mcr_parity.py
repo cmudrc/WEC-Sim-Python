@@ -34,7 +34,8 @@ def test_rm3_mcr_condition_against_matlab(height, period, damping):
     hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     case = {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
-                       "radiation_memory": 60},
+                       "radiation_memory": 60,
+                       "added_mass_scheme": "simulink_delay"},
         "wave": {"type": "regularCIC", "height": height, "period": period},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,

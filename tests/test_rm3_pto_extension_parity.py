@@ -36,7 +36,8 @@ def test_published_pto_extension_free_decay(
              / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     case = {
         "simulation": {"dt": 0.1, "end_time": 30,
-                       "radiation_memory": 60},
+                       "radiation_memory": 60,
+                       "added_mass_scheme": "simulink_delay"},
         "wave": {"type": "none"},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,

@@ -54,6 +54,8 @@ def test_published_rm3_radiation_options(mode):
     simulation = {"dt": 0.1, "end_time": 500, "ramp_time": 100}
     if mode != "constant":
         simulation["radiation_memory"] = 60
+    if mode == "convolution":
+        simulation["added_mass_scheme"] = "simulink_delay"
     if mode == "FIR":
         simulation["radiation_method"] = "fir"
     case = {

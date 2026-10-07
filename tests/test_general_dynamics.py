@@ -150,6 +150,23 @@ def test_delayed_added_mass_matches_independent_oscillator_recurrence():
     np.testing.assert_array_equal(repeated.coordinate, response.coordinate)
 
 
+def test_implicit_added_mass_preserves_undamped_oscillator_energy():
+    kernel = np.zeros((101, 6, 6))
+    mass, added, stiffness = 2.0, 1.0, 8.0
+    system = _oscillator(mass=mass, stiffness=stiffness, radiation=kernel,
+                         added_mass=added)
+    response = system.integrate(
+        dt=0.01, end_time=1, initial_coordinate=np.array([1.0]),
+    )
+    np.testing.assert_allclose(
+        response.acceleration[0, 0], -stiffness / (mass + added),
+        rtol=0, atol=1e-12,
+    )
+    energy = (0.5 * (mass + added) * response.speed[:, 0]**2
+              + 0.5 * stiffness * response.coordinate[:, 0]**2)
+    assert np.max(np.abs(energy - energy[0])) < 1e-10
+
+
 def test_fir_uses_full_sampled_taps_and_holds_force_during_each_step():
     kernel = np.zeros((2, 6, 6))
     kernel[:, 2, 2] = [2, 3]

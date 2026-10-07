@@ -48,13 +48,16 @@ to the original rigid mass plus HDF5 infinite-frequency added mass in the
 active surge/heave/pitch block. The paired matrix gate passes for both bodies.
 The split preserves the effective active mass exactly, so changing static
 added-mass coefficients would have targeted the wrong mechanism.
+The ordinary RM3 convolution solver retains implicit added mass. Paired
+MATLAB tests explicitly select `added_mass_scheme="simulink_delay"`; this
+compatibility setting is not the default dynamics path.
 The applied added-mass force in all three saved sea states uses acceleration
 extrapolated from the two preceding 0.1 s samples to the current time minus
 the Simulink block's `1e-7` s Transport Delay. After accounting for the
 postprocessed pitch-inertia correction, that reconstruction matches the
 reported force within `7e-7` N or N m across both bodies. This establishes
-the source's acceleration feedback at output times. The RM3 convolution
-solver now applies the same mass split and delayed feedback.
+the source's acceleration feedback at output times. The optional
+`simulink_delay` scheme applies the same mass split and delayed feedback.
 The exact MATLAB joint adds `PTO stroke * sin(pitch)` to the two bodies'
 relative surge, a term absent from the reduced Python geometry. In the saved
 MATLAB traces this term peaks at 0.304, 0.222, and 0.140 m across the three
@@ -62,7 +65,8 @@ sea states, compared with 0.039 m in regular MCR case 8. Exact geometry alone
 regressed regular-wave gates. Combining it with the source's delayed mass
 feedback passes both the imported sea states and the previously paired
 regular-wave cases. The delay is a Simulink numerical setting, not a measured
-WEC property, and is confined to RM3 convolution simulations here.
+WEC property, and is confined to explicitly selected RM3 convolution
+comparisons here.
 
 The published RM3 body-to-body Cases 5 and 6 use the same suspect fitted
 state-space radiation as the fourth `Radiation_Force_Options` setting. At 400 s,

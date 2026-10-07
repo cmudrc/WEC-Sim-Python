@@ -26,3 +26,23 @@ def test_fir_requires_radiation_memory():
     h5_file = Path(__file__).resolve().parents[1] / "examples" / "data" / "rm3.h5"
     with pytest.raises(ValueError, match="convolution and FIR need it"):
         solve_rm3_regular(h5_file, radiation_method="fir", end_time=0)
+
+
+def test_rm3_convolution_defaults_to_implicit_added_mass():
+    h5_file = Path(__file__).resolve().parents[1] / "examples/data/rm3.h5"
+    settings = dict(radiation_memory=2, dt=0.1, end_time=4, ramp_time=0)
+    default = solve_rm3_regular(h5_file, **settings)
+    implicit = solve_rm3_regular(h5_file, **settings,
+                                 added_mass_scheme="implicit")
+    source = solve_rm3_regular(h5_file, **settings,
+                               added_mass_scheme="simulink_delay")
+    np.testing.assert_array_equal(default.body_position, implicit.body_position)
+    np.testing.assert_array_equal(default.pto_force, implicit.pto_force)
+    assert np.max(np.abs(default.body_position - source.body_position)) > 1e-4
+
+
+def test_simulink_delay_requires_convolution_radiation():
+    h5_file = Path(__file__).resolve().parents[1] / "examples/data/rm3.h5"
+    with pytest.raises(ValueError, match="requires convolution"):
+        solve_rm3_regular(h5_file, added_mass_scheme="simulink_delay",
+                          end_time=0)
