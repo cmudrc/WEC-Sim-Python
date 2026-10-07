@@ -157,6 +157,16 @@ switch string(model)
         cases = "Reactive_PI";
         caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', ...
             'Reactive (PI)'));
+    case "Sphere_Declutching"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Declutching";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', ...
+            'Declutching'));
     otherwise
         error('Unknown reference model: %s', model);
 end
@@ -195,12 +205,12 @@ for iCase = 1:numel(cases)
         writematrix(values, fullfile(outDir, filename));
     end
     if ismember(string(model), ["Sphere_Passive", "Sphere_PTO_Config", ...
-            "Sphere_Reactive_PI"])
+            "Sphere_Reactive_PI", "Sphere_Declutching"])
         assert(exist('controller1_out', 'var') == 1, ...
-            'The passive controller produced no logged output');
+            'The Sphere controller produced no logged output');
         controllerValues = [controller1_out.time(:), controller1_out.signals.values];
         assert(size(controllerValues, 2) == 13, ...
-            'Expected six force and six power components from passive controller');
+            'Expected six force and six power components from Sphere controller');
         assert(all(isfinite(controllerValues), 'all'), ...
             'The passive controller output contains nonfinite values');
         writematrix(controllerValues, fullfile(outDir, string(model) + "_controller.csv"));

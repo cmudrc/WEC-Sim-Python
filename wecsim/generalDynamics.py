@@ -12,6 +12,8 @@ from typing import Callable
 
 import numpy as np
 
+from .controls import DeclutchingState
+
 
 @dataclass(frozen=True)
 class BodyMotion:
@@ -43,6 +45,7 @@ class DynamicsResponse:
     acceleration: np.ndarray
     body_position: np.ndarray
     body_velocity: np.ndarray
+    controlled_pto_force: np.ndarray | None = None
 
 
 class GeneralizedDynamics:
@@ -64,6 +67,7 @@ class GeneralizedDynamics:
         pto_equilibrium: np.ndarray | None = None,
         pto_bias: np.ndarray | None = None,
         radiation_discretization: str = "trapezoid",
+        controlled_ptos: tuple = (),
     ):
         if not bodies or coordinate_count < 1:
             raise ValueError("a device needs bodies and independent coordinates")
@@ -88,6 +92,12 @@ class GeneralizedDynamics:
         if radiation_discretization not in ("trapezoid", "fir"):
             raise ValueError("radiation_discretization must be trapezoid or fir")
         self.radiation_discretization = radiation_discretization
+        self.controlled_ptos = tuple(controlled_ptos)
+        for connection in self.controlled_ptos:
+            if (connection.control is None
+                    or np.shape(connection.stroke_jacobian) != (n,)
+                    or not np.isfinite(connection.stroke_jacobian).all()):
+                raise ValueError("controlled PTO needs a finite coordinate projection")
         if (self.pto_stiffness.shape != (n, n)
                 or self.pto_damping.shape != (n, n)
                 or self.pto_equilibrium.shape != (n,)
@@ -118,6 +128,9 @@ class GeneralizedDynamics:
         if (radiation_discretization == "fir"
                 and any(body.radiation_kernel is None for body in self.bodies)):
             raise ValueError("FIR radiation needs a kernel for every body")
+        if (self.controlled_ptos
+                and any(body.radiation_kernel is not None for body in self.bodies)):
+            raise ValueError("declutching control currently needs constant radiation")
 
     def acceleration(
         self,
@@ -127,6 +140,7 @@ class GeneralizedDynamics:
         *,
         known_radiation: tuple[np.ndarray, ...] | None = None,
         dt: float | None = None,
+        applied_force: np.ndarray | None = None,
     ) -> np.ndarray:
         """Assemble M(q) and generalized force, then solve M(q) q'' = F."""
         if any(body.radiation_kernel is not None for body in self.bodies):
@@ -139,6 +153,11 @@ class GeneralizedDynamics:
         mass = np.zeros((n, n))
         force = (-self.pto_stiffness @ (coordinate - self.pto_equilibrium)
                  - self.pto_damping @ speed + self.pto_bias)
+        if applied_force is not None:
+            added = np.asarray(applied_force, dtype=float)
+            if added.shape != (n,) or not np.isfinite(added).all():
+                raise ValueError("applied PTO force must be a finite generalized vector")
+            force += added
         velocities = tuple(motion.jacobian @ speed for motion in motions)
         for i, body in enumerate(self.bodies):
             motion = motions[i]
@@ -193,11 +212,14 @@ class GeneralizedDynamics:
             raise ValueError("initial state must be finite")
         time = np.arange(steps + 1) * dt
         memory = any(body.radiation_kernel is not None for body in self.bodies)
+        controlled_force = None
         if memory:
             if self.radiation_discretization == "fir":
                 self._integrate_fir(time, q, v, a, dt)
             else:
                 self._integrate_memory(time, q, v, a, dt)
+        elif self.controlled_ptos:
+            controlled_force = self._integrate_controlled_regular(time, q, v, a, dt)
         else:
             self._integrate_regular(time, q, v, a, dt)
         positions = np.zeros((steps + 1, len(self.bodies), 6))
@@ -207,7 +229,58 @@ class GeneralizedDynamics:
                 motion = body.motion(q[step], v[step])
                 positions[step, i] = body.reference_position + motion.displacement
                 velocities[step, i] = motion.jacobian @ v[step]
-        return DynamicsResponse(time, q, v, a, positions, velocities)
+        return DynamicsResponse(time, q, v, a, positions, velocities,
+                                controlled_force)
+
+    def _integrate_controlled_regular(self, time, q, v, a, dt):
+        """Integrate regular-wave dynamics with sampled declutching memory."""
+        n = self.coordinate_count
+        states = [DeclutchingState() for _ in self.controlled_ptos]
+        force_history = np.zeros((len(time), len(states)))
+
+        def controller_force(speed, memories):
+            projected = np.zeros(n)
+            forces = []
+            next_memories = []
+            for connection, memory in zip(self.controlled_ptos, memories):
+                stroke_speed = float(connection.stroke_jacobian @ speed)
+                force, next_memory = connection.control.sample(
+                    stroke_speed, memory, dt,
+                )
+                projected += connection.stroke_jacobian * force
+                forces.append(force)
+                next_memories.append(next_memory)
+            return projected, forces, next_memories
+
+        for step, at_time in enumerate(time):
+            applied, forces, next_states = controller_force(v[step], states)
+            force_history[step] = forces
+            a[step] = self.acceleration(
+                at_time, q[step], v[step], applied_force=applied,
+            )
+            if step == len(time) - 1:
+                break
+
+            def derivative(stage_time, state):
+                coordinate, speed = state[:n], state[n:]
+                # Simulink's Memory blocks hold the last major-step controller
+                # state through intermediate RK4 evaluations.
+                stage_force, _, _ = controller_force(speed, next_states)
+                return np.concatenate((
+                    speed,
+                    self.acceleration(stage_time, coordinate, speed,
+                                      applied_force=stage_force),
+                ))
+
+            state = np.concatenate((q[step], v[step]))
+            k1 = derivative(at_time, state)
+            k2 = derivative(at_time + dt / 2, state + dt * k1 / 2)
+            k3 = derivative(at_time + dt / 2, state + dt * k2 / 2)
+            k4 = derivative(at_time + dt, state + dt * k3)
+            next_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+            q[step + 1], v[step + 1] = next_state[:n], next_state[n:]
+            states = next_states
+        return force_history
 
     def _integrate_regular(self, time, q, v, a, dt):
         n = self.coordinate_count

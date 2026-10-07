@@ -611,10 +611,14 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         connections, stiffness, damping, pto_bias = build_linear_ptos(
             case["ptos"], maps, centers, body_names,
         )
+    controlled_connections = tuple(
+        connection for connection in connections if connection.control is not None
+    )
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), n, pto_stiffness=stiffness,
         pto_damping=damping, pto_equilibrium=equilibrium,
         pto_bias=pto_bias,
+        controlled_ptos=controlled_connections,
     )
     response = system.integrate(
         dt=dt, end_time=end_time,
@@ -635,17 +639,29 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             (f"coordinate_{name}_velocity", response.speed[:, index]),
         )
     ) if "coordinates" in constraint else ()
+    controlled_forces = (
+        {connection.name: response.controlled_pto_force[:, index]
+         for index, connection in enumerate(controlled_connections)}
+        if controlled_connections else {}
+    )
     pto_outputs = tuple(
         output for connection in connections
-        for output in connection.outputs(response.coordinate, response.speed)
+        for output in connection.outputs(
+            response.coordinate, response.speed,
+            force_override=controlled_forces.get(connection.name),
+        )
     )
+    generalized_pto = (-(response.coordinate - equilibrium) @ stiffness.T
+                       - response.speed @ damping.T + pto_bias)
+    for connection in controlled_connections:
+        generalized_pto += np.outer(
+            controlled_forces[connection.name], connection.stroke_jacobian,
+        )
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
         pto_generalized_force=(
-            -(response.coordinate - equilibrium) @ stiffness.T
-            - response.speed @ damping.T + pto_bias
-            if "pto" in case or "ptos" in case else None
+            generalized_pto if "pto" in case or "ptos" in case else None
         ),
         extra_outputs=coordinate_outputs + pto_outputs,
     )

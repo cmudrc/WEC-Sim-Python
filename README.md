@@ -72,6 +72,13 @@ Python builder currently covers the `linear_subspace` layout with regular or
 no waves; its named coordinates use small-motion kinematics and fixed-axis
 PTOs. The other validated reference layouts remain available through the
 case runner and focused solver functions.
+For a regular-wave declutching PTO, pass
+`control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
+instead of constant damping. Import `DeclutchingControl` from `wecsim`.
+The controller disengages at a velocity sign change and reengages after the
+configured interval; `minimum_on_time` defaults to 0.2 s. The published
+Sphere case is paired against MATLAB at a 0.01 s step. Other geometries and
+wave settings are not yet paired.
 
 The JSON runner remains available for saved and reproducible cases. It
 accepts simulation, wave, body, constraint, and PTO settings. The included
@@ -175,7 +182,8 @@ from the reference pose. Moving an attachment point changes its moment arm
 when the body rotates. The CSV includes each PTO's stroke, velocity, force,
 and power absorbed by its damper, as well as named coordinate motion. This
 force is positive along the axis on the `to` endpoint and opposite on `from`.
-The reported absorbed power is damping times stroke velocity squared. This
+The reported absorbed power is damping times stroke velocity squared for a
+constant damper and zero while a declutching PTO is disengaged. This
 connection model is linearized for small rotations; it does not update the
 actuator's axis as its endpoints move. Use either `ptos` or the older `pto`
 matrix in one case.
@@ -209,8 +217,8 @@ analytical checks. A paired MATLAB Sphere case covers nonzero stiffness,
 extra damping while specifying a body-local attachment shifted 1 m in x.
 Its heave-only motion cannot validate attachment-location dynamics or a
 rotational moment arm.
-Force limits, hard stops, time-varying controllers, and hydraulic PTO models
-are not implemented.
+Force limits, hard stops, controllers other than the published declutching and
+reactive PI laws, and hydraulic PTO models are not implemented.
 
 The published Sphere free-decay cases can also be calculated with the focused solver:
 
