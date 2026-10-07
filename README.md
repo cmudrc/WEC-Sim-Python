@@ -1,4 +1,4 @@
-# WEC-Sim-Python
+# wecsim-python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
 > wave energy converter simulator. A case-driven dynamics runner now covers
@@ -12,7 +12,7 @@ To run the production-code parity checks with Python 3.12:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt pytest
-.venv/bin/python -m compileall -q source wecsim_python
+.venv/bin/python -m compileall -q source wecsim wecsim_python
 .venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py tests/test_pto_connections.py tests/test_python_api.py
 ```
 
@@ -30,10 +30,11 @@ Wave generation, RM3 and OSWEC hydrodynamic input, force preprocessing, and
 the supported device dynamics have paired MATLAB checks. The Python API is
 the primary way to configure a linearized device. It constructs bodies,
 named motions, attachment points, PTOs, and waves as Python objects, then
-returns NumPy arrays directly:
+returns NumPy arrays directly. Import it as `wecsim` from the repository
+checkout; `wecsim_python` remains an import alias for existing code:
 
 ```python
-from wecsim_python import NoWave, WEC, WorldPoint
+from wecsim import NoWave, WEC, WorldPoint
 
 wec = WEC("Heaving float")
 float_body = wec.body("float", "path/to/hydro.h5")
@@ -176,7 +177,7 @@ response = solve_heave_free_decay("path/to/sphere.h5", initial_displacement=1.0)
 This solver assumes one heave-only body, zero incident waves, and no PTO,
 mooring, or nonlinear force. Generate `sphere.h5` with the published
 WEC-Sim_Applications Sphere `bemio.m`, or download the HDF5 artifact from the
-[MATLAB reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556464).
+[MATLAB reference-model run](https://github.com/cmudrc/wecsim-python/actions/runs/37472556464).
 The RM3 regular-wave heave subsystem can be calculated with the same module:
 
 ```python

@@ -1,6 +1,6 @@
-"""Compatibility import for the public :mod:`wecsim` package."""
+"""Public Python interface for supported WEC-Sim device dynamics."""
 
-from wecsim import (
+from .api import (
     Body, BodyPoint, Coordinate, LinearPTO, Motion, MotionHistory, NoWave,
     PTOHistory, RegularWave, WEC, WECResult, WorldPoint,
 )

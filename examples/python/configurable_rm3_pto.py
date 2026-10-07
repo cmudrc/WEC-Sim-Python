@@ -9,7 +9,7 @@ This is a linearized configuration example, not a MATLAB parity case.
 
 from pathlib import Path
 
-from wecsim_python import RegularWave, WEC, WorldPoint
+from wecsim import RegularWave, WEC, WorldPoint
 
 
 HYDRO = Path(__file__).resolve().parents[2] / "source/objects/rm3.h5"

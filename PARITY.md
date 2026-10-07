@@ -50,21 +50,21 @@ It records time, position, velocity, total force, and excitation force for
 each body as CSV artifacts. New runs also record position, velocity, internal
 mechanics force, and power for each PTO. The Applications source is pinned to
 [`d53d4d4c9eda2581f04204f5d394a6ef84bb099e`](https://github.com/WEC-Sim/WEC-Sim_Applications/tree/d53d4d4c9eda2581f04204f5d394a6ef84bb099e).
-The first run [passed all three model jobs](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37471757955),
+The first run [passed all three model jobs](https://github.com/cmudrc/wecsim-python/actions/runs/37471757955),
 producing nine finite body trajectories with 4,001 samples each (two RM3,
 two OSWEC, and five Sphere). The `1m-ME` and `1m` Sphere trajectories were
 identical in the saved motion and force signals: the Morison element in that
 published case has nonzero coefficients only in x while the free-decay motion
 is in heave.
-The renewed [model baseline run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556464)
+The renewed [model baseline run](https://github.com/cmudrc/wecsim-python/actions/runs/37472556464)
 also generated the Sphere HDF5 file with current MATLAB BEMIO and verified
 Python preprocessing of it. `source/objects/linearHeave.py` uses that
 preprocessing, the heave restoring coefficient, infinite-frequency added
 mass, and radiation impulse-response kernel. It integrates the resulting
 linear convolution equation with a fixed 0.01 s trapezoidal step. The five
-Sphere trajectory comparisons [passed in the same MATLAB job](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37476318082)
+Sphere trajectory comparisons [passed in the same MATLAB job](https://github.com/cmudrc/wecsim-python/actions/runs/37476318082)
 so that the source, HDF5, time grid, and output remain paired.
-The [current reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37483219008)
+The [current reference-model run](https://github.com/cmudrc/wecsim-python/actions/runs/37483219008)
 passed all RM3, OSWEC, and Sphere jobs, including Python preprocessing of
 the current RM3 and OSWEC HDF5 inputs for both bodies and the focused dynamics
 comparisons described above.
@@ -81,10 +81,10 @@ MATLAB BEMIO code, then compares the Python solver with coupling off and on
 against paired MATLAB Cases 1 and 2. The CLI selects these hydrodynamic modes
 with `rm3` and `rm3 --b2b`; neither command executes an arbitrary application
 input file.
-The [four-job reference-model run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37486493413)
+The [four-job reference-model run](https://github.com/cmudrc/wecsim-python/actions/runs/37486493413)
 passed RM3, RM3 body-to-body, OSWEC, and Sphere, including the Sphere CLI
 smoke test against the MATLAB-generated HDF5 input.
-The [case-driven dynamics run](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37491350883)
+The [case-driven dynamics run](https://github.com/cmudrc/wecsim-python/actions/runs/37491350883)
 passed all four jobs again using JSON cases through the main runner. It also
 compared the mapped linear-coordinate RM3 heave and Sphere free-decay cases
 against the paired MATLAB trajectories.
@@ -96,7 +96,7 @@ body-local or fixed-world PTO endpoints. Its attachment geometry, projected
 stroke, generalized forces, and damping power have analytical and case-level
 checks. A non-default attachment-point case has not yet been paired with a
 MATLAB Simscape trajectory.
-`wecsim_python.WEC` provides a Python builder for this same validated path and
+`wecsim.WEC` provides a Python builder for this same validated path and
 returns named NumPy body, coordinate, and PTO histories. The JSON case runner
 remains available for saved cases; the Python builder currently covers the
 `linear_subspace` layout only.
@@ -114,7 +114,7 @@ containing the 46 explicit RM3, OSWEC, and Sphere cases. This checks the
 pinned MATLAB reference for those cases, but there is no Python time-series
 comparison yet.
 
-The [first full application sweep](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37472556454)
+The [first full application sweep](https://github.com/cmudrc/wecsim-python/actions/runs/37472556454)
 recorded 42 passed methods, two failed Passive Yaw assertions, two MoorDyn
 methods filtered by upstream's CI assumption, and an empty Multiple Wave
 Spectra suite. Both Variable Hydro methods passed under MATLAB R2025b. A
@@ -132,7 +132,7 @@ The `Multiple_Wave_Spectra` test class is excluded by MATLAB because its
 class name does not match its filename. Our harness generates its OSWEC HDF5
 file with BEMIO, runs the input file directly, and requires body output
 instead of accepting an empty test suite as success. The
-[direct case passed](https://github.com/cmudrc/WEC-Sim-Python/actions/runs/37476616198).
+[direct case passed](https://github.com/cmudrc/wecsim-python/actions/runs/37476616198).
 The Passive Yaw and MoorDyn findings are MATLAB-reference gaps, not evidence
 of Python dynamics agreement or disagreement.
 

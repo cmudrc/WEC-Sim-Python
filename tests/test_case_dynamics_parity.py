@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import pytest
 
-from wecsim_python import NoWave, RegularWave, WEC
+from wecsim import NoWave, RegularWave, WEC
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL")

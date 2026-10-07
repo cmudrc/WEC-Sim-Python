@@ -8,7 +8,7 @@ import pytest
 
 from examples.python.configurable_rm3_pto import HYDRO, build_wec
 from source.objects.caseDynamics import run_case
-from wecsim_python import NoWave, RegularWave, WEC, WorldPoint
+from wecsim import NoWave, RegularWave, WEC, WorldPoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
