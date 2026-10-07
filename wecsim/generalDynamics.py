@@ -64,6 +64,7 @@ class GeneralizedDynamics:
         pto_equilibrium: np.ndarray | None = None,
         pto_bias: np.ndarray | None = None,
         radiation_discretization: str = "trapezoid",
+        added_mass_delay: float | None = None,
         controlled_ptos: tuple = (),
     ):
         if not bodies or coordinate_count < 1:
@@ -89,6 +90,13 @@ class GeneralizedDynamics:
         if radiation_discretization not in ("trapezoid", "fir"):
             raise ValueError("radiation_discretization must be trapezoid or fir")
         self.radiation_discretization = radiation_discretization
+        if added_mass_delay is not None and (
+            not np.isfinite(added_mass_delay) or added_mass_delay <= 0
+            or radiation_discretization != "trapezoid"
+            or any(body.radiation_kernel is None for body in bodies)
+        ):
+            raise ValueError("added-mass delay needs positive delay and convolution radiation")
+        self.added_mass_delay = added_mass_delay
         self.controlled_ptos = tuple(controlled_ptos)
         for connection in self.controlled_ptos:
             if (connection.control is None
@@ -128,6 +136,26 @@ class GeneralizedDynamics:
         if (self.controlled_ptos
                 and any(body.radiation_kernel is not None for body in self.bodies)):
             raise ValueError("sampled PTO control currently needs constant radiation")
+        self.adjusted_rigid_mass = []
+        self.applied_added_mass = []
+        if added_mass_delay is not None:
+            for index, body in enumerate(bodies):
+                rigid = body.rigid_mass.copy()
+                blocks = [block.copy() for block in body.added_mass]
+                own = blocks[index]
+                shift = np.zeros((6, 6))
+                # WEC-Sim moves this part of A_inf into the Simscape body;
+                # the remaining matrix acts on delayed body acceleration.
+                shift[:3, :3] = 2 * np.trace(own[:3, :3]) * np.eye(3)
+                for axis in range(3, 6):
+                    shift[axis, axis] = own[axis, axis]
+                    for other in range(axis + 1, 6):
+                        shift[axis, other] = shift[other, axis] = own[axis, other]
+                rigid += shift
+                own -= shift
+                self.adjusted_rigid_mass.append(rigid)
+                self.applied_added_mass.append(tuple(blocks))
+        self.delayed_body_acceleration = tuple(np.zeros(6) for _ in bodies)
 
     def acceleration(
         self,
@@ -159,14 +187,20 @@ class GeneralizedDynamics:
         for i, body in enumerate(self.bodies):
             motion = motions[i]
             j = motion.jacobian
+            rigid_mass = (body.rigid_mass if self.added_mass_delay is None
+                          else self.adjusted_rigid_mass[i])
             body_force = (body.static_force + body.excitation(at_time)
                           - body.restoring @ motion.displacement
-                          - body.rigid_mass @ motion.bias_acceleration)
-            mass += j.T @ body.rigid_mass @ j
+                          - rigid_mass @ motion.bias_acceleration)
+            mass += j.T @ rigid_mass @ j
             for k, other in enumerate(motions):
-                a = body.added_mass[k]
-                mass += j.T @ a @ other.jacobian
-                body_force -= a @ other.bias_acceleration
+                if self.added_mass_delay is None:
+                    a = body.added_mass[k]
+                    mass += j.T @ a @ other.jacobian
+                    body_force -= a @ other.bias_acceleration
+                else:
+                    body_force -= (self.applied_added_mass[i][k]
+                                   @ self.delayed_body_acceleration[k])
                 body_force -= body.damping[k] @ velocities[k]
             if known_radiation is not None:
                 body_force -= known_radiation[i]
@@ -197,6 +231,10 @@ class GeneralizedDynamics:
         steps = round(end_time / dt)
         if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
             raise ValueError("end_time must be an integer multiple of dt")
+        if self.added_mass_delay is not None and self.added_mass_delay >= dt:
+            raise ValueError("added-mass delay must be shorter than the time step")
+        if self.added_mass_delay is not None:
+            self.delayed_body_acceleration = tuple(np.zeros(6) for _ in self.bodies)
         n = self.coordinate_count
         q = np.zeros((steps + 1, n))
         v = np.zeros_like(q)
@@ -307,6 +345,19 @@ class GeneralizedDynamics:
         if any(kernel is None for kernel in kernels):
             raise ValueError("all bodies must use the same radiation representation")
         velocity_history = np.zeros((len(time), count * 6))
+        body_acceleration = (np.zeros((len(time), count, 6))
+                             if self.added_mass_delay is not None else None)
+
+        def save_body_state(step):
+            for index, body in enumerate(self.bodies):
+                motion = body.motion(q[step], v[step])
+                velocity_history[step, 6 * index:6 * (index + 1)] = (
+                    motion.jacobian @ v[step]
+                )
+                if body_acceleration is not None:
+                    body_acceleration[step, index] = (
+                        motion.jacobian @ a[step] + motion.bias_acceleration
+                    )
 
         def known_radiation(step):
             result = []
@@ -316,16 +367,29 @@ class GeneralizedDynamics:
                     "tij,tj->i", kernel[1:memory + 1],
                     velocity_history[step - memory:step][::-1],
                 )
+                if len(kernel) > 1 and step >= len(kernel) - 1:
+                    known -= dt / 2 * (
+                        kernel[-1] @ velocity_history[step - memory]
+                    )
                 result.append(known)
             return tuple(result)
 
         zeros = tuple(np.zeros(6) for _ in self.bodies)
         a[0] = self.acceleration(time[0], q[0], v[0],
                                  known_radiation=zeros, dt=dt)
-        velocity_history[0] = np.concatenate([
-            body.motion(q[0], v[0]).jacobian @ v[0] for body in self.bodies
-        ])
+        save_body_state(0)
         for step in range(1, len(time)):
+            if body_acceleration is not None:
+                if step == 1:
+                    delayed = body_acceleration[0]
+                else:
+                    # Simulink's tiny Transport Delay extrapolates from the
+                    # two preceding major-step acceleration samples.
+                    factor = 1 - self.added_mass_delay / dt
+                    delayed = (body_acceleration[step - 1] + factor
+                               * (body_acceleration[step - 1]
+                                  - body_acceleration[step - 2]))
+                self.delayed_body_acceleration = tuple(delayed)
             known = known_radiation(step)
             trial_speed = v[step - 1].copy()
             for _ in range(12):
@@ -348,10 +412,7 @@ class GeneralizedDynamics:
             a[step] = self.acceleration(
                 time[step], q[step], v[step], known_radiation=known, dt=dt,
             )
-            velocity_history[step] = np.concatenate([
-                body.motion(q[step], v[step]).jacobian @ v[step]
-                for body in self.bodies
-            ])
+            save_body_state(step)
 
     def _integrate_fir(self, time, q, v, a, dt):
         """Sample the IRF at each step and hold its FIR force through RK4."""

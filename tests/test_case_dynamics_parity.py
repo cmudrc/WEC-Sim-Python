@@ -81,12 +81,12 @@ def _assert_rm3_pto(columns, expected, *, force_limit):
                   - columns["body2_heave_position"][0])
     pitch = columns["body1_pitch_position"]
     pitch_speed = columns["body1_pitch_velocity"]
-    stroke = (columns["body1_heave_position"]
-              - columns["body2_heave_position"] - center_gap
-              - center_gap * (np.cos(pitch) - 1))
-    speed = (columns["body1_heave_velocity"]
-             - columns["body2_heave_velocity"]
-             + center_gap * np.sin(pitch) * pitch_speed)
+    cosine = np.cos(pitch)
+    stroke = ((columns["body1_heave_position"]
+               - columns["body2_heave_position"]) / cosine - center_gap)
+    speed = ((columns["body1_heave_velocity"]
+              - columns["body2_heave_velocity"]
+              + (center_gap + stroke) * np.sin(pitch) * pitch_speed) / cosine)
     force = columns["pto_relative_heave_force"]
     _max_error(stroke, expected[:, 3], 0.009, "RM3 PTO stroke")
     _max_error(speed, expected[:, 9], 0.0055, "RM3 PTO speed")

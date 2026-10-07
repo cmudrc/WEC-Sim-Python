@@ -10,13 +10,16 @@ from wecsim.generalDynamics import (
 
 def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
                 pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0,
-                radiation_discretization="trapezoid"):
+                radiation_discretization="trapezoid", added_mass=0.0,
+                added_mass_delay=None):
     jacobian = np.zeros((6, 1))
     jacobian[2, 0] = 1
     rigid_mass = np.zeros((6, 6))
     rigid_mass[2, 2] = mass
     restoring = np.zeros((6, 6))
     restoring[2, 2] = stiffness
+    added = np.zeros((6, 6))
+    added[2, 2] = added_mass
 
     def motion(q, v):
         displacement = np.zeros(6)
@@ -25,7 +28,7 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
 
     body = DynamicBody(
         rigid_mass=rigid_mass,
-        added_mass=(np.zeros((6, 6)),),
+        added_mass=(added,),
         damping=(np.zeros((6, 6)),),
         restoring=restoring,
         static_force=np.zeros(6),
@@ -39,6 +42,7 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
         pto_stiffness=np.array([[pto_stiffness]]),
         pto_equilibrium=np.array([pto_equilibrium]),
         radiation_discretization=radiation_discretization,
+        added_mass_delay=added_mass_delay,
     )
 
 
@@ -93,6 +97,74 @@ def test_radiation_memory_matches_augmented_state_equation():
     assert expected.success
     assert np.max(np.abs(response.coordinate[:, 0] - expected.y[0])) < 3e-4
     assert np.max(np.abs(response.speed[:, 0] - expected.y[1])) < 6e-4
+
+
+def test_trapezoidal_radiation_halves_full_window_endpoint():
+    kernel = np.zeros((3, 6, 6))
+    kernel[-1, 2, 2] = 1
+    system = _oscillator(mass=1, stiffness=0, radiation=kernel)
+    response = system.integrate(
+        dt=0.1, end_time=0.2, initial_speed=np.array([1.0]),
+    )
+    # At t=0.2 s the oldest velocity first reaches the 0.2 s memory
+    # boundary. The trapezoidal convolution gives that endpoint half weight.
+    np.testing.assert_allclose(response.acceleration[:, 0],
+                               [0, 0, -0.05], rtol=0, atol=1e-12)
+
+
+def test_delayed_added_mass_matches_independent_oscillator_recurrence():
+    kernel = np.zeros((3, 6, 6))
+    dt, mass, added, stiffness = 0.1, 2.0, 1.0, 8.0
+    delay = 1e-7
+    system = _oscillator(
+        mass=mass, stiffness=stiffness, radiation=kernel,
+        added_mass=added, added_mass_delay=delay,
+    )
+    response = system.integrate(
+        dt=dt, end_time=0.3, initial_coordinate=np.array([1.0]),
+    )
+    q = np.zeros(4)
+    v = np.zeros(4)
+    a = np.zeros(4)
+    q[0] = 1
+    adjusted_mass = mass + 2 * added
+    applied_mass = added - 2 * added
+    a[0] = -stiffness * q[0] / adjusted_mass
+    for step in range(1, 4):
+        delayed = (a[0] if step == 1 else
+                   a[step - 1] + (1 - delay / dt)
+                   * (a[step - 1] - a[step - 2]))
+        a[step] = (
+            -stiffness * (q[step - 1] + dt * v[step - 1]
+                          + dt**2 / 4 * a[step - 1])
+            - applied_mass * delayed
+        ) / (adjusted_mass + stiffness * dt**2 / 4)
+        v[step] = v[step - 1] + dt * (a[step - 1] + a[step]) / 2
+        q[step] = q[step - 1] + dt * (v[step - 1] + v[step]) / 2
+    np.testing.assert_allclose(response.coordinate[:, 0], q, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.speed[:, 0], v, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.acceleration[:, 0], a, rtol=0, atol=1e-12)
+    repeated = system.integrate(
+        dt=dt, end_time=0.3, initial_coordinate=np.array([1.0]),
+    )
+    np.testing.assert_array_equal(repeated.coordinate, response.coordinate)
+
+
+def test_implicit_added_mass_preserves_undamped_oscillator_energy():
+    kernel = np.zeros((101, 6, 6))
+    mass, added, stiffness = 2.0, 1.0, 8.0
+    system = _oscillator(mass=mass, stiffness=stiffness, radiation=kernel,
+                         added_mass=added)
+    response = system.integrate(
+        dt=0.01, end_time=1, initial_coordinate=np.array([1.0]),
+    )
+    np.testing.assert_allclose(
+        response.acceleration[0, 0], -stiffness / (mass + added),
+        rtol=0, atol=1e-12,
+    )
+    energy = (0.5 * (mass + added) * response.speed[:, 0]**2
+              + 0.5 * stiffness * response.coordinate[:, 0]**2)
+    assert np.max(np.abs(energy - energy[0])) < 1e-10
 
 
 def test_fir_uses_full_sampled_taps_and_holds_force_during_each_step():

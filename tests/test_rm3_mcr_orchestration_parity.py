@@ -53,7 +53,8 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
         "RM3_MCR_MAT": option_3,
     }[LABEL]
     hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
-    result = run_rm3_mcr(hydro, conditions)
+    result = run_rm3_mcr(hydro, conditions,
+                         added_mass_scheme="simulink_delay")
     assert result.conditions == conditions
     assert len(result.traces) == 8
 
@@ -90,9 +91,9 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
         center_gap = (response.body_position[0, 0, 2]
                       - response.body_position[0, 1, 2])
         pitch = response.body_position[:, 0, 4]
-        stroke = (response.body_position[:, 0, 2]
-                  - response.body_position[:, 1, 2]
-                  - center_gap * np.cos(pitch))
+        stroke = ((response.body_position[:, 0, 2]
+                   - response.body_position[:, 1, 2]) / np.cos(pitch)
+                  - center_gap)
         _max_error(stroke, pto[:, 3], 0.0115,
                    f"MCR case {index} PTO stroke")
         _max_error(response.pto_velocity, pto[:, 9], 0.0075,

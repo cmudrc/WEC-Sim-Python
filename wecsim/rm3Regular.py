@@ -25,6 +25,7 @@ class RM3RegularResponse:
     body_position: np.ndarray
     body_velocity: np.ndarray
     pto_force: np.ndarray
+    pto_stroke: np.ndarray
     pto_velocity: np.ndarray
     pto_mechanical_power: np.ndarray
     pto_dissipated_power: np.ndarray
@@ -42,6 +43,8 @@ def solve_rm3_regular(
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
+    added_mass_scheme: str = "implicit",
+    excitation_force: np.ndarray | None = None,
     no_wave: bool = False,
     initial_coordinate: np.ndarray | None = None,
     initial_speed: np.ndarray | None = None,
@@ -56,12 +59,20 @@ def solve_rm3_regular(
 
     The bodies use equilibrium displaced-volume masses, fixed-frequency
     added mass and radiation damping, hydrostatic restoring, and regular-wave
-    excitation. Rigid-body rotation changes their surge/heave Jacobians at
-    each step. Without ``radiation_memory``, fixed-frequency damping uses
+    excitation. Rigid-body rotation and slider travel change their
+    surge/heave Jacobians at each step. Without ``radiation_memory``,
+    fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
+    ``added_mass_scheme="implicit"`` includes infinite-frequency added mass
+    in the effective inertia. ``"simulink_delay"`` reproduces the pinned
+    WEC-Sim model's rigid-body mass split and 1e-7 s delayed acceleration
+    feedback for numerical comparison. The delay is not a WEC property.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
+    ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
+    every output time for imported irregular spectra; RK4 stage forces are
+    linearly interpolated between those samples.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
     memory. Initial coordinates are shared surge, float heave, spar heave,
     and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
@@ -87,6 +98,10 @@ def solve_rm3_regular(
                             else "constant")
     if radiation_method not in ("constant", "convolution", "fir"):
         raise ValueError("unsupported RM3 radiation method")
+    if added_mass_scheme not in ("implicit", "simulink_delay"):
+        raise ValueError("added_mass_scheme must be implicit or simulink_delay")
+    if added_mass_scheme == "simulink_delay" and radiation_method != "convolution":
+        raise ValueError("simulink_delay requires convolution radiation")
     if ((radiation_method == "constant" and radiation_memory is not None)
             or (radiation_method != "constant" and radiation_memory is None)):
         raise ValueError("constant radiation has no memory; convolution and FIR need it")
@@ -100,6 +115,13 @@ def solve_rm3_regular(
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
     time = np.arange(steps + 1) * dt
+    if excitation_force is not None:
+        excitation_force = np.asarray(excitation_force, dtype=float)
+        if (excitation_force.shape != (steps + 1, 2, 6)
+                or not np.isfinite(excitation_force).all()):
+            raise ValueError("excitation_force must have shape (time, 2, 6) and be finite")
+        if no_wave or radiation_memory is None or wave_height != 0:
+            raise ValueError("sampled excitation needs zero regular-wave height and radiation memory")
     omega = 2 * np.pi / wave_period
     if radiation_memory is not None:
         memory_steps = round(radiation_memory / dt)
@@ -134,9 +156,11 @@ def solve_rm3_regular(
             if radiation_memory > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             body.hydroForcePre(
-                [] if no_wave else omega, [0], len(convolution_time),
+                [] if no_wave or excitation_force is not None else omega,
+                [0], len(convolution_time),
                 convolution_time, [], dt, rho, g,
-                "noWaveCIC" if no_wave else "regularCIC",
+                "noWaveCIC" if no_wave or excitation_force is not None
+                else "regularCIC",
                 np.vstack((time, np.zeros_like(time))),
                 index, 2, 0, 0, int(b2b),
             )
@@ -189,24 +213,37 @@ def solve_rm3_regular(
 
         def motion(q, v, *, index=index, lever=lever):
             angle = q[3]
+            slide = q[index + 1]
+            radius = lever + slide
+            sine, cosine = np.sin(angle), np.cos(angle)
             jacobian = np.zeros((6, 4))
             jacobian[0, 0] = 1.0
-            jacobian[2, index + 1] = 1.0
-            jacobian[0, 3] = lever * np.cos(angle)
-            jacobian[2, 3] = -lever * np.sin(angle)
+            jacobian[0, index + 1] = sine
+            jacobian[2, index + 1] = cosine
+            jacobian[0, 3] = radius * cosine
+            jacobian[2, 3] = -radius * sine
             jacobian[4, 3] = 1.0
             curvature = np.array([
-                -lever * np.sin(angle), 0.0, -lever * np.cos(angle),
+                2 * cosine * v[index + 1] * v[3] - radius * sine * v[3]**2,
+                0.0,
+                -2 * sine * v[index + 1] * v[3] - radius * cosine * v[3]**2,
                 0.0, 0.0, 0.0,
-            ]) * v[3]**2
+            ])
             displacement = np.array([
-                q[0] + lever * np.sin(angle), 0.0,
-                q[index + 1] + lever * (np.cos(angle) - 1.0),
+                q[0] + radius * sine, 0.0,
+                slide * cosine + lever * (cosine - 1.0),
                 0.0, angle, 0.0,
             ])
             return BodyMotion(displacement, jacobian, curvature)
 
-        def excitation(at_time, *, re=body["re"], im=body["im"]):
+        def excitation(at_time, *, re=body["re"], im=body["im"],
+                       body_index=index):
+            if excitation_force is not None:
+                sample = min(max(at_time / dt, 0.0), float(steps))
+                left = min(int(sample), steps - 1)
+                fraction = sample - left
+                return ((1 - fraction) * excitation_force[left, body_index]
+                        + fraction * excitation_force[left + 1, body_index])
             ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time
                     else (1.0 - np.cos(np.pi * at_time / ramp_time)) / 2)
             return wave_height / 2 * ramp * (
@@ -233,6 +270,7 @@ def solve_rm3_regular(
                                   -pto_equilibrium / 2, 0]),
         radiation_discretization=("fir" if radiation_method == "fir"
                                   else "trapezoid"),
+        added_mass_delay=(1e-7 if added_mass_scheme == "simulink_delay" else None),
     )
     solved = system.integrate(
         dt=dt, end_time=end_time,
@@ -240,13 +278,15 @@ def solve_rm3_regular(
     )
     q = solved.coordinate
     v = solved.speed
+    pto_stroke = q[:, 1] - q[:, 2]
     pto_velocity = v[:, 1] - v[:, 2]
     pto_force = (-pto_damping * pto_velocity
-                 - pto_stiffness * (q[:, 1] - q[:, 2] - pto_equilibrium))
+                 - pto_stiffness * (pto_stroke - pto_equilibrium))
     return RM3RegularResponse(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
-        pto_force=pto_force, pto_velocity=pto_velocity,
+        pto_force=pto_force, pto_stroke=pto_stroke,
+        pto_velocity=pto_velocity,
         pto_mechanical_power=-pto_force * pto_velocity,
         pto_dissipated_power=pto_damping * pto_velocity**2,
     )

@@ -36,7 +36,8 @@ def test_published_pto_extension_free_decay(
              / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     case = {
         "simulation": {"dt": 0.1, "end_time": 30,
-                       "radiation_memory": 60},
+                       "radiation_memory": 60,
+                       "added_mass_scheme": "simulink_delay"},
         "wave": {"type": "none"},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,
@@ -86,12 +87,12 @@ def test_published_pto_extension_free_decay(
         )
     pitch = response.body_position[:, 0, 4]
     pitch_speed = response.body_velocity[:, 0, 4]
-    stroke = (response.body_position[:, 0, 2]
-              - response.body_position[:, 1, 2]
-              - center_gap * np.cos(pitch))
-    speed = (response.body_velocity[:, 0, 2]
-             - response.body_velocity[:, 1, 2]
-             + center_gap * np.sin(pitch) * pitch_speed)
+    cosine = np.cos(pitch)
+    stroke = ((response.body_position[:, 0, 2]
+               - response.body_position[:, 1, 2]) / cosine - center_gap)
+    speed = ((response.body_velocity[:, 0, 2]
+              - response.body_velocity[:, 1, 2]
+              + (center_gap + stroke) * np.sin(pitch) * pitch_speed) / cosine)
     pto = np.loadtxt(
         reference / f"RM3_PTO_Extension_{name}_pto1.csv", delimiter=",",
     )

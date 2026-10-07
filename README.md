@@ -122,6 +122,14 @@ discrete FIR calculation; `"convolution"` remains the default. The same
 setting is available for no-wave free decay, without a paired FIR baseline. Both use
 `radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+For this RM3 convolution layout, the solver follows the published pitched
+slider geometry and uses an implicit effective added mass by default. To
+reproduce the pinned MATLAB/Simulink numerical trajectory, set
+`simulation.added_mass_scheme` to `"simulink_delay"` (or pass that keyword to
+`solve_rm3_regular` and the RM3 MCR runners). This explicitly selects the
+source model's mass split and 1e-7 s acceleration delay; the delay is a
+numerical setting, not a WEC property. The published Cases 5 and 6 use a
+suspect fitted state-space radiation model and remain unsupported.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
 `center_gravity`. Its stationary motion appears in the response. With this
@@ -165,6 +173,29 @@ The paired MATLAB workflow executes the actual Option 1, 2, and 3
 and PTO trajectories, average powers, and power matrices. The Option 1
 physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
 multiple PTOs, and other MCR postprocessing remain unverified.
+
+For the published three imported-spectrum RM3 sea states, pass the MAT-file
+table to the Python runner. Paired MATLAB checks cover the incident waves,
+excitation, body and PTO trajectories, and absorbed power. Across the three
+400 s runs, the largest position differences are 14.4 mm surge, 1.03 mm
+heave, and 0.000638 rad pitch; mean absorbed powers differ by at most 29 W:
+
+```python
+from wecsim import run_rm3_spectrum_mcr
+
+sea_states = run_rm3_spectrum_mcr(
+    "rm3.h5", "RM3_MCROPT3_SeaState/mcrExample.mat",
+)
+print(sea_states.mean_absorbed_power)
+first_wave = sea_states.wave_elevation[0]
+first_float = sea_states.traces[0].response.body_position[:, 0, :]
+```
+
+The three `spectrumData*.mat` files must sit beside `mcrExample.mat`. Their
+third column supplies the exact phase used for each wave component; no random
+seed is needed. The runner uses the same 60 s convolution radiation model as
+the validated RM3 cases 3 and 4.
+
 For a no-wave floating joint, `constraint.initial_coordinate` and
 `constraint.initial_speed` accept four values or dictionaries keyed by
 `surge`, `float_heave`, `spar_heave`, and `pitch`. In the published RM3 PTO

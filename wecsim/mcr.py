@@ -14,6 +14,7 @@ import numpy as np
 from scipy.io import loadmat
 
 from .rm3Regular import solve_rm3_regular
+from .irregularWave import imported_spectrum_components, synthesize_irregular_response
 
 
 @dataclass(frozen=True)
@@ -78,6 +79,41 @@ class MCRResult:
         if not np.isfinite(matrix).all():
             raise ValueError("MCR sea-state grid is incomplete for these PTO settings")
         return MCRPowerMatrix(periods, heights, matrix)
+
+
+@dataclass(frozen=True)
+class MCRSeaStateResult:
+    """Published spectrum-import MCR outputs in source case order."""
+
+    spectrum_files: tuple[Path, ...]
+    mean_absorbed_power: np.ndarray
+    traces: tuple[MCRTrace, ...]
+    wave_elevation: tuple[np.ndarray, ...]
+
+
+def mcr_spectrum_files(path: str | Path) -> tuple[Path, ...]:
+    """Read the published Option 3 sea-state MAT table and resolve its files."""
+    mat_file = Path(path).expanduser().resolve(strict=True)
+    data = loadmat(mat_file, squeeze_me=True, struct_as_record=False)
+    if "mcr" not in data:
+        raise ValueError("MAT file has no mcr structure")
+    mcr = data["mcr"]
+    if (not hasattr(mcr, "header") or not hasattr(mcr, "cases")
+            or tuple(str(value) for value in np.ravel(mcr.header))
+            != ("waves.spectrumFile", "simu.solver")):
+        raise ValueError("unsupported imported-spectrum MCR fields")
+    cases = np.asarray(mcr.cases, dtype=object)
+    if cases.ndim != 2 or cases.shape[1] != 2 or len(cases) == 0:
+        raise ValueError("imported-spectrum MCR needs spectrum and solver columns")
+    if any(str(solver) != "ode4" for solver in cases[:, 1]):
+        raise ValueError("only the published fixed-step ode4 solver is supported")
+    filenames = tuple(str(value) for value in cases[:, 0])
+    if any(not name or Path(name).name != name for name in filenames):
+        raise ValueError("spectrum file names must be local to the MAT table")
+    if len(set(filenames)) != len(filenames):
+        raise ValueError("spectrum files must not be duplicated")
+    return tuple((mat_file.parent / name).resolve(strict=True)
+                 for name in filenames)
 
 
 def _values(values, name, *, positive=False, nonnegative=False):
@@ -229,6 +265,7 @@ def run_rm3_mcr(
     dt: float = 0.1, end_time: float = 400.0,
     ramp_time: float = 100.0, radiation_memory: float = 60.0,
     averaging_start_time: float = 199.9,
+    added_mass_scheme: str = "implicit",
 ) -> MCRResult:
     """Run the published RM3 floating-joint conditions and PTO power matrix."""
     def simulate(condition):
@@ -238,9 +275,58 @@ def run_rm3_mcr(
             pto_damping=condition.pto_damping,
             pto_stiffness=condition.pto_stiffness,
             radiation_memory=radiation_memory,
+            added_mass_scheme=added_mass_scheme,
             dt=dt, end_time=end_time, ramp_time=ramp_time,
         )
         return MCRTrace(response.time, response.pto_mechanical_power, response)
 
     return run_mcr(conditions, simulate,
                    averaging_start_time=averaging_start_time)
+
+
+def run_rm3_spectrum_mcr(
+    h5_file: str | Path, mat_file: str | Path, *,
+    dt: float = 0.1, end_time: float = 400.0,
+    ramp_time: float = 100.0, radiation_memory: float = 60.0,
+    pto_damping: float = 1_200_000.0,
+    averaging_start_time: float = 199.9,
+    added_mass_scheme: str = "implicit",
+) -> MCRSeaStateResult:
+    """Run the published three imported-spectrum RM3 MCR sea states.
+
+    Spectrum frequencies, densities, and phases come from each source MAT
+    file. The three cases share the published RM3 floating joint and PTO.
+    """
+    if (not np.isfinite(averaging_start_time)
+            or averaging_start_time < 0
+            or averaging_start_time > end_time):
+        raise ValueError("averaging start time must be within the run")
+    files = mcr_spectrum_files(mat_file)
+    traces = []
+    means = []
+    elevations = []
+    for spectrum_file in files:
+        components = imported_spectrum_components(h5_file, spectrum_file)
+        wave = tuple(
+            synthesize_irregular_response(
+                h5_file, components, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, body_number=body,
+            )
+            for body in (1, 2)
+        )
+        forcing = np.stack([response.excitation_force for response in wave], axis=1)
+        response = solve_rm3_regular(
+            h5_file, wave_height=0, pto_damping=pto_damping,
+            radiation_memory=radiation_memory,
+            added_mass_scheme=added_mass_scheme,
+            excitation_force=forcing,
+            dt=dt, end_time=end_time, ramp_time=ramp_time,
+        )
+        start = int(np.searchsorted(response.time,
+                                    averaging_start_time - 1e-10))
+        power = response.pto_mechanical_power.copy()
+        traces.append(MCRTrace(response.time.copy(), power, response))
+        means.append(float(np.mean(power[start:])))
+        elevations.append(wave[0].elevation.copy())
+    return MCRSeaStateResult(files, np.asarray(means),
+                             tuple(traces), tuple(elevations))
