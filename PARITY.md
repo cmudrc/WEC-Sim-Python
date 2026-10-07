@@ -80,6 +80,14 @@ validity; it is excluded from validated parity until the fit is resolved.
 Diagnostic PR #6 was closed without merging its state-space solver. The
 convolution results for Cases 3 and 4 were identical, sample for sample,
 between the original branch point and that diagnostic branch.
+An independent no-wave check also separates the models: from a 0.01 m/s
+common-surge perturbation, the default convolution solver ends at 0.00959 m/s
+without cross-body radiation and 0.00934 m/s with it after 400 s. The pinned
+fit's zero-wave linearization instead grows to 0.077 and 0.115 m/s, with
+positive real growth rates of 0.0053 and 0.0064 s⁻¹. This is a regression
+check on the default dynamics, not a Case 5–6 parity claim. The explicit
+`simulink_delay` option is used only for source-numerics comparisons and does
+not enable state-space radiation.
 
 The paired case-runner checks compare the MATLAB and Python time grids, all
 active body positions and velocities, and stationary degrees of freedom. RM3
