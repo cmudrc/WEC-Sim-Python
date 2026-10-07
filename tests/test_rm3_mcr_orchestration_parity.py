@@ -11,6 +11,7 @@ from wecsim import mcr_grid, mcr_mat_file, mcr_wave_statistics, run_rm3_mcr
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+LABEL = os.environ.get("WEC_SIM_MCR_LABEL", "RM3_MCR_MAT")
 pytestmark = pytest.mark.skipif(
     not (APPLICATIONS and REFERENCE),
     reason="paired MATLAB RM3 MCR output not provided",
@@ -37,7 +38,8 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
     option_3 = mcr_mat_file(mcr_root / "RM3_MCROPT3/mcrExample.mat")
     assert option_1 == option_2 == option_3
 
-    summary = np.loadtxt(reference / "RM3_MCR_MAT_summary.csv", delimiter=",")
+    assert LABEL in ("RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT")
+    summary = np.loadtxt(reference / f"{LABEL}_summary.csv", delimiter=",")
     assert summary.shape == (8, 6)
     np.testing.assert_array_equal(
         np.array([tuple(vars(case).values()) for case in option_3]),
@@ -45,9 +47,14 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
     )
     np.testing.assert_array_equal(summary[:, 2], summary[:, 5])
 
+    conditions = {
+        "RM3_MCR_ARRAY": option_1,
+        "RM3_MCR_EXCEL": option_2,
+        "RM3_MCR_MAT": option_3,
+    }[LABEL]
     hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
-    result = run_rm3_mcr(hydro, option_3)
-    assert result.conditions == option_3
+    result = run_rm3_mcr(hydro, conditions)
+    assert result.conditions == conditions
     assert len(result.traces) == 8
 
     for index, trace in enumerate(result.traces, start=1):
@@ -57,7 +64,7 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
         np.testing.assert_allclose(trace.time, response.time, rtol=0, atol=0)
         for body in (1, 2):
             expected = np.loadtxt(
-                reference / f"RM3_MCR_MAT_case{index}_body{body}.csv",
+                reference / f"{LABEL}_case{index}_body{body}.csv",
                 delimiter=",",
             )
             assert expected.shape == (4001, 25)
@@ -70,13 +77,13 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
             ):
                 _max_error(response.body_position[:, body - 1, dof],
                            expected[:, 1 + dof], position_limit,
-                           f"MCR case {index} body {body} {axis} position")
+                           f"{LABEL} case {index} body {body} {axis} position")
                 _max_error(response.body_velocity[:, body - 1, dof],
                            expected[:, 7 + dof], velocity_limit,
-                           f"MCR case {index} body {body} {axis} velocity")
+                           f"{LABEL} case {index} body {body} {axis} velocity")
 
         pto = np.loadtxt(
-            reference / f"RM3_MCR_MAT_case{index}_pto1.csv", delimiter=",",
+            reference / f"{LABEL}_case{index}_pto1.csv", delimiter=",",
         )
         assert pto.shape == (4001, 25)
         np.testing.assert_allclose(response.time, pto[:, 0], rtol=0, atol=1e-10)
@@ -110,7 +117,7 @@ def test_published_mcr_inputs_and_actual_matlab_mcr_outputs():
         np.testing.assert_array_equal(matrix.heights, [1.5, 2.5])
         label = "D12" if damping == 1_200_000 else "D24"
         matlab_matrix = np.loadtxt(
-            reference / f"RM3_MCR_MAT_power_matrix_{label}.csv",
+            reference / f"{LABEL}_power_matrix_{label}.csv",
             delimiter=",",
         )
         assert matlab_matrix.shape == (2, 2)

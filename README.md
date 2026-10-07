@@ -160,9 +160,9 @@ the full trajectory available. The published RM3 example averages from
 MATLAB's signed PTO power column. A spring may return stored energy, so an
 individual absorbed-power sample may be negative.
 
-The paired MATLAB workflow executes the actual Option 3 `wecSimMCR` driver
-and compares its eight body and PTO trajectories, average powers, and power
-matrices. Options 1 and 2 produce the same published case table; the Option 1
+The paired MATLAB workflow executes the actual Option 1, 2, and 3
+`wecSimMCR` drivers separately. For each option it compares all eight body
+and PTO trajectories, average powers, and power matrices. The Option 1
 physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
 multiple PTOs, and other MCR postprocessing remain unverified.
 For a no-wave floating joint, `constraint.initial_coordinate` and
