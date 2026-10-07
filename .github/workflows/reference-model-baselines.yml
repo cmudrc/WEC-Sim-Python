@@ -28,6 +28,9 @@ on:
       - 'wecsim/rm3Regular.py'
       - 'wecsim/generalDynamics.py'
       - 'wecsim/caseDynamics.py'
+      - 'wecsim/controls.py'
+      - 'wecsim/ptoConnections.py'
+      - 'wecsim/api.py'
       - 'wecsim/cli.py'
       - 'wecsim/bodyClass.py'
   workflow_dispatch:

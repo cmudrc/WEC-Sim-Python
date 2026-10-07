@@ -30,7 +30,8 @@ def test_normal_time_suppresses_immediate_retrigger():
     assert state.elapsed_off == 0
 
 
-@pytest.mark.parametrize("gain,duration", [(-1, 0.8), (100, 0), (float("nan"), 1)])
+@pytest.mark.parametrize("gain,duration", [(-1, 0.8), (0, 0.8),
+                                          (100, 0), (float("nan"), 1)])
 def test_invalid_declutching_settings(gain, duration):
     with pytest.raises(ValueError):
         DeclutchingControl(gain, duration)

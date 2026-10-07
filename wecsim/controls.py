@@ -30,7 +30,7 @@ class DeclutchingControl:
         if not all(math.isfinite(value) for value in (
                 self.gain, self.declutch_time, self.minimum_on_time)):
             raise ValueError("declutching settings must be finite")
-        if self.gain < 0 or self.declutch_time <= 0 or self.minimum_on_time < 0:
+        if self.gain <= 0 or self.declutch_time <= 0 or self.minimum_on_time < 0:
             raise ValueError("declutching settings are outside their supported range")
 
     def sample(self, velocity: float, state: DeclutchingState,
