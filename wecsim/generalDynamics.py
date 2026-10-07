@@ -3,14 +3,16 @@
 The mechanical layout is supplied through body kinematics. Each body maps
 generalized coordinates into its six WEC-Sim rigid-body coordinates, while
 the engine assembles rigid inertia, cross-body added mass, restoring,
-excitation, radiation, and linear PTO forces. Constant-frequency radiation
-uses RK4; an impulse-response kernel uses an implicit trapezoidal step.
+excitation, radiation, and PTO forces. Constant-frequency radiation uses RK4
+or adaptive integration for continuous nonlinear forces; an impulse-response
+kernel uses an implicit trapezoidal step.
 """
 
 from dataclasses import dataclass
 from typing import Callable
 
 import numpy as np
+from scipy.integrate import solve_ivp
 
 @dataclass(frozen=True)
 class BodyMotion:
@@ -65,6 +67,7 @@ class GeneralizedDynamics:
         pto_bias: np.ndarray | None = None,
         radiation_discretization: str = "trapezoid",
         added_mass_delay: float | None = None,
+        nonlinear_force: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         controlled_ptos: tuple = (),
     ):
         if not bodies or coordinate_count < 1:
@@ -97,6 +100,9 @@ class GeneralizedDynamics:
         ):
             raise ValueError("added-mass delay needs positive delay and convolution radiation")
         self.added_mass_delay = added_mass_delay
+        if nonlinear_force is not None and not callable(nonlinear_force):
+            raise TypeError("nonlinear_force must be callable")
+        self.nonlinear_force = nonlinear_force
         self.controlled_ptos = tuple(controlled_ptos)
         for connection in self.controlled_ptos:
             if (connection.control is None
@@ -178,6 +184,12 @@ class GeneralizedDynamics:
         mass = np.zeros((n, n))
         force = (-self.pto_stiffness @ (coordinate - self.pto_equilibrium)
                  - self.pto_damping @ speed + self.pto_bias)
+        if self.nonlinear_force is not None:
+            nonlinear = np.asarray(self.nonlinear_force(coordinate, speed),
+                                   dtype=float)
+            if nonlinear.shape != (n,) or not np.isfinite(nonlinear).all():
+                raise ValueError("nonlinear force must be a finite generalized vector")
+            force += nonlinear
         if applied_force is not None:
             added = np.asarray(applied_force, dtype=float)
             if added.shape != (n,) or not np.isfinite(added).all():
@@ -224,6 +236,7 @@ class GeneralizedDynamics:
         end_time: float,
         initial_coordinate: np.ndarray | None = None,
         initial_speed: np.ndarray | None = None,
+        adaptive_regular: bool = False,
     ) -> DynamicsResponse:
         """Integrate using the radiation representation supplied by the bodies."""
         if not np.isfinite([dt, end_time]).all() or dt <= 0 or end_time < 0:
@@ -247,8 +260,13 @@ class GeneralizedDynamics:
             raise ValueError("initial state must be finite")
         time = np.arange(steps + 1) * dt
         memory = any(body.radiation_kernel is not None for body in self.bodies)
+        if adaptive_regular and (memory or self.controlled_ptos
+                                 or self.added_mass_delay is not None):
+            raise ValueError("adaptive regular integration needs implicit mass, constant radiation, and no sampled control")
         controlled_force = None
-        if memory:
+        if adaptive_regular:
+            self._integrate_adaptive_regular(time, q, v, a, dt)
+        elif memory:
             if self.radiation_discretization == "fir":
                 self._integrate_fir(time, q, v, a, dt)
             else:
@@ -338,6 +356,29 @@ class GeneralizedDynamics:
             q[step + 1], v[step + 1] = next_state[:n], next_state[n:]
         for step, t in enumerate(time):
             a[step] = self.acceleration(t, q[step], v[step])
+
+    def _integrate_adaptive_regular(self, time, q, v, a, dt):
+        """Resolve continuous nonlinear forces between requested output times."""
+        n = self.coordinate_count
+
+        def derivative(at_time, state):
+            coordinate, speed = state[:n], state[n:]
+            return np.concatenate((
+                speed, self.acceleration(at_time, coordinate, speed),
+            ))
+
+        if len(time) > 1:
+            solution = solve_ivp(
+                derivative, (time[0], time[-1]),
+                np.concatenate((q[0], v[0])), t_eval=time,
+                method="RK45", rtol=1e-8, atol=1e-10, max_step=dt / 4,
+            )
+            if not solution.success or solution.y.shape != (2 * n, len(time)):
+                raise RuntimeError("adaptive regular-wave integration failed")
+            q[:] = solution.y[:n].T
+            v[:] = solution.y[n:].T
+        for step, at_time in enumerate(time):
+            a[step] = self.acceleration(at_time, q[step], v[step])
 
     def _integrate_memory(self, time, q, v, a, dt):
         count = len(self.bodies)
