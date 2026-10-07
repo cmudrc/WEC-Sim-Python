@@ -28,6 +28,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 coupled surge, heave, pitch, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A four-coordinate two-body model uses the published pitched-slider geometry, body inertias, regular-wave forcing, and nonlinear rotation kinematics. Over 400 s, the two body surge positions differ by at most 36.8 mm, heaves by 4.18 mm, shared pitch by 0.000672 rad, and PTO force by 4.74 kN. It covers the canonical active DOFs but not general Simscape joint mechanics or other RM3 cases. |
 | RM3 body-to-body Cases 1 and 2 | Pinned MATLAB Applications inputs and RM3 HDF5 generated with current BEMIO | Both published regular-wave cases run for 400 s with coupling off and on. Across the two, body positions differ by at most 36.8 mm surge, 4.57 mm heave, and 0.000948 rad pitch; PTO force differs by at most 5.38 kN over a 1.65 MN range. Turning on cross-body coupling substantially reduces the body-1 heave error against Case 2. These are reduced-model comparisons, not full Simscape mechanics. |
 | RM3 body-to-body Cases 3 and 4 | Pinned MATLAB Applications `regularCIC` cases, with coupling off and on | The Python floating-joint solver uses the 60 s radiation impulse-response kernel and source-compatible added-mass feedback. Over 400 s, the largest differences across both cases are 28.2 mm surge, 0.253 mm heave, 0.0000325 rad pitch, 0.235 mm PTO stroke, 0.244 mm/s PTO speed, 0.292 kN PTO force, and 0.392 kW PTO power. Cases 5 and 6 use MATLAB's fitted radiation state-space model and are not validated by this convolution solver. |
+| RM3 End_Stops force law; trajectory open | Pinned MATLAB Applications `End_Stops` input and fresh R2025b body/PTO force export | Both effective stroke bounds are ±0.6 m, spring stiffness is 100 MN/m at each bound, damping is zero, and the effective transition width is 0.0001 m. The logged PTO internal force equals the ordinary 1.2 MN s/m damper force plus the two unilateral spring forces within `1e-5` N over all 4,001 samples; 361 samples exceed a bound. The trajectory is not yet paired: a diagnostic adaptive Python prototype tracks the first 70 s within 2.34 mm PTO stroke, then departs when the source added-mass Transport Delay stops following a recurrence from the saved output samples. No trajectory gate has been weakened or claimed. |
 | RM3 radiation force options: constant, convolution, and FIR | Pinned MATLAB Applications `Radiation_Force_Options`, BEMIO-generated RM3 HDF5, 12 s regular waves | All three published 500 s settings are checked against the Python floating-joint solver. The FIR path uses sampled kernel taps with a held radiation force during each RK4 step. Across the three cases, the largest differences are 29.6 mm surge, 2.11 mm heave, 0.00140 rad pitch, 3.25 mm PTO stroke, 1.55 mm/s PTO speed, 1.86 kN PTO force, and 1.57 kW PTO power. Direct FIR radiation-force differences remain under their paired gates. MATLAB FIR differs from MATLAB convolution by up to 345 mm surge, so the methods are not interchangeable for this case. The application's state-space setting is preserved only in closed, unmerged diagnostic PR #6 because of negative low-frequency damping in its fit. |
 | RM3 PTO extension float and spar free decays | Pinned MATLAB Applications `RM3_PTO_Extension` inputs and BEMIO-generated RM3 HDF5 | The no-wave floating-joint solver initializes the float at +5 m or the spar at −5 m, reproducing each published case's +5 m PTO stroke. Over 30 s, maximum active-body heave differences are 47.2 mm for float and 6.85 mm for spar; velocity differences are 86.1 mm/s and 1.87 mm/s. Both initial poses and the passive body's heave agree within numerical precision; PTO force and power are zero in Python and within `1.7e-8` in MATLAB output. |
 | RM3 Multiple Condition Runs Option 1 physical sweep | Pinned MATLAB Applications RM3 input, expanded to eight scalar height × period × PTO-damping combinations | The Python `regularCIC` floating-joint solver agrees across all eight 400 s conditions within 75.1 mm surge, 0.387 mm heave, 0.000183 rad pitch, 0.413 mm PTO stroke, 0.231 mm/s PTO speed, 0.479 kN PTO force, and 0.487 kW PTO power. These scalar runs validate each physical condition; all three MCR drivers are separately checked below. |
@@ -228,12 +229,29 @@ The [pinned Applications `End_Stops` input](https://github.com/WEC-Sim/WEC-Sim_A
 `upperLimitTransitionRegion` and `lowerLimitTransitionRegion` to 0.5 m, but
 the [pinned `ptoClass.hardStops` defaults](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/ptoClass.m) and the referenced translational PTO
 Simulink block read the fields ending in `TransitionRegionWidth`. The input
-therefore leaves the effective widths at their 1e-4 m defaults. Its upstream
-[test](https://github.com/WEC-Sim/WEC-Sim_Applications/blob/d53d4d4c9eda2581f04204f5d394a6ef84bb099e/End_Stops/TestEndStops.m) only checks that `wecSim` runs; it has no stroke or force assertion.
-The example is not a validated Python trajectory target until its effective
-settings and MATLAB motion/stop forces are exported and paired. The no-stop
-Python RM3 trajectory reaches about ±0.87 m relative stroke against the
-example's ±0.6 m limits, so this is dynamically relevant.
+therefore leaves the effective widths at their 1e-4 m defaults. The
+[fresh source export](https://github.com/cmudrc/wec-sim-python/actions/runs/37689167739)
+confirms these effective settings and supplies body/PTO trajectories,
+hydrodynamic force components, and original/applied mass matrices. The PTO
+stroke reaches −0.684 to +0.687 m versus about ±0.865 m in the published
+no-stop case, so contact materially changes the trajectory. The output force
+is exactly the stated spring-damper penalty at saved samples, and a paired
+source-force test now gates that result. The upstream
+[test](https://github.com/WEC-Sim/WEC-Sim_Applications/blob/d53d4d4c9eda2581f04204f5d394a6ef84bb099e/End_Stops/TestEndStops.m)
+only checks that `wecSim` runs.
+
+The source regular-wave case applies split added mass with delayed
+acceleration feedback. Reconstructing its translational added-mass force from
+the two preceding 0.1 s output accelerations agrees to numerical precision
+until 84.4 s; 78 later output samples differ by more than 0.001 N, with a
+maximum residual of 17.9 MN. Those intervals are consistent with internal
+variable solver steps near impacts, whose acceleration history is absent from
+the exported 0.1 s samples. A diagnostic Python solver that uses only output
+sample history initially agrees but accumulates 0.209 m maximum PTO-stroke
+error over 400 s. The full End_Stops trajectory remains unvalidated pending
+an independently checked internal-step delay model or a source run that
+resolves the delay history. The stop-force utility is not wired into the
+public case runner yet.
 Further dynamics targets include other published OSWEC and Sphere
 configurations. The Sphere free-decay cases already have direct Python motion
 comparisons. A comparison must
