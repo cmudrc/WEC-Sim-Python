@@ -13,13 +13,13 @@
   },
   "bodies": [
     {
-      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_file": "data/rm3.h5",
       "hydro_body": 1,
       "mass": "equilibrium",
       "pitch_inertia": 21306090.66
     },
     {
-      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_file": "data/rm3.h5",
       "hydro_body": 2,
       "mass": "equilibrium",
       "pitch_inertia": 94407091.24

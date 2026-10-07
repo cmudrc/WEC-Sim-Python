@@ -8,14 +8,14 @@ import sys
 import numpy as np
 import pytest
 
-from source.objects.ptoConnections import build_linear_ptos
-from source.objects.caseDynamics import run_case
-from source.objects.linearCoordinates import build_coordinate_maps
+from wecsim.ptoConnections import build_linear_ptos
+from wecsim.caseDynamics import run_case
+from wecsim.linearCoordinates import build_coordinate_maps
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RM3 = ROOT / "source/objects/rm3.h5"
-EXAMPLE = ROOT / "examples/python/configurable_rm3_pto.json"
+RM3 = ROOT / "examples/data/rm3.h5"
+EXAMPLE = ROOT / "examples/configurable_rm3_pto.json"
 
 
 def test_two_body_attachment_offsets_create_pitch_moment():
@@ -121,7 +121,7 @@ def test_connection_case_writes_stroke_force_and_power(tmp_path):
     output = tmp_path / "motion.csv"
     case_file.write_text(json.dumps(case), encoding="utf-8")
     result = subprocess.run(
-        [sys.executable, "-m", "source.objects.wecSimPython",
+        [sys.executable, "-m", "wecsim",
          str(case_file), "--output", str(output)],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )

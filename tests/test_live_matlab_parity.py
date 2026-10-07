@@ -8,9 +8,8 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "source" / "objects"))
 
-from waveClass import WaveClass  # noqa: E402
+from wecsim.waveClass import WaveClass  # noqa: E402
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_REFERENCE_DIR")
 pytestmark = pytest.mark.skipif(not REFERENCE, reason="MATLAB reference output not provided")

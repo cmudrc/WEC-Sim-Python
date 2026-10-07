@@ -1,6 +1,6 @@
 """Command-line runner for the three supported reference model families.
 
-Run ``python -m source.objects.referenceRunner MODEL --h5 FILE --output FILE``.
+Run ``python -m wecsim.reference MODEL --h5 FILE --output FILE``.
 The CSV and adjacent JSON record numeric results and reproducibility inputs.
 These focused models are distinct from WEC-Sim's general Simulink runner.
 """
@@ -28,7 +28,7 @@ def _sha256(path):
 
 
 def _git_state():
-    root = Path(__file__).resolve().parents[2]
+    root = Path(__file__).resolve().parents[1]
     try:
         revision = subprocess.run(
             ["git", "rev-parse", "HEAD"], cwd=root,

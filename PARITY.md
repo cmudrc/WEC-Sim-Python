@@ -58,7 +58,7 @@ published case has nonzero coefficients only in x while the free-decay motion
 is in heave.
 The renewed [model baseline run](https://github.com/cmudrc/wec-sim-python/actions/runs/37472556464)
 also generated the Sphere HDF5 file with current MATLAB BEMIO and verified
-Python preprocessing of it. `source/objects/linearHeave.py` uses that
+Python preprocessing of it. `wecsim/linearHeave.py` uses that
 preprocessing, the heave restoring coefficient, infinite-frequency added
 mass, and radiation impulse-response kernel. It integrates the resulting
 linear convolution equation with a fixed 0.01 s trapezoidal step. The five
@@ -100,7 +100,7 @@ MATLAB Simscape trajectory.
 returns named NumPy body, coordinate, and PTO histories. The JSON case runner
 remains available for saved cases; the Python builder currently covers the
 `linear_subspace` layout only.
-`python -m source.objects.wecSimPython CASE.json --output motion.csv` runs a
+`python -m wecsim CASE.json --output motion.csv` runs a
 supported dynamics configuration. The case declares wave, body, constraint,
 PTO, and time settings; the result includes all six body position and
 velocity coordinates, applicable wave and PTO signals, and a JSON record of
@@ -158,4 +158,4 @@ The older object tests import duplicate copies of classes inside test folders.
 The parity tests here import the production files instead.
 Six inherited files under `tests/test_simulink` still contain unfinished
 MATLAB-like Python and do not parse; they are outside the collected pytest
-suite. `source/objects` compiles, and the scoped production parity suite runs.
+suite. The `wecsim` package compiles, and the scoped production parity suite runs.

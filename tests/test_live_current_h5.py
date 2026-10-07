@@ -8,9 +8,8 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "source" / "objects"))
 
-from bodyClass import BodyClass  # noqa: E402
+from wecsim.bodyClass import BodyClass  # noqa: E402
 
 MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL")
 CORE = os.environ.get("WEC_SIM_MATLAB_CORE_DIR")

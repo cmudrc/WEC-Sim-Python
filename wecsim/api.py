@@ -13,7 +13,7 @@ from typing import Mapping, Sequence
 
 import numpy as np
 
-from source.objects.caseDynamics import CaseResponse, run_case
+from .caseDynamics import CaseResponse, run_case
 
 
 @dataclass(frozen=True)

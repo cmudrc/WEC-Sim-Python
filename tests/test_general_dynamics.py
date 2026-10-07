@@ -3,7 +3,7 @@
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from source.objects.generalDynamics import (
+from wecsim.generalDynamics import (
     BodyMotion, DynamicBody, GeneralizedDynamics,
 )
 

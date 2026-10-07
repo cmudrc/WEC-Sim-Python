@@ -7,12 +7,24 @@
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
-To run the production-code parity checks with Python 3.12:
+Install from a clone with Python 3.12:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt pytest
-.venv/bin/python -m compileall -q source wecsim wecsim_python
+.venv/bin/python -m pip install -e .
+.venv/bin/python -c 'from wecsim import WEC; print(WEC)'
+```
+
+For a regular install without cloning, use
+`python -m pip install git+https://github.com/cmudrc/wec-sim-python.git`.
+Both methods install the `wecsim` import and the `wecsim` and
+`wecsim-reference` commands.
+
+For development, run the production-code parity checks with:
+
+```sh
+.venv/bin/python -m pip install pytest
+.venv/bin/python -m compileall -q wecsim
 .venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py tests/test_pto_connections.py tests/test_python_api.py
 ```
 
@@ -20,6 +32,10 @@ python3 -m venv .venv
 [WEC-Sim](https://github.com/WEC-Sim/WEC-Sim), the MATLAB/Simulink wave energy
 converter simulator. This fork is developing and checking the Python code
 against MATLAB WEC-Sim while preserving the original author's work.
+
+The installable code is in `wecsim/`, runnable cases and bundled RM3 inputs
+are in `examples/`, and the original unfinished class sketches are retained
+in `legacy/`. The Git history still contains Sungjun Won's commits.
 
 ## Goal of WEC-Sim-Python
 **WEC-Sim-Python** aims to help researchers, start-up companies, and enthusiasts without access to MATLAB in order to use the open-source code provided by NREL and Sandia lab. Also, with growing research in the field of machine learning, **WEC-Sim-Python** could be more convenient for those who develop machine learning projects utilizing Python.
@@ -30,8 +46,7 @@ Wave generation, RM3 and OSWEC hydrodynamic input, force preprocessing, and
 the supported device dynamics have paired MATLAB checks. The Python API is
 the primary way to configure a linearized device. It constructs bodies,
 named motions, attachment points, PTOs, and waves as Python objects, then
-returns NumPy arrays directly. Import it as `wecsim` from the repository
-checkout; `wecsim_python` remains an import alias for existing code:
+returns NumPy arrays directly. Import it as `wecsim` after installation:
 
 ```python
 from wecsim import NoWave, WEC, WorldPoint
@@ -48,9 +63,9 @@ heave = result.bodies["float"].position[:, 2]
 pto_force = result.ptos["main"].force
 ```
 
-The [full Python example](examples/python/configurable_rm3_pto.py) defines a
+The [full Python example](examples/configurable_rm3_pto.py) defines a
 two-body device with a shared pitch pivot and body-local PTO points. Run it
-with `python -m examples.python.configurable_rm3_pto`. Relative HDF5 paths in
+with `python -m examples.configurable_rm3_pto`. Relative HDF5 paths in
 the Python API resolve from the current directory unless `base_dir` is passed
 to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
 Python builder currently covers the `linear_subspace` layout with regular or
@@ -63,7 +78,7 @@ accepts simulation, wave, body, constraint, and PTO settings. The included
 RM3 example runs with the historical bundled HDF5:
 
 ```sh
-python -m source.objects.wecSimPython examples/python/rm3.json --output results/rm3.csv
+python -m wecsim examples/rm3.json --output results/rm3.csv
 ```
 
 The runner saves body position and velocity, wave elevation where applicable,
@@ -98,12 +113,12 @@ small rotations and a constant coordinate map.
 
 ### Configuring body motions and PTO attachments
 
-The [configurable two-body example](examples/python/configurable_rm3_pto.json)
+The [configurable two-body example](examples/configurable_rm3_pto.json)
 shows a WEC definition with named bodies, independent motion coordinates, and
 a PTO connection. Run it with:
 
 ```sh
-python -m source.objects.wecSimPython examples/python/configurable_rm3_pto.json --output results/configurable-rm3.csv
+python -m wecsim examples/configurable_rm3_pto.json --output results/configurable-rm3.csv
 ```
 
 In `constraint.coordinates`, each named coordinate lists the body motions it
@@ -168,7 +183,7 @@ are not implemented.
 The published Sphere free-decay cases can also be calculated with the focused solver:
 
 ```python
-from source.objects.linearHeave import solve_heave_free_decay
+from wecsim.linearHeave import solve_heave_free_decay
 
 response = solve_heave_free_decay("path/to/sphere.h5", initial_displacement=1.0)
 # response.time, response.position, response.velocity, response.force_total
@@ -181,7 +196,7 @@ WEC-Sim_Applications Sphere `bemio.m`, or download the HDF5 artifact from the
 The RM3 regular-wave heave subsystem can be calculated with the same module:
 
 ```python
-from source.objects.linearHeave import solve_two_body_regular_heave
+from wecsim.linearHeave import solve_two_body_regular_heave
 
 response = solve_two_body_regular_heave(
     "path/to/rm3.h5", wave_height=2.5, wave_period=8.0,
@@ -197,7 +212,7 @@ frequency. The coupled RM3 reference model also predicts both body surge
 motions and their shared pitch:
 
 ```python
-from source.objects.rm3Regular import solve_rm3_regular
+from wecsim.rm3Regular import solve_rm3_regular
 
 response = solve_rm3_regular("path/to/rm3.h5")
 # response.body_position and response.body_velocity have shape
@@ -211,8 +226,8 @@ The OSWEC reference can generate a seeded Python wave realization and pass
 its six-component excitation history to the hinge-pitch solver:
 
 ```python
-from source.objects.hingePitch import solve_hinged_pitch_from_excitation
-from source.objects.irregularWave import (
+from wecsim.hingePitch import solve_hinged_pitch_from_excitation
+from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
 
@@ -239,10 +254,10 @@ random sequence from MATLAB.
 To run a supported case without writing Python code:
 
 ```sh
-python -m source.objects.referenceRunner rm3 --h5 path/to/rm3.h5 --output results/rm3.csv
-python -m source.objects.referenceRunner rm3 --h5 path/to/rm3.h5 --output results/rm3-b2b.csv --b2b
-python -m source.objects.referenceRunner oswec --h5 path/to/oswec.h5 --output results/oswec.csv --seed 7
-python -m source.objects.referenceRunner sphere --h5 path/to/sphere.h5 --output results/sphere.csv --initial-displacement 1
+python -m wecsim.reference rm3 --h5 path/to/rm3.h5 --output results/rm3.csv
+python -m wecsim.reference rm3 --h5 path/to/rm3.h5 --output results/rm3-b2b.csv --b2b
+python -m wecsim.reference oswec --h5 path/to/oswec.h5 --output results/oswec.csv --seed 7
+python -m wecsim.reference sphere --h5 path/to/sphere.h5 --output results/sphere.csv --initial-displacement 1
 ```
 
 Each command writes a numeric CSV and an adjacent JSON file with the model
