@@ -133,6 +133,12 @@ second body's heave to coordinate 2. `constraint.initial_coordinate` and
 `initial_speed` set those coordinates, and `pto.damping_matrix` and
 `stiffness_matrix` apply generalized linear forces. This layout assumes
 small rotations and a constant coordinate map.
+The matrices may be signed to represent active linear feedback. For example,
+the published Sphere reactive PI controller uses a heave-coordinate PTO with
+`stiffness_matrix: [[-573350]]` and `damping_matrix: [[49181]]`, giving
+`force = -49181 * heave_speed + 573350 * heave_displacement` in the runner's
+force convention. This published case has no PTO stroke limit; the paired
+trajectory comparison does not validate hardware feasibility.
 
 ### Configuring body motions and PTO attachments
 

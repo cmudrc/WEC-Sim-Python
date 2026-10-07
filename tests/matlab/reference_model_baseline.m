@@ -147,6 +147,16 @@ switch string(model)
         fclose(fid);
         cases = "Configured";
         caseDirs = string(caseDir);
+    case "Sphere_Reactive_PI"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Reactive_PI";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', ...
+            'Reactive (PI)'));
     otherwise
         error('Unknown reference model: %s', model);
 end
@@ -184,7 +194,8 @@ for iCase = 1:numel(cases)
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
     end
-    if ismember(string(model), ["Sphere_Passive", "Sphere_PTO_Config"])
+    if ismember(string(model), ["Sphere_Passive", "Sphere_PTO_Config", ...
+            "Sphere_Reactive_PI"])
         assert(exist('controller1_out', 'var') == 1, ...
             'The passive controller produced no logged output');
         controllerValues = [controller1_out.time(:), controller1_out.signals.values];
