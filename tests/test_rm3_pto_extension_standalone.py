@@ -61,3 +61,17 @@ def test_initial_coordinate_validation():
     case["constraint"]["initial_coordinate"] = [0, 5]
     with pytest.raises(ValueError, match="one finite value per coordinate"):
         run_case(case)
+
+
+def test_named_initial_speed_reaches_both_body_velocities():
+    case = _case()
+    case["simulation"]["end_time"] = 0
+    case["constraint"]["initial_coordinate"] = {}
+    case["constraint"]["initial_speed"] = {
+        "surge": 0.2, "float_heave": -0.3, "spar_heave": 0.4,
+    }
+    result = run_case(case)
+    np.testing.assert_allclose(result.body_velocity[0, 0, [0, 2]],
+                               [0.2, -0.3], atol=1e-12)
+    np.testing.assert_allclose(result.body_velocity[0, 1, [0, 2]],
+                               [0.2, 0.4], atol=1e-12)
