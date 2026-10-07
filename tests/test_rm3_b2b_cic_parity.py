@@ -34,7 +34,8 @@ def test_rm3_regular_cic_against_matlab(case, b2b, state_space):
     hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     config = {
         "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
-                       **({"state_space": True} if state_space
+                       **({"state_space": True,
+                           "allow_negative_surge_damping": True} if state_space
                           else {"radiation_memory": 60})},
         "wave": {"type": "regularCIC", "height": 2.5, "period": 8},
         "bodies": [

@@ -104,14 +104,19 @@ an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `radiation_memory` for convolution cases. For the RM3 `regularCIC`
 `floating_joint` layout, set `simulation.state_space` to `true` to use the
 fitted radiation model stored in the HDF5 file. Do not also set
-`radiation_memory`. The general dynamics module
+`radiation_memory`. The bundled RM3 fit has negative zero-frequency damping
+in the shared surge mode, so this path rejects it by default. To reproduce
+MATLAB Cases 5 and 6 explicitly, also set
+`simulation.allow_negative_surge_damping` to `true`. The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3–6 and all eight physical settings in the published
 RM3 Multiple Condition Runs Option 1 sweep. Cases 5 and 6 reproduce the
 MATLAB state-space trajectories, including a slow surge growth caused by
-negative low-frequency damping in the supplied fit. Treat that growth as a
-property of the fitted model, not as evidence of physical wave drift.
+negative low-frequency damping in the supplied fit. The opt-in reproduces
+this numerical behavior for comparison; the convolution path remains the
+default for regularCIC. Treat that growth as a property of the fitted model,
+not as evidence of physical wave drift.
 For `linear_subspace`, the map's rows are surge, sway, heave, roll, pitch,
 and yaw; its columns are independent generalized coordinates. A two-body
 heave case, for example, maps the first body's heave to coordinate 1 and the

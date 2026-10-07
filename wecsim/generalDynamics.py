@@ -154,6 +154,8 @@ class GeneralizedDynamics:
         if any(body.radiation_kernel is not None for body in self.bodies):
             if known_radiation is None or dt is None or dt <= 0:
                 raise ValueError("radiation-memory acceleration needs history and dt")
+        if self.radiation_state_space is not None and known_radiation is None:
+            raise ValueError("state-space acceleration needs the current radiation state")
         if known_radiation is not None and len(known_radiation) != len(self.bodies):
             raise ValueError("radiation history needs one force vector per body")
         n = self.coordinate_count

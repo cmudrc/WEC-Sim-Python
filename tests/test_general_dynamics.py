@@ -1,6 +1,7 @@
 """Check the shared dynamics stage against independent oscillator solutions."""
 
 import numpy as np
+import pytest
 from scipy.integrate import solve_ivp
 
 from wecsim.generalDynamics import (
@@ -106,6 +107,8 @@ def test_radiation_state_space_matches_augmented_ode():
     system = _oscillator(
         radiation_state_space=RadiationStateSpace(A, B, C),
     )
+    with pytest.raises(ValueError, match="current radiation state"):
+        system.acceleration(0, np.array([1.0]), np.array([0.0]))
     response = system.integrate(
         dt=0.01, end_time=5, initial_coordinate=np.array([1.0]),
     )

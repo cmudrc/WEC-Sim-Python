@@ -36,6 +36,7 @@ def solve_rm3_regular(
     b2b: bool = False,
     radiation_memory: float | None = None,
     state_space: bool = False,
+    allow_negative_surge_damping: bool = False,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -52,7 +53,10 @@ def solve_rm3_regular(
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
     With ``state_space=True``, the HDF5 fitted radiation states use RK4 with
-    the body coordinates, as in the MATLAB state-space reference cases.
+    the body coordinates, as in the MATLAB state-space reference cases. A
+    negative zero-frequency damping coefficient in the common surge mode is
+    rejected unless ``allow_negative_surge_damping=True`` explicitly requests
+    reproduction of that nonphysical fitted response.
     ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
@@ -74,6 +78,10 @@ def solve_rm3_regular(
         raise ValueError("state_space and radiation_memory are alternative radiation models")
     if not isinstance(state_space, bool):
         raise ValueError("state_space must be a boolean")
+    if not isinstance(allow_negative_surge_damping, bool):
+        raise ValueError("allow_negative_surge_damping must be a boolean")
+    if allow_negative_surge_damping and not state_space:
+        raise ValueError("allow_negative_surge_damping requires state_space")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
@@ -87,6 +95,7 @@ def solve_rm3_regular(
             raise ValueError("radiation_memory must be an integer multiple of dt")
         convolution_time = np.arange(memory_steps + 1) * dt
     data = []
+    common_surge_dc_damping = 0.0
     for index, pitch_inertia in enumerate(pitch_inertias, start=1):
         body = BodyClass(str(h5_file))
         body.bodyNumber = index
@@ -174,6 +183,19 @@ def solve_rm3_regular(
                     C[output, input_dof, :count] = (
                         rho * raw["C"]["all"][output, input_dof, 0, :count]
                     )
+                    if output == 0 and input_dof in (0, 6):
+                        try:
+                            common_surge_dc_damping += (
+                                C[output, input_dof, :count]
+                                @ np.linalg.solve(
+                                    -A[output, input_dof, :count, :count],
+                                    B[output, input_dof, :count],
+                                )
+                            )
+                        except np.linalg.LinAlgError as exc:
+                            raise ValueError(
+                                "the fitted surge radiation block has no finite DC response"
+                            ) from exc
         else:
             A = B = C = None
         data.append({
@@ -191,6 +213,15 @@ def solve_rm3_regular(
             "im": np.asarray(hydro["fExt"]["im"]),
             "vertical_bias": (rho * float(np.asarray(body.dispVol).item()) - mass) * g,
         })
+
+    if (state_space and common_surge_dc_damping < -1.0
+            and not allow_negative_surge_damping):
+        raise ValueError(
+            "fitted radiation has negative zero-frequency common-surge damping "
+            f"({common_surge_dc_damping:.1f} N s/m); use convolution to avoid "
+            "this fit, or set allow_negative_surge_damping=True "
+            "to reproduce the MATLAB state-space case"
+        )
 
     pto_coupling = np.zeros((4, 4))
     pto_coupling[1, 1] = pto_coupling[2, 2] = 1

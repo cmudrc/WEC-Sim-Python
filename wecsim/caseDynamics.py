@@ -132,7 +132,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
                    {"dt", "end_time", "ramp_time", "rho", "g", "radiation_memory",
-                    "state_space"})
+                    "state_space", "allow_negative_surge_damping"})
     dt = _number(sim["dt"], "simulation.dt", positive=True)
     end_time = _number(sim["end_time"], "simulation.end_time", nonnegative=True)
     ramp_time = _number(sim.get("ramp_time", 100), "simulation.ramp_time", nonnegative=True)
@@ -153,6 +153,10 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+    if kind != "floating_joint" and (
+        "state_space" in sim or "allow_negative_surge_damping" in sim
+    ):
+        raise ValueError("fitted radiation settings require floating_joint")
     if "ptos" in case and kind != "linear_subspace":
         raise ValueError("configurable PTO connections require linear_subspace")
 
@@ -287,6 +291,9 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         state_space = sim.get("state_space", False)
         if not isinstance(state_space, bool):
             raise ValueError("simulation.state_space must be a boolean")
+        allow_negative_surge_damping = sim.get("allow_negative_surge_damping", False)
+        if not isinstance(allow_negative_surge_damping, bool):
+            raise ValueError("simulation.allow_negative_surge_damping must be a boolean")
         if wave["type"] == "regular" and ("radiation_memory" in sim or state_space):
             raise ValueError("regular-wave floating-joint dynamics use constant radiation")
         if wave["type"] == "regularCIC":
@@ -311,6 +318,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             b2b=b2b, radiation_memory=radiation_memory,
             state_space=state_space,
+            allow_negative_surge_damping=allow_negative_surge_damping,
             joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )

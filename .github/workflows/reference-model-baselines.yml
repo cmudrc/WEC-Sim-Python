@@ -11,6 +11,7 @@ on:
       - 'tests/test_rm3_multidof_parity.py'
       - 'tests/test_rm3_b2b_parity.py'
       - 'tests/test_rm3_b2b_cic_parity.py'
+      - 'tests/test_rm3_state_space_guard.py'
       - 'tests/test_rm3_mcr_parity.py'
       - 'tests/test_sphere_pto_config_parity.py'
       - 'tests/test_case_dynamics_parity.py'
