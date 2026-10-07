@@ -5,7 +5,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tools.rm3_radiation_diagnostic import common_surge_curves
+from tools.rm3_radiation_diagnostic import (
+    common_surge_curves, common_surge_feedthrough,
+)
 from wecsim.rm3Regular import solve_rm3_regular
 
 
@@ -15,10 +17,15 @@ RM3 = (Path(__file__).parent / "test_objects" / "test_bodyclass"
 
 def test_fitted_common_surge_has_opposite_low_frequency_sign():
     source_frequency, source, fitted_frequency, fitted = common_surge_curves(RM3)
+    feedthrough = common_surge_feedthrough(RM3)
     assert fitted_frequency[0] == 0
     np.testing.assert_array_equal(fitted_frequency[1:], source_frequency)
     assert np.all(source[:, source_frequency < 0.3] >= 0)
     assert np.all(fitted[:, 0] < -10_000)
+    # The saved direct terms are omitted by the pinned MATLAB body class.
+    # Even if applied, they do not repair the negative low-frequency fit.
+    assert np.all(feedthrough > 0)
+    assert np.all(fitted[:, 0] + feedthrough < -2_000)
     assert np.all(fitted[:, np.argmin(abs(fitted_frequency - 2 * np.pi / 8))] > 0)
 
 

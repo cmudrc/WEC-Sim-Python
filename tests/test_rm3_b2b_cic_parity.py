@@ -29,12 +29,17 @@ def _max_error(actual, expected, limit, label):
 @pytest.mark.parametrize("case,b2b", [
     ("B2B_Case3", False), ("B2B_Case4", True),
 ])
-def test_rm3_regular_cic_against_matlab(case, b2b):
+@pytest.mark.parametrize("mass_scheme", [None, "simulink_delay"],
+                         ids=["default-implicit", "source-delay"])
+def test_rm3_regular_cic_against_matlab(case, b2b, mass_scheme):
+    """Gate the ordinary solver as well as the opt-in Simulink numerics."""
     hydro = (Path(APPLICATIONS) / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
+    simulation = {"dt": 0.1, "end_time": 400, "ramp_time": 100,
+                  "radiation_memory": 60}
+    if mass_scheme is not None:
+        simulation["added_mass_scheme"] = mass_scheme
     config = {
-        "simulation": {"dt": 0.1, "end_time": 400, "ramp_time": 100,
-                       "radiation_memory": 60,
-                       "added_mass_scheme": "simulink_delay"},
+        "simulation": simulation,
         "wave": {"type": "regularCIC", "height": 2.5, "period": 8},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,
@@ -56,7 +61,8 @@ def test_rm3_regular_cic_against_matlab(case, b2b):
         for dof, label, position_limit, velocity_limit in (
             (0, "surge", 0.075, 0.04),
             (2, "heave", 0.005, 0.0035),
-            (4, "pitch", 0.0015, 0.0011),
+            (4, "pitch", 0.002 if mass_scheme is None else 0.0015,
+             0.0011),
         ):
             _max_error(response.body_position[:, body - 1, dof],
                        expected[:, 1 + dof], position_limit,

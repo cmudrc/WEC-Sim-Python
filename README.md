@@ -129,7 +129,9 @@ reproduce the pinned MATLAB/Simulink numerical trajectory, set
 `solve_rm3_regular` and the RM3 MCR runners). This explicitly selects the
 source model's mass split and 1e-7 s acceleration delay; the delay is a
 numerical setting, not a WEC property. The published Cases 5 and 6 use a
-suspect fitted state-space radiation model and remain unsupported.
+suspect fitted state-space radiation model and remain unsupported. The paired
+Cases 3 and 4 tests check the ordinary implicit solver separately from this
+opt-in numerical comparison; neither path uses the Cases 5 and 6 fit.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
 `center_gravity`. Its stationary motion appears in the response. With this
