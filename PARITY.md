@@ -27,7 +27,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 regular-wave heave, excitation, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A focused two-body linear heave solver with relative-motion PTO damping agrees locally over 400 s within 5.9 mm position and 6.1 mm/s velocity for both bodies. Heave excitation matches to less than `1e-5` N; PTO internal force differs by at most 8.2 kN over a 1.63 MN range. This reduced model does not cover surge, pitch, or full Simscape joint mechanics. |
 | RM3 coupled surge, heave, pitch, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A four-coordinate two-body model uses the published pitched-slider geometry, body inertias, regular-wave forcing, and nonlinear rotation kinematics. Over 400 s, the two body surge positions differ by at most 36.8 mm, heaves by 4.18 mm, shared pitch by 0.000672 rad, and PTO force by 4.74 kN. It covers the canonical active DOFs but not general Simscape joint mechanics or other RM3 cases. |
 | RM3 body-to-body Cases 1 and 2 | Pinned MATLAB Applications inputs and RM3 HDF5 generated with current BEMIO | Both published regular-wave cases run for 400 s with coupling off and on. Across the two, body positions differ by at most 36.8 mm surge, 4.57 mm heave, and 0.000948 rad pitch; PTO force differs by at most 5.38 kN over a 1.65 MN range. Turning on cross-body coupling substantially reduces the body-1 heave error against Case 2. These are reduced-model comparisons, not full Simscape mechanics. |
-| RM3 body-to-body Cases 3 and 4 | Pinned MATLAB Applications `regularCIC` cases, with coupling off and on | The paired tests explicitly select `added_mass_scheme="simulink_delay"` to reproduce source numerics; the Python default retains implicit added mass. With that opt-in setting, the 60 s impulse-response solver differs over 400 s by at most 28.2 mm surge, 0.253 mm heave, 0.0000325 rad pitch, 0.235 mm PTO stroke, 0.244 mm/s PTO speed, 0.292 kN PTO force, and 0.392 kW PTO power. Cases 5 and 6 use MATLAB's fitted radiation state-space model and are not validated by this convolution solver. |
+| RM3 body-to-body Cases 3 and 4 | Pinned MATLAB Applications `regularCIC` cases, with coupling off and on | Both the ordinary implicit-mass solver and the opt-in `simulink_delay` comparison are paired over 400 s. The ordinary solver differs by at most 67.2 mm surge, 3.64 mm heave, 0.00162 rad pitch, and 4.78 kN PTO force across both bodies and cases. The source-numerics setting reduces those maxima to 28.2 mm, 0.253 mm, 0.0000325 rad, and 0.292 kN; PTO stroke, speed, and power then differ by at most 0.235 mm, 0.244 mm/s, and 0.392 kW. Cases 5 and 6 use MATLAB's fitted radiation state-space model and are not validated by this convolution solver. |
 | RM3 End_Stops force law and refined-step trajectory | Pinned MATLAB Applications `End_Stops` input; R2025b runs at published 0.1 s and diagnostic 0.025/0.0125 s steps through the published 400 s duration | Effective stroke bounds are ±0.6 m, each spring is 100 MN/m, stop damping is zero, and the 0.0001 m transition is active. The source's logged stop force matches the Python smooth-stop law within `1e-5` N even at saved samples inside the transition. The 0.025-to-0.0125 s source stroke difference is at most 2.79 mm over 400 s; the published 0.1 s run differs from the refined source by up to 286 mm after contact. The opt-in Python adaptive solver with implicit added mass agrees with the 0.0125 s MATLAB trajectory over 400 s within 0.986 mm PTO stroke, 6.77 mm/s PTO speed, 98.2 kN PTO force, and 0.139% ordinary damper energy. Paired gates cover both active body positions and velocities, PTO motion and force, and integrated energy; a separate source convergence gate checks both refined MATLAB steps. |
 | RM3 radiation force options: constant, convolution, and FIR | Pinned MATLAB Applications `Radiation_Force_Options`, BEMIO-generated RM3 HDF5, 12 s regular waves | All three published 500 s settings are checked against the Python floating-joint solver. The FIR path uses sampled kernel taps with a held radiation force during each RK4 step. Across the three cases, the largest differences are 29.6 mm surge, 2.11 mm heave, 0.00140 rad pitch, 3.25 mm PTO stroke, 1.55 mm/s PTO speed, 1.86 kN PTO force, and 1.57 kW PTO power. Direct FIR radiation-force differences remain under their paired gates. MATLAB FIR differs from MATLAB convolution by up to 345 mm surge, so the methods are not interchangeable for this case. The application's state-space setting is preserved only in closed, unmerged diagnostic PR #6 because of negative low-frequency damping in its fit. |
 | RM3 PTO extension float and spar free decays | Pinned MATLAB Applications `RM3_PTO_Extension` inputs and BEMIO-generated RM3 HDF5 | The no-wave floating-joint solver initializes the float at +5 m or the spar at −5 m, reproducing each published case's +5 m PTO stroke. Over 30 s, maximum active-body heave differences are 47.2 mm for float and 6.85 mm for spar; velocity differences are 86.1 mm/s and 1.87 mm/s. Both initial poses and the passive body's heave agree within numerical precision; PTO force and power are zero in Python and within `1.7e-8` in MATLAB output. |
@@ -50,12 +50,13 @@ active surge/heave/pitch block. The paired matrix gate passes for both bodies.
 The split preserves the effective active mass exactly, so changing static
 added-mass coefficients would have targeted the wrong mechanism.
 The ordinary RM3 convolution solver retains implicit added mass. Paired
-MATLAB tests explicitly select `added_mass_scheme="simulink_delay"`; this
-compatibility setting is not the default dynamics path.
-For Cases 3 and 4, the current implicit default has maximum float-surge
-differences of 56.9 and 48.3 mm against MATLAB; the explicit compatibility
-setting reduces them to 28.0 and 24.8 mm. These are model-to-source numerical
-differences, not a reason to change the default hydrodynamic coefficients.
+MATLAB tests also exercise `added_mass_scheme="simulink_delay"` for source
+numerics; this compatibility setting is not the default dynamics path.
+For Cases 3 and 4, paired gates now run the implicit default independently
+of the explicit source-numerics option. The default has maximum float-surge
+differences of 56.9 and 48.3 mm against MATLAB; the source option reduces
+them to 28.0 and 24.8 mm. This comparison does not change the default
+hydrodynamic coefficients or added-mass treatment.
 The applied added-mass force in all three saved sea states uses acceleration
 extrapolated from the two preceding 0.1 s samples to the current time minus
 the Simulink block's `1e-7` s Transport Delay. After accounting for the
@@ -81,6 +82,20 @@ effective common-surge damping is negative at low frequency although source
 BEM damping is nonnegative at its sampled frequencies. Matching the MATLAB
 state-space trajectory is a diagnostic reproduction, not evidence of physical
 validity; it is excluded from validated parity until the fit is resolved.
+The published Cases 5 and 6 change only the state-space radiation flag from
+their respective convolution cases, apart from formatting of the inputs.
+Over an 8 s window ending at 392 s, MATLAB float-surge means are 0.465 m
+and 0.597 m for Cases 5 and 6, compared with 0.101 m and 0.047 m for
+Cases 3 and 4. Repeating Cases 5 and 6 with a 0.05 s step gives means of
+0.451 m and 0.592 m, so halving the published step does not remove the drift.
+At zero frequency the fitted common-surge damping applied by MATLAB is
+−14.1 kN s/m without cross-body coupling and −17.5 kN s/m with it.
+The pinned MATLAB `bodyClass` sets the state-space direct term to zero even
+though the BEMIO HDF5 stores nonzero terms. Including those saved terms in a
+diagnostic transfer calculation reduces the negative zero-frequency values
+to −3.01 and −3.45 kN s/m, but does not make the fits passive. This is a
+low-frequency fit problem consistent with the drift, not proof that the
+full nonlinear trajectory has only one cause.
 Diagnostic PR #6 was closed without merging its state-space solver. The
 convolution results for Cases 3 and 4 were identical, sample for sample,
 between the original branch point and that diagnostic branch.

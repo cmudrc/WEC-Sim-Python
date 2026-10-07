@@ -69,7 +69,32 @@ def common_surge_curves(hydro_file):
     return source_frequency, source, fitted_frequency, fitted
 
 
-def plot_curves(source_frequency, source, fitted_frequency, fitted, output):
+def common_surge_feedthrough(hydro_file):
+    """Sum the saved HDF5 direct terms for the two common-surge variants.
+
+    The pinned MATLAB body class instead assigns a zero direct term when it
+    builds the state-space radiation block. These sums are diagnostic only.
+    """
+    with h5py.File(hydro_file) as h5:
+        rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+        feedthrough = np.zeros(2)
+        for output_body in range(2):
+            direct = np.asarray(h5[
+                f"body{output_body + 1}/hydro_coeffs/radiation_damping/"
+                "state_space/D/all"
+            ])
+            if direct.shape != (6, 12):
+                raise ValueError("expected two six-DOF RM3 direct-term blocks")
+            for input_body in range(2):
+                term = rho * direct[0, 6 * input_body]
+                if input_body == output_body:
+                    feedthrough[0] += term
+                feedthrough[1] += term
+    return feedthrough
+
+
+def plot_curves(source_frequency, source, fitted_frequency, fitted, output,
+                feedthrough=None):
     """Save a two-panel diagnostic plot for the published RM3 Cases 5–6."""
     import matplotlib.pyplot as plt
 
@@ -84,6 +109,11 @@ def plot_curves(source_frequency, source, fitted_frequency, fitted, output):
                   color="#236b82", linewidth=2, label="Source BEM damping")
         axis.plot(fitted_frequency, fitted[coupled] / 1000,
                   color="#c74558", linewidth=2, label="MATLAB state-space fit")
+        if feedthrough is not None:
+            axis.plot(fitted_frequency,
+                      (fitted[coupled] + feedthrough[coupled]) / 1000,
+                      color="#c74558", linestyle="--", linewidth=1.4,
+                      label="Fit with saved HDF5 direct term")
         axis.fill_between(fitted_frequency, fitted[coupled] / 1000, 0,
                           where=fitted[coupled] < 0,
                           color="#c74558", alpha=0.12)
@@ -107,13 +137,17 @@ def main():
     source_frequency, source, fitted_frequency, fitted = common_surge_curves(
         args.hydro_file,
     )
+    feedthrough = common_surge_feedthrough(args.hydro_file)
     for coupled in (0, 1):
         print(f"cross-body {'on' if coupled else 'off'}: "
               f"fit DC {fitted[coupled, 0] / 1000:.4f} kN s/m; "
+              f"fit with saved D "
+              f"{(fitted[coupled, 0] + feedthrough[coupled]) / 1000:.4f} "
+              "kN s/m; "
               f"source minimum {source[coupled].min() / 1000:.4g} kN s/m")
     if args.plot:
         plot_curves(source_frequency, source, fitted_frequency, fitted,
-                    args.plot)
+                    args.plot, feedthrough)
         print(args.plot)
 
 
