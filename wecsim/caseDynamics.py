@@ -14,6 +14,7 @@ import numpy as np
 
 from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
+from .hardStops import LinearHardStops
 from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
 )
@@ -132,6 +133,20 @@ def _pto(pto, kind, *, allow_location=False):
     if equilibrium and not stiffness:
         raise ValueError("nonzero PTO equilibrium_position needs positive stiffness")
     return damping, stiffness, equilibrium
+
+
+def _hard_stops(spec):
+    required = {"lower_bound", "upper_bound", "lower_stiffness", "upper_stiffness"}
+    optional = {"lower_damping", "upper_damping", "lower_transition_width",
+                "upper_transition_width"}
+    _section(spec, "pto.hard_stops", required, required | optional)
+    values = {
+        name: _number(value, f"pto.hard_stops.{name}",
+                      positive=name.endswith("stiffness") or name.endswith("width"),
+                      nonnegative=name.endswith("damping"))
+        for name, value in spec.items()
+    }
+    return LinearHardStops(**values)
 
 
 def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
@@ -355,7 +370,13 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             constraint.get("initial_speed", [0] * 4),
             coordinate_names, "constraint.initial_speed",
         )
-        damping, stiffness, equilibrium = _pto(case.get("pto"), "relative_heave")
+        pto_spec = case.get("pto")
+        hard_stops = None
+        if isinstance(pto_spec, Mapping) and "hard_stops" in pto_spec:
+            hard_stops = _hard_stops(pto_spec["hard_stops"])
+            pto_spec = {key: value for key, value in pto_spec.items()
+                        if key != "hard_stops"}
+        damping, stiffness, equilibrium = _pto(pto_spec, "relative_heave")
         if wave["type"] == "none":
             if set(wave) != {"type"} or "ramp_time" in sim:
                 raise ValueError("no-wave floating joint has no wave or ramp settings")
@@ -394,6 +415,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             hydro[0], wave_height=height, wave_period=period,
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
+            pto_hard_stops=hard_stops,
             b2b=b2b, radiation_memory=radiation_memory,
             radiation_method=radiation_method,
             added_mass_scheme=sim.get("added_mass_scheme", "implicit"),
@@ -414,6 +436,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             solved.time, solved.body_position, solved.body_velocity, hydro,
             pto_force=solved.pto_force, pto_label="pto_relative_heave_force",
             wave_elevation=elevation,
+            extra_outputs=(("pto_stop_force", solved.pto_stop_force),)
+            if hard_stops is not None else (),
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")

@@ -12,14 +12,15 @@ import numpy as np
 
 from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
+from .hardStops import LinearHardStops
 
 
 @dataclass(frozen=True)
 class RM3RegularResponse:
     """Motion and PTO signals; mechanical power includes spring exchange.
 
-    Positive mechanical power enters the PTO, while dissipated power counts
-    only the nonnegative damper loss.
+    Positive mechanical power enters the PTO. Dissipated power counts the
+    ordinary linear PTO damper and excludes any stop damper.
     """
     time: np.ndarray
     body_position: np.ndarray
@@ -29,6 +30,7 @@ class RM3RegularResponse:
     pto_velocity: np.ndarray
     pto_mechanical_power: np.ndarray
     pto_dissipated_power: np.ndarray
+    pto_stop_force: np.ndarray | None = None
 
 
 def solve_rm3_regular(
@@ -40,6 +42,7 @@ def solve_rm3_regular(
     pto_damping: float = 1_200_000.0,
     pto_stiffness: float = 0.0,
     pto_equilibrium: float = 0.0,
+    pto_hard_stops: LinearHardStops | None = None,
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
@@ -70,6 +73,9 @@ def solve_rm3_regular(
     feedback for numerical comparison. The delay is not a WEC property.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
+    A supplied ``pto_hard_stops`` adds unilateral stroke limits to the linear
+    PTO and selects adaptive integration with implicit added mass. This path
+    currently supports constant-frequency radiation only.
     ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
     every output time for imported irregular spectra; RK4 stage forces are
     linearly interpolated between those samples.
@@ -111,6 +117,11 @@ def solve_rm3_regular(
         raise ValueError("no_wave needs zero wave height and radiation memory")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
+    if pto_hard_stops is not None:
+        if not isinstance(pto_hard_stops, LinearHardStops):
+            raise TypeError("pto_hard_stops must be LinearHardStops")
+        if radiation_method != "constant" or added_mass_scheme != "implicit":
+            raise ValueError("PTO hard stops currently need constant radiation and implicit added mass")
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
@@ -262,6 +273,12 @@ def solve_rm3_regular(
             radiation_kernel=body["kernel"],
         ))
 
+    def stop_generalized_force(coordinate, speed):
+        stroke = coordinate[1] - coordinate[2]
+        stroke_speed = speed[1] - speed[2]
+        reaction = float(pto_hard_stops.force(stroke, stroke_speed))
+        return np.array([0.0, reaction, -reaction, 0.0])
+
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), 4,
         pto_stiffness=pto_stiffness * pto_coupling,
@@ -271,17 +288,23 @@ def solve_rm3_regular(
         radiation_discretization=("fir" if radiation_method == "fir"
                                   else "trapezoid"),
         added_mass_delay=(1e-7 if added_mass_scheme == "simulink_delay" else None),
+        nonlinear_force=(stop_generalized_force
+                         if pto_hard_stops is not None else None),
     )
     solved = system.integrate(
         dt=dt, end_time=end_time,
         initial_coordinate=initial_coordinate, initial_speed=initial_speed,
+        adaptive_regular=pto_hard_stops is not None,
     )
     q = solved.coordinate
     v = solved.speed
     pto_stroke = q[:, 1] - q[:, 2]
     pto_velocity = v[:, 1] - v[:, 2]
+    pto_stop_force = (pto_hard_stops.force(pto_stroke, pto_velocity)
+                      if pto_hard_stops is not None else None)
     pto_force = (-pto_damping * pto_velocity
-                 - pto_stiffness * (pto_stroke - pto_equilibrium))
+                 - pto_stiffness * (pto_stroke - pto_equilibrium)
+                 + (pto_stop_force if pto_stop_force is not None else 0))
     return RM3RegularResponse(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
@@ -289,4 +312,5 @@ def solve_rm3_regular(
         pto_velocity=pto_velocity,
         pto_mechanical_power=-pto_force * pto_velocity,
         pto_dissipated_power=pto_damping * pto_velocity**2,
+        pto_stop_force=pto_stop_force,
     )

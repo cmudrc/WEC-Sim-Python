@@ -11,7 +11,7 @@ from wecsim.generalDynamics import (
 def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
                 pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0,
                 radiation_discretization="trapezoid", added_mass=0.0,
-                added_mass_delay=None):
+                added_mass_delay=None, nonlinear_force=None):
     jacobian = np.zeros((6, 1))
     jacobian[2, 0] = 1
     rigid_mass = np.zeros((6, 6))
@@ -43,6 +43,7 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
         pto_equilibrium=np.array([pto_equilibrium]),
         radiation_discretization=radiation_discretization,
         added_mass_delay=added_mass_delay,
+        nonlinear_force=nonlinear_force,
     )
 
 
@@ -165,6 +166,28 @@ def test_implicit_added_mass_preserves_undamped_oscillator_energy():
     energy = (0.5 * (mass + added) * response.speed[:, 0]**2
               + 0.5 * stiffness * response.coordinate[:, 0]**2)
     assert np.max(np.abs(energy - energy[0])) < 1e-10
+
+
+def test_adaptive_unilateral_stop_conserves_energy_and_rebounds():
+    mass, stiffness, bound = 2.0, 10_000.0, 0.1
+
+    def stop(coordinate, speed):
+        del speed
+        return np.array([-stiffness * max(coordinate[0] - bound, 0)])
+
+    system = _oscillator(mass=mass, stiffness=0,
+                         nonlinear_force=stop)
+    response = system.integrate(
+        dt=0.02, end_time=0.8, initial_speed=np.array([1.0]),
+        adaptive_regular=True,
+    )
+    position, speed = response.coordinate[:, 0], response.speed[:, 0]
+    expected_peak = bound + np.sqrt(mass / stiffness)
+    assert abs(np.max(position) - expected_peak) < 2e-4
+    assert speed[-1] < -0.999
+    energy = (0.5 * mass * speed**2
+              + 0.5 * stiffness * np.maximum(position - bound, 0)**2)
+    assert np.max(np.abs(energy - energy[0])) < 2e-5
 
 
 def test_fir_uses_full_sampled_taps_and_holds_force_during_each_step():

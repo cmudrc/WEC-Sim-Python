@@ -143,6 +143,29 @@ options case also checks constant, convolution, and FIR dynamics over 500 s.
 MATLAB's fitted radiation state-space Cases 5 and 6 remain outside that
 validated path.
 
+The RM3 floating-joint solver accepts optional PTO hard stops in Python:
+
+```python
+from wecsim import LinearHardStops, solve_rm3_regular
+
+stops = LinearHardStops(
+    lower_bound=-0.6, upper_bound=0.6,
+    lower_stiffness=100_000_000, upper_stiffness=100_000_000,
+)
+response = solve_rm3_regular(
+    "rm3.h5", pto_hard_stops=stops, dt=0.025, end_time=120,
+)
+print(response.pto_stroke, response.pto_stop_force)
+```
+
+The case runner also accepts these names under `pto.hard_stops` for a
+`floating_joint` with regular waves. Hard stops select adaptive integration,
+constant-frequency radiation, and implicit added mass. Ordinary RM3 cases
+retain their existing solver. The published MATLAB End_Stops run is
+time-step sensitive after contact. Paired motion, force, and energy checks
+pass through 120 s against refined 0.025 and 0.0125 s MATLAB runs; see
+`PARITY.md` for the limits and the published 0.1 s discrepancy.
+
 RM3 multiple-condition runs can be configured in Python without a JSON input:
 
 ```python
