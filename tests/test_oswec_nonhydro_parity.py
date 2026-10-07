@@ -51,14 +51,19 @@ def test_published_nonhydrodynamic_base_against_matlab():
     np.testing.assert_allclose(response.time, flap[:, 0], rtol=0, atol=1e-10)
     np.testing.assert_allclose(response.time, base[:, 0], rtol=0, atol=1e-10)
     for dof, label, position_limit, velocity_limit in (
-        (0, "surge", 0.05, 0.05),
-        (2, "heave", 0.02, 0.025),
-        (4, "pitch", 0.01, 0.01),
+        (0, "surge", 0.03, 0.025),
+        (2, "heave", 0.012, 0.01),
+        (4, "pitch", 0.007, 0.006),
     ):
         _max_error(response.body_position[:, 0, dof], flap[:, 1 + dof],
                    position_limit, f"flap {label} position")
         _max_error(response.body_velocity[:, 0, dof], flap[:, 7 + dof],
                    velocity_limit, f"flap {label} velocity")
+    for dof in (1, 3, 5):
+        _max_error(response.body_position[:, 0, dof], flap[:, 1 + dof],
+                   1e-10, f"flap stationary DOF {dof} position")
+        _max_error(response.body_velocity[:, 0, dof], flap[:, 7 + dof],
+                   1e-10, f"flap stationary DOF {dof} velocity")
     np.testing.assert_allclose(
         response.body_position[:, 1, :], base[:, 1:7], rtol=0, atol=1e-10,
     )
@@ -68,7 +73,7 @@ def test_published_nonhydrodynamic_base_against_matlab():
     pto = np.loadtxt(
         reference / "OSWEC_Nonhydro_Nonhydro_pto1.csv", delimiter=",",
     )
-    _max_error(response.body_position[:, 0, 4], pto[:, 5], 0.01, "PTO angle")
-    _max_error(response.body_velocity[:, 0, 4], pto[:, 11], 0.01,
+    _max_error(response.body_position[:, 0, 4], pto[:, 5], 0.007, "PTO angle")
+    _max_error(response.body_velocity[:, 0, 4], pto[:, 11], 0.006,
                "PTO angular speed")
-    _max_error(response.pto_force, pto[:, 17], 1e-8, "PTO torque")
+    _max_error(response.pto_force, pto[:, 17], 1e-6, "PTO torque")

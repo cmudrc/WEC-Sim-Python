@@ -224,7 +224,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         if len(bodies) == 2 and wave["type"] != "regular":
             raise ValueError("the fixed nonhydrodynamic base currently needs regular waves")
         _body_number(bodies[0], 1)
-        if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "pitch_inertia"}:
+        if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "pitch_inertia", "name"}:
             raise ValueError("fixed-hinge pitch uses mass and pitch_inertia")
         mass = _number(bodies[0].get("mass"), "body.mass", positive=True)
         inertia = _number(bodies[0].get("pitch_inertia"),

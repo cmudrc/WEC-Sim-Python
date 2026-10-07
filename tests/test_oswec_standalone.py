@@ -60,3 +60,7 @@ def test_regular_hinged_flap_reports_fixed_nonhydrodynamic_base():
     )
     assert np.max(np.abs(response.body_position[:, 0, 4])) > 0.01
     np.testing.assert_array_equal(response.pto_force, np.zeros(81))
+    flap_only = run_case({**case, "bodies": case["bodies"][:1]})
+    np.testing.assert_array_equal(
+        response.body_position[:, 0, :], flap_only.body_position[:, 0, :],
+    )

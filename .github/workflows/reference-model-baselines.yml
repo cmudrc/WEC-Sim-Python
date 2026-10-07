@@ -159,3 +159,4 @@ jobs:
             matlab-reference-model-output/
             applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
             applications/_Common_Input_Files/RM3/hydroData/rm3.h5
+            applications/_Common_Input_Files/OSWEC/hydroData/oswec.h5
