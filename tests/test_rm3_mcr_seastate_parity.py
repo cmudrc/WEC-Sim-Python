@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 
+import h5py
 import numpy as np
 import pytest
 
@@ -23,6 +24,67 @@ def _max_error(actual, expected, limit, label):
     assert np.isfinite(expected).all(), label
     error = float(np.max(np.abs(actual - expected)))
     assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
+
+
+def test_matlab_sea_state_joint_and_force_balance():
+    """Identify the joint motion and applied mass convention in the baseline.
+
+    MATLAB moves twice the translational added-mass trace into each Simscape
+    body. Its exported forceTotal retains the matching modified force, so the
+    adjusted mass is needed to close the logged translational balance.
+    """
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    adjusted_mass = []
+    centers = []
+    inertias = (21_306_090.66, 94_407_091.24)
+    with h5py.File(hydro) as h5:
+        rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+        for body in (1, 2):
+            prefix = f"body{body}"
+            volume = float(np.asarray(h5[f"{prefix}/properties/disp_vol"]).item())
+            centers.append(float(np.asarray(h5[f"{prefix}/properties/cg"]).ravel()[2]))
+            added = rho * np.asarray(
+                h5[f"{prefix}/hydro_coeffs/added_mass/inf_freq"]
+            )[:, 6 * (body - 1):6 * body]
+            adjusted_mass.append(rho * volume + 2 * np.trace(added[:3, :3]))
+
+    for case in (1, 2, 3):
+        bodies = [np.loadtxt(reference / f"RM3_MCR_SEASTATE_case{case}_body{body}.csv",
+                             delimiter=",") for body in (1, 2)]
+        forces = [np.loadtxt(reference / f"RM3_MCR_SEASTATE_case{case}_body{body}_forces.csv",
+                             delimiter=",") for body in (1, 2)]
+        pto = np.loadtxt(reference / f"RM3_MCR_SEASTATE_case{case}_pto1.csv",
+                         delimiter=",")
+        angle = bodies[0][:, 5]
+        sine, cosine = np.sin(angle), np.cos(angle)
+        separation = centers[0] - centers[1] + pto[:, 3]
+        _max_error(bodies[0][:, 1] - bodies[1][:, 1],
+                   separation * sine, 1e-9, f"case {case} joint x")
+        _max_error(bodies[0][:, 3] - bodies[1][:, 3],
+                   separation * cosine, 1e-9, f"case {case} joint z")
+        _max_error(pto[:, 15], -1_200_000 * pto[:, 9],
+                   1e-6, f"case {case} PTO damper")
+
+        residual = np.zeros((len(angle), 4))
+        for index in (0, 1):
+            radius = bodies[index][:, 3] / cosine
+            imbalance_x = (adjusted_mass[index] * forces[index][:, 19]
+                           - bodies[index][:, 13])
+            imbalance_z = (adjusted_mass[index] * forces[index][:, 21]
+                           - bodies[index][:, 15])
+            imbalance_pitch = (inertias[index] * forces[index][:, 23]
+                               - bodies[index][:, 17])
+            residual[:, 0] += imbalance_x
+            residual[:, index + 1] += sine * imbalance_x + cosine * imbalance_z
+            residual[:, 3] += (radius * cosine * imbalance_x
+                               - radius * sine * imbalance_z
+                               + imbalance_pitch)
+        residual[:, 1] -= pto[:, 15]
+        residual[:, 2] += pto[:, 15]
+        _max_error(residual, np.zeros_like(residual), 1e-3,
+                   f"case {case} generalized force balance")
 
 
 def test_published_three_sea_state_mcr_against_matlab():
