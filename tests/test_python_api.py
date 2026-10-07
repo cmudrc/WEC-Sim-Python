@@ -8,7 +8,7 @@ import pytest
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import NoWave, RegularWave, WEC, WorldPoint
+from wecsim import LatchingControl, NoWave, RegularWave, WEC, WorldPoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,3 +63,25 @@ def test_python_builder_rejects_foreign_body_attachment():
     with pytest.raises(ValueError, match="must belong to this WEC"):
         first.pto("bad", other.at(0, 0, 0), WorldPoint(0, 0, 2),
                   damping=1)
+
+
+def test_python_builder_exposes_latching_pto_settings_and_force():
+    wec = WEC("Latching float")
+    body = wec.body("float", HYDRO)
+    wec.coordinate("heave", body.move("heave"))
+    control = LatchingControl(gain=100, latch_damping=10_000,
+                             latch_time=0.2)
+    wec.pto("latch", body.at(0, 0, 0), WorldPoint(0, 0, 10),
+            axis=(0, 0, 1), control=control)
+    wave = RegularWave(2.5, 8)
+    case = wec.to_case(wave, dt=0.01, end_time=0.1,
+                       initial_speed={"heave": 0.1})
+    assert case["ptos"][0]["control"] == {
+        "kind": "latching", "latch_time": 0.2, "latch_damping": 10_000,
+        "minimum_normal_time": 0.2,
+    }
+    result = wec.run(wave, dt=0.01, end_time=0.1, ramp_time=1,
+                     initial_speed={"heave": 0.1})
+    np.testing.assert_allclose(result.ptos["latch"].force[0],
+                               -100 * result.ptos["latch"].velocity[0])
+    assert np.isfinite(result.bodies["float"].position).all()

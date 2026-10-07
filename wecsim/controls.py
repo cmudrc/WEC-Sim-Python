@@ -33,6 +33,9 @@ class DeclutchingControl:
         if self.gain <= 0 or self.declutch_time <= 0 or self.minimum_on_time < 0:
             raise ValueError("declutching settings are outside their supported range")
 
+    def initial_state(self) -> DeclutchingState:
+        return DeclutchingState()
+
     def sample(self, velocity: float, state: DeclutchingState,
                dt: float) -> tuple[float, DeclutchingState]:
         """Return signed force and next memory for one major simulation step."""
@@ -55,3 +58,59 @@ class DeclutchingControl:
     @staticmethod
     def _sign(value: float) -> int:
         return (value > 0) - (value < 0)
+
+
+@dataclass(frozen=True)
+class LatchingState:
+    """Elapsed latching and normal intervals before the next velocity sample."""
+
+    elapsed_latched: float = 0.0
+    elapsed_normal: float = 0.0
+    previous_velocity: float = 0.0
+
+
+@dataclass(frozen=True)
+class LatchingControl:
+    """Apply strong damping after a velocity reversal for a timed interval.
+
+    The pinned Sphere Latching application implements a finite, dissipative
+    damping force during the latch; it does not impose a rigid displacement
+    constraint. Controller memory advances once per major simulation step.
+    """
+
+    gain: float
+    latch_damping: float
+    latch_time: float
+    minimum_normal_time: float = 0.2
+
+    def __post_init__(self):
+        values = (self.gain, self.latch_damping, self.latch_time,
+                  self.minimum_normal_time)
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("latching settings must be finite")
+        if (self.gain <= 0 or self.latch_damping <= 0
+                or self.latch_time <= 0 or self.minimum_normal_time < 0):
+            raise ValueError("latching settings are outside their supported range")
+
+    def initial_state(self) -> LatchingState:
+        return LatchingState()
+
+    def sample(self, velocity: float, state: LatchingState,
+               dt: float) -> tuple[float, LatchingState]:
+        """Return signed force and next memory for one major simulation step."""
+        if not isinstance(state, LatchingState):
+            raise TypeError("state must be LatchingState")
+        if not (math.isfinite(velocity) and math.isfinite(dt) and dt > 0):
+            raise ValueError("velocity must be finite and dt positive")
+        reversal = (DeclutchingControl._sign(velocity)
+                    != DeclutchingControl._sign(state.previous_velocity)
+                    and state.elapsed_latched == 0
+                    and state.elapsed_normal > self.minimum_normal_time)
+        interval_active = 0 < state.elapsed_latched < self.latch_time
+        if reversal or interval_active:
+            return -self.latch_damping * velocity, LatchingState(
+                state.elapsed_latched + dt, 0.0, velocity,
+            )
+        return -self.gain * velocity, LatchingState(
+            0.0, state.elapsed_normal + dt, velocity,
+        )
