@@ -33,6 +33,7 @@ def solve_rm3_regular(
     pto_equilibrium: float = 0.0,
     b2b: bool = False,
     radiation_memory: float | None = None,
+    radiation_method: str | None = None,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -48,6 +49,8 @@ def solve_rm3_regular(
     each step. Without ``radiation_memory``, fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
+    ``radiation_method="fir"`` instead samples the same kernel as a discrete
+    FIR filter and holds its force through each RK4 step.
     ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
@@ -65,6 +68,14 @@ def solve_rm3_regular(
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
     if radiation_memory is not None and radiation_memory <= 0:
         raise ValueError("radiation_memory must be positive")
+    if radiation_method is None:
+        radiation_method = ("convolution" if radiation_memory is not None
+                            else "constant")
+    if radiation_method not in ("constant", "convolution", "fir"):
+        raise ValueError("unsupported RM3 radiation method")
+    if ((radiation_method == "constant" and radiation_memory is not None)
+            or (radiation_method != "constant" and radiation_memory is None)):
+        raise ValueError("constant radiation has no memory; convolution and FIR need it")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
@@ -201,6 +212,8 @@ def solve_rm3_regular(
         pto_damping=pto_damping * pto_coupling,
         pto_equilibrium=np.array([0, pto_equilibrium / 2,
                                   -pto_equilibrium / 2, 0]),
+        radiation_discretization=("fir" if radiation_method == "fir"
+                                  else "trapezoid"),
     )
     solved = system.integrate(dt=dt, end_time=end_time)
     q = solved.coordinate

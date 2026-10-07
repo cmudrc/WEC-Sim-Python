@@ -9,7 +9,8 @@ from wecsim.generalDynamics import (
 
 
 def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
-                pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0):
+                pto_damping=0.0, pto_stiffness=0.0, pto_equilibrium=0.0,
+                radiation_discretization="trapezoid"):
     jacobian = np.zeros((6, 1))
     jacobian[2, 0] = 1
     rigid_mass = np.zeros((6, 6))
@@ -37,6 +38,7 @@ def _oscillator(*, mass=2.0, stiffness=8.0, radiation=None,
         (body,), 1, pto_damping=np.array([[pto_damping]]),
         pto_stiffness=np.array([[pto_stiffness]]),
         pto_equilibrium=np.array([pto_equilibrium]),
+        radiation_discretization=radiation_discretization,
     )
 
 
@@ -91,3 +93,22 @@ def test_radiation_memory_matches_augmented_state_equation():
     assert expected.success
     assert np.max(np.abs(response.coordinate[:, 0] - expected.y[0])) < 3e-4
     assert np.max(np.abs(response.speed[:, 0] - expected.y[1])) < 6e-4
+
+
+def test_fir_uses_full_sampled_taps_and_holds_force_during_each_step():
+    kernel = np.zeros((2, 6, 6))
+    kernel[:, 2, 2] = [2, 3]
+    system = _oscillator(
+        mass=1, stiffness=0, radiation=kernel,
+        radiation_discretization="fir",
+    )
+    response = system.integrate(
+        dt=0.1, end_time=0.2, initial_speed=np.array([1.0]),
+    )
+    np.testing.assert_allclose(response.speed[:, 0],
+                               [1, 0.98, 0.9304], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.coordinate[:, 0],
+                               [0, 0.099, 0.19452], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.acceleration[:, 0],
+                               [-0.2, -0.496, -0.48008],
+                               rtol=0, atol=1e-12)

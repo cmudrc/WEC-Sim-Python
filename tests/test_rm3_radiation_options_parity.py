@@ -25,16 +25,18 @@ def _max_error(actual, expected, limit, label):
     assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
 
 
-@pytest.mark.parametrize("mode", ["constant", "convolution"])
+@pytest.mark.parametrize("mode", ["constant", "convolution", "FIR"])
 def test_published_rm3_radiation_options(mode):
     hydro = (Path(APPLICATIONS)
              / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     simulation = {"dt": 0.1, "end_time": 500, "ramp_time": 100}
-    if mode == "convolution":
+    if mode != "constant":
         simulation["radiation_memory"] = 60
+    if mode == "FIR":
+        simulation["radiation_method"] = "fir"
     case = {
         "simulation": simulation,
-        "wave": {"type": "regularCIC" if mode == "convolution" else "regular",
+        "wave": {"type": "regularCIC" if mode != "constant" else "regular",
                  "height": 2.5, "period": 12},
         "bodies": [
             {"hydro_file": str(hydro), "hydro_body": 1,

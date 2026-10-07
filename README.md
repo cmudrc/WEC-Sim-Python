@@ -94,19 +94,24 @@ Supported combinations are:
 | --- | --- | --- | --- |
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
-| `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation or 60 s impulse-response convolution |
+| `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
 an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
-`radiation_memory` for convolution cases. The general dynamics module
+`radiation_memory` for convolution cases. For an RM3 `regularCIC` floating
+joint, set `simulation.radiation_method` to `"fir"` to use the published
+discrete FIR calculation; `"convolution"` remains the default. Both use
+`radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
-RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation
-state-space Cases 5 and 6 remain outside that validated path.
+RM3 Multiple Condition Runs Option 1 sweep. The published RM3 radiation
+options case also checks constant, convolution, and FIR dynamics over 500 s.
+MATLAB's fitted radiation state-space Cases 5 and 6 remain outside that
+validated path.
 For `linear_subspace`, the map's rows are surge, sway, heave, roll, pitch,
 and yaw; its columns are independent generalized coordinates. A two-body
 heave case, for example, maps the first body's heave to coordinate 1 and the

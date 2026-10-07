@@ -131,7 +131,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
          "ptos", "body_to_body"},
     )
     sim = _section(case["simulation"], "simulation", {"dt", "end_time"},
-                   {"dt", "end_time", "ramp_time", "rho", "g", "radiation_memory"})
+                   {"dt", "end_time", "ramp_time", "rho", "g",
+                    "radiation_memory", "radiation_method"})
     dt = _number(sim["dt"], "simulation.dt", positive=True)
     end_time = _number(sim["end_time"], "simulation.end_time", nonnegative=True)
     ramp_time = _number(sim.get("ramp_time", 100), "simulation.ramp_time", nonnegative=True)
@@ -152,6 +153,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+    if "radiation_method" in sim and kind != "floating_joint":
+        raise ValueError("radiation_method currently applies to floating_joint")
     if "ptos" in case and kind != "linear_subspace":
         raise ValueError("configurable PTO connections require linear_subspace")
 
@@ -285,6 +288,15 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             raise ValueError("floating-joint dynamics currently support 0-degree waves")
         if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave floating-joint dynamics use constant radiation")
+        radiation_method = sim.get(
+            "radiation_method",
+            "convolution" if wave["type"] == "regularCIC" else "constant",
+        )
+        if wave["type"] == "regular" and radiation_method != "constant":
+            raise ValueError("regular waves need constant radiation")
+        if (wave["type"] == "regularCIC"
+                and radiation_method not in ("convolution", "fir")):
+            raise ValueError("regularCIC needs convolution or FIR radiation")
         if wave["type"] == "regularCIC":
             radiation_memory = _number(
                 sim.get("radiation_memory", 60), "simulation.radiation_memory",
@@ -301,6 +313,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pitch_inertias=inertias, pto_damping=damping,
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             b2b=b2b, radiation_memory=radiation_memory,
+            radiation_method=radiation_method,
             joint_z=location[2],
             dt=dt, end_time=end_time, ramp_time=ramp_time, rho=rho, g=g,
         )
