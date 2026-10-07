@@ -25,7 +25,8 @@ switch string(model)
         if ~isfile('rm3.h5')
             bemio;
         end
-        cases = ["B2B_Case1", "B2B_Case2"];
+        cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", ...
+            "B2B_Case4", "B2B_Case5", "B2B_Case6"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
     case "Sphere_Passive"
