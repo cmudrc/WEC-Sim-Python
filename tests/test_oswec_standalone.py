@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from wecsim.hingePitch import solve_hinged_pitch_from_excitation
 from wecsim.caseDynamics import run_case
@@ -48,8 +49,9 @@ def test_regular_hinged_flap_reports_fixed_nonhydrodynamic_base():
              "center_gravity": [0, 0, -10.9], "mass": 999,
              "inertia": [1, 1, 1]},
         ],
-        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -8.9]},
-        "pto": {"kind": "pitch", "damping": 0},
+        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -10]},
+        "pto": {"kind": "pitch", "damping": 0,
+                "location": [0, 0, -8.9]},
     }
     response = run_case(case)
     assert response.body_position.shape == (81, 2, 6)
@@ -64,3 +66,5 @@ def test_regular_hinged_flap_reports_fixed_nonhydrodynamic_base():
     np.testing.assert_array_equal(
         response.body_position[:, 0, :], flap_only.body_position[:, 0, :],
     )
+    with pytest.raises(ValueError, match="needs pto.location"):
+        run_case({**case, "pto": {"kind": "pitch", "damping": 0}})

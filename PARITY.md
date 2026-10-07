@@ -32,6 +32,7 @@ the production Python code. The live wave comparison passed on 6 October
 | Sphere passive controller | Pinned MATLAB Applications `Controls/Passive (P)` and MATLAB-generated Sphere HDF5 | The Python heave model represents the published proportional controller as an 860,870 N s/m damper. Maximum differences over 400 s are 0.063 mm position, 0.065 mm/s velocity, 56 N controller force, and 32 W controller power after accounting for MATLAB's opposite force and power signs. |
 | Configured Sphere spring, damper, and PTO attachment | Derived from the pinned Sphere passive case with 50,000 N/m PTO stiffness, 100,000 N s/m native PTO damping, and the PTO moved to x = 1 m | A fresh MATLAB run and the Python `WEC` builder agree within 0.051 mm position and PTO stroke, 0.054 mm/s velocity and PTO speed, 52 N combined force, and 27 W combined power. The x offset has no effect on heave-only motion, so this validates the force settings but not attachment-location dynamics. |
 | OSWEC PM equal-energy waves, directional excitation, pitch, and PTO | Current MATLAB OSWEC example and current OSWEC HDF5 | Python recreates all 500 PM equal-energy bins from the HDF5 range, then synthesizes wave elevation and six-component excitation using the saved MATLAB phase matrix. Local component differences are below `6e-15`, elevation below `2e-13` m, and excitation below `1e-7` N. The fixed-hinge solver's pitch differs by at most 0.0021 rad over 400 s; PTO torque from the paired-force check differs by at most 37 N m. A Python seed produces a separate reproducible realization. This model covers pitch about a fixed hinge, not a general six-DOF device. |
+| OSWEC fixed nonhydrodynamic base | Pinned MATLAB Applications `Nonhydro_Body` case and its BEMIO-generated OSWEC HDF5 | The regular-wave solver reports the stationary base and nonlinear flap motion about the PTO hinge. Against a fresh 400 s MATLAB R2025b run (4,001 samples), maximum flap position differences are 20.8 mm surge, 7.9 mm heave, and 0.00444 rad pitch; velocity differences are 15.6 mm/s surge, 6.8 mm/s heave, and 0.00328 rad/s pitch. All six excitation-force components differ by less than 1 N, the base position and velocity agree exactly, and zero PTO torque differs only by MATLAB numerical noise below `3.3e-7` N m. The base's ground-constraint reaction forces are not calculated. |
 | Case-driven dynamics runner | Current MATLAB RM3 and OSWEC examples plus Sphere and RM3 body-to-body Applications cases | One generalized-coordinate engine assembles rigid inertia, hydrodynamic added mass and radiation, hydrostatic restoring, excitation, and linear PTO forces. The heave, fixed-hinge, and floating-joint layouts run the paired cases above. A fourth `linear_subspace` layout maps independent coordinates into arbitrary bodies; its RM3 two-body heave, Sphere free decay, and configured Sphere PTO checks agree with MATLAB. Arbitrary Simscape layouts, moorings, nonlinear hydro, and other application cases remain unsupported. |
 
 The paired case-runner checks compare the MATLAB and Python time grids, all
@@ -61,9 +62,9 @@ This is a source inventory, not a claim that every case runs in Python.
 The `MATLAB reference model baselines` workflow runs the two canonical core
 examples, all five Sphere free-decay cases, RM3 body-to-body Cases 1–4,
 all eight physical conditions from RM3 Multiple Condition Runs Option 1,
-the published Sphere passive-controller case, and a configured Sphere PTO
-case derived from that published input.
-The [expanded seven-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37623353777)
+the published Sphere passive-controller case, a configured Sphere PTO case
+derived from that published input, and the published OSWEC `Nonhydro_Body`
+case. The [expanded eight-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37635187956)
 passed against fresh MATLAB R2025b outputs. The MCR input was expanded into
 eight scalar simulations; the Python checks compare their dynamics and PTO
 signals, not the `wecSimMCR` orchestration or its power-matrix postprocessing.
@@ -168,8 +169,7 @@ The focused OSWEC PM implementation above is checked against current MATLAB;
 the inherited general `WaveClass` still needs corresponding updates for other
 irregular-wave cases.
 The next dynamics targets are RM3 body-to-body state-space Cases 5 and 6,
-nonlinear hinged OSWEC with its fixed nonhydrodynamic base, and a rotational
-off-center PTO benchmark. The Sphere
+and other published OSWEC and Sphere configurations. The Sphere
 free-decay cases already have direct Python motion comparisons. A comparison must
 record both code revisions, the HDF5 input, time step, outputs, and numerical
 tolerances.

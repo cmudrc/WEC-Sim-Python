@@ -24,6 +24,7 @@ class HingePitchResponse:
     center_velocity: np.ndarray
     excitation_torque: np.ndarray
     pto_torque: np.ndarray
+    excitation_force: np.ndarray | None = None
 
 
 def solve_hinged_pitch_from_excitation(
@@ -165,6 +166,7 @@ def solve_hinged_pitch_from_excitation(
         excitation_torque=excitation_torque,
         pto_torque=(-pto_damping * speed
                     - pto_stiffness * (angle - pto_equilibrium)),
+        excitation_force=force,
     )
 
 
@@ -272,9 +274,10 @@ def solve_hinged_pitch_regular(
     solved = device.integrate(dt=dt, end_time=end_time)
     angle = solved.coordinate[:, 0]
     speed = solved.speed[:, 0]
+    force_history = np.array([excitation(at_time) for at_time in time])
     torque = np.array([
         motion(solved.coordinate[i], solved.speed[i]).jacobian[:, 0]
-        @ excitation(at_time) for i, at_time in enumerate(time)
+        @ force_history[i] for i in range(len(time))
     ])
     return HingePitchResponse(
         time=time, angle=angle, angular_velocity=speed,
@@ -283,4 +286,5 @@ def solve_hinged_pitch_regular(
         excitation_torque=torque,
         pto_torque=(-pto_damping * speed
                     - pto_stiffness * (angle - pto_equilibrium)),
+        excitation_force=force_history,
     )

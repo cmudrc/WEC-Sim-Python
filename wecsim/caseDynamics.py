@@ -100,19 +100,19 @@ def _body_number(body, expected):
         raise ValueError(f"body.hydro_body must be {expected} for this layout")
 
 
-def _location(constraint):
+def _location(constraint, name="constraint.location"):
     location = np.asarray(constraint.get("location", [0, 0, 0]), dtype=float)
     if location.shape != (3,) or not np.isfinite(location).all():
-        raise ValueError("constraint.location must have three finite coordinates")
+        raise ValueError(f"{name} must have three finite coordinates")
     if not np.isclose(location[:2], 0, atol=1e-10).all():
         raise ValueError("supported joints must lie on the body x=y=0 axis")
     return location
 
 
-def _pto(pto, kind):
+def _pto(pto, kind, *, allow_location=False):
     _section(pto, "pto", {"kind", "damping"},
              {"kind", "damping", "stiffness", "equilibrium_position",
-              "pretension"})
+              "pretension"} | ({"location"} if allow_location else set()))
     if pto["kind"] != kind:
         raise ValueError(f"this layout requires a {kind} PTO")
     if "equilibrium_position" in pto and "pretension" in pto:
@@ -232,7 +232,14 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         if set(constraint) - {"kind", "location"}:
             raise ValueError("fixed-hinge initial conditions are not yet supported")
         location = _location(constraint)
-        damping, stiffness, equilibrium = _pto(case.get("pto"), "pitch")
+        pto_data = case.get("pto")
+        damping, stiffness, equilibrium = _pto(
+            pto_data, "pitch", allow_location=True,
+        )
+        if len(bodies) == 2 and "location" not in pto_data:
+            raise ValueError("fixed nonhydrodynamic base needs pto.location")
+        hinge = (_location({"location": pto_data["location"]}, "pto.location")
+                 if "location" in pto_data else location)
         height = _number(wave.get("height"), "wave.height", positive=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
         if wave["type"] == "regular":
@@ -245,7 +252,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 raise ValueError("regular fixed-hinge dynamics use constant-frequency radiation")
             solved = solve_hinged_pitch_regular(
                 hydro[0], wave_height=height, wave_period=period,
-                hinge_z=location[2], body_mass=mass, pitch_inertia=inertia,
+                hinge_z=hinge[2], body_mass=mass, pitch_inertia=inertia,
                 pto_damping=damping, pto_stiffness=stiffness,
                 pto_equilibrium=equilibrium, dt=dt, end_time=end_time,
                 ramp_time=ramp_time, rho=rho, g=g,
@@ -298,7 +305,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
         solved = solve_hinged_pitch_from_excitation(
             hydro[0], incident.excitation_force,
-            hinge_z=location[2], body_mass=mass, pitch_inertia=inertia,
+            hinge_z=hinge[2], body_mass=mass, pitch_inertia=inertia,
             pto_damping=damping, pto_stiffness=stiffness,
             pto_equilibrium=equilibrium, dt=dt,
             memory_time=_number(

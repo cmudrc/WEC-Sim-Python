@@ -106,8 +106,10 @@ an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 assembles the supported body and PTO forces; it does not parse Simscape models.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
-`center_gravity`. Its stationary motion appears in the response. The fixed
-base's constraint reaction forces are not yet calculated.
+`center_gravity`. Its stationary motion appears in the response. With this
+base, `constraint.location` is the base's ground attachment and
+`pto.location` is the flap's hinge attachment. The fixed base's constraint
+reaction forces are not yet calculated.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
 RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation

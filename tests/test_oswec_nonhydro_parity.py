@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 
 from wecsim.caseDynamics import run_case
+from wecsim.hingePitch import solve_hinged_pitch_regular
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
@@ -37,8 +38,9 @@ def test_published_nonhydrodynamic_base_against_matlab():
              "center_gravity": [0, 0, -10.9], "mass": 999,
              "inertia": [1, 1, 1]},
         ],
-        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -8.9]},
-        "pto": {"kind": "pitch", "damping": 0},
+        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -10]},
+        "pto": {"kind": "pitch", "damping": 0,
+                "location": [0, 0, -8.9]},
     }
     response = run_case(case)
     reference = Path(REFERENCE)
@@ -77,3 +79,9 @@ def test_published_nonhydrodynamic_base_against_matlab():
     _max_error(response.body_velocity[:, 0, 4], pto[:, 11], 0.006,
                "PTO angular speed")
     _max_error(response.pto_force, pto[:, 17], 1e-6, "PTO torque")
+    direct = solve_hinged_pitch_regular(
+        hydro, wave_height=2.5, wave_period=8, hinge_z=-8.9,
+        body_mass=127_000, pitch_inertia=1.85e6, pto_damping=0,
+    )
+    _max_error(direct.excitation_force, flap[:, 19:25], 1.0,
+               "six-component flap excitation force")
