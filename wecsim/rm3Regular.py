@@ -16,13 +16,18 @@ from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 
 @dataclass(frozen=True)
 class RM3RegularResponse:
+    """Motion and PTO signals; mechanical power includes spring exchange.
+
+    Positive mechanical power enters the PTO, while dissipated power counts
+    only the nonnegative damper loss.
+    """
     time: np.ndarray
     body_position: np.ndarray
     body_velocity: np.ndarray
     pto_force: np.ndarray
     pto_velocity: np.ndarray
     pto_mechanical_power: np.ndarray
-    pto_absorbed_power: np.ndarray
+    pto_dissipated_power: np.ndarray
 
 
 def solve_rm3_regular(
@@ -243,5 +248,5 @@ def solve_rm3_regular(
         body_velocity=solved.body_velocity,
         pto_force=pto_force, pto_velocity=pto_velocity,
         pto_mechanical_power=-pto_force * pto_velocity,
-        pto_absorbed_power=pto_damping * pto_velocity**2,
+        pto_dissipated_power=pto_damping * pto_velocity**2,
     )
