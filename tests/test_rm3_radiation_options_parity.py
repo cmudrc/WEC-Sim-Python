@@ -1,0 +1,117 @@
+"""Compare published RM3 radiation options with paired MATLAB trajectories."""
+
+import os
+from pathlib import Path
+
+import h5py
+import numpy as np
+import pytest
+
+from wecsim.caseDynamics import run_case
+
+
+APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+pytestmark = pytest.mark.skipif(
+    not (APPLICATIONS and REFERENCE),
+    reason="paired MATLAB RM3 radiation-option output not provided",
+)
+
+
+def _max_error(actual, expected, limit, label):
+    assert actual.shape == expected.shape, label
+    assert np.isfinite(expected).all(), label
+    error = np.max(np.abs(actual - expected))
+    assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
+
+
+@pytest.mark.parametrize("mode", ["constant", "convolution"])
+def test_published_rm3_radiation_options(mode):
+    hydro = (Path(APPLICATIONS)
+             / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
+    simulation = {"dt": 0.1, "end_time": 500, "ramp_time": 100}
+    if mode == "convolution":
+        simulation["radiation_memory"] = 60
+    case = {
+        "simulation": simulation,
+        "wave": {"type": "regularCIC" if mode == "convolution" else "regular",
+                 "height": 2.5, "period": 12},
+        "bodies": [
+            {"hydro_file": str(hydro), "hydro_body": 1,
+             "mass": "equilibrium", "pitch_inertia": 21_306_090.66},
+            {"hydro_file": str(hydro), "hydro_body": 2,
+             "mass": "equilibrium", "pitch_inertia": 94_407_091.24},
+        ],
+        "constraint": {"kind": "floating_joint", "location": [0, 0, 0]},
+        "pto": {"kind": "relative_heave", "damping": 1_200_000},
+    }
+    response = run_case(case)
+    reference = Path(REFERENCE)
+    assert response.body_position.shape == (5001, 2, 6)
+    for index in range(2):
+        expected = np.loadtxt(
+            reference / f"RM3_Radiation_Options_{mode}_body{index + 1}.csv",
+            delimiter=",",
+        )
+        assert expected.shape == (5001, 37)  # includes radiation and added-mass forces
+        np.testing.assert_allclose(response.time, expected[:, 0],
+                                   rtol=0, atol=1e-10)
+        for dof, axis, position_limit, velocity_limit in (
+            (0, "surge", 0.035, 0.020),
+            (2, "heave", 0.012, 0.0025),
+            (4, "pitch", 0.0018, 0.0011),
+        ):
+            _max_error(response.body_position[:, index, dof],
+                       expected[:, 1 + dof], position_limit,
+                       f"{mode} body{index + 1} {axis} position")
+            _max_error(response.body_velocity[:, index, dof],
+                       expected[:, 7 + dof], velocity_limit,
+                       f"{mode} body{index + 1} {axis} velocity")
+        for dof in (1, 3, 5):
+            _max_error(response.body_position[:, index, dof],
+                       expected[:, 1 + dof], 1e-9,
+                       f"{mode} body{index + 1} stationary position {dof}")
+            _max_error(response.body_velocity[:, index, dof],
+                       expected[:, 7 + dof], 1e-9,
+                       f"{mode} body{index + 1} stationary velocity {dof}")
+
+    with h5py.File(hydro) as h5:
+        center_gap = (
+            np.asarray(h5["body1/properties/cg"]).ravel()[2]
+            - np.asarray(h5["body2/properties/cg"]).ravel()[2]
+        )
+    pitch = response.body_position[:, 0, 4]
+    pitch_speed = response.body_velocity[:, 0, 4]
+    stroke = (response.body_position[:, 0, 2]
+              - response.body_position[:, 1, 2]
+              - center_gap * np.cos(pitch))
+    speed = (response.body_velocity[:, 0, 2]
+             - response.body_velocity[:, 1, 2]
+             + center_gap * np.sin(pitch) * pitch_speed)
+    pto = np.loadtxt(
+        reference / f"RM3_Radiation_Options_{mode}_pto1.csv", delimiter=",",
+    )
+    np.testing.assert_allclose(response.time, pto[:, 0], rtol=0, atol=1e-10)
+    _max_error(stroke, pto[:, 3], 0.0125, f"{mode} PTO stroke")
+    _max_error(speed, pto[:, 9], 0.003, f"{mode} PTO speed")
+    _max_error(response.pto_force, pto[:, 15], 3500,
+               f"{mode} PTO force")
+    _max_error(response.pto_force * speed, pto[:, 21], 3000,
+               f"{mode} PTO power")
+
+
+def test_matlab_radiation_modes_are_distinct():
+    reference = Path(REFERENCE)
+    loads = {
+        mode: np.loadtxt(
+            reference / f"RM3_Radiation_Options_{mode}_body1.csv",
+            delimiter=",",
+        )
+        for mode in ("constant", "FIR", "state_space", "convolution")
+    }
+    for response in loads.values():
+        assert response.shape == (5001, 37)
+        assert np.isfinite(response).all()
+    reference_surge = loads["convolution"][:, 1]
+    assert np.max(np.abs(loads["FIR"][:, 1] - reference_surge)) > 0.2
+    assert np.max(np.abs(loads["state_space"][:, 1] - reference_surge)) > 1.0
