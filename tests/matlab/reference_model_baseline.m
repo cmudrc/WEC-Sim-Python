@@ -58,6 +58,30 @@ switch string(model)
         end
         cases = "End_Stops";
         caseDirs = string(fullfile(repoRoot, 'applications', 'End_Stops'));
+    case "RM3_END_STOPS_STEP"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        sourceDir = fullfile(repoRoot, 'applications', 'End_Stops');
+        cases = "End_Stops_dt005";
+        caseDirs = string(fullfile(repoRoot, 'applications', cases));
+        [copied, copyMessage] = copyfile(sourceDir, caseDirs);
+        assert(copied, copyMessage);
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        assert(contains(contents, 'simu.dt = 0.1;') && ...
+            contains(contents, 'simu.endTime = 400;'), ...
+            'The pinned End_Stops time settings changed');
+        contents = strrep(contents, 'simu.dt = 0.1;', 'simu.dt = 0.05;');
+        contents = strrep(contents, 'simu.endTime = 400;', ...
+            'simu.endTime = 120;');
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not write the End_Stops step input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
     case "OSWEC_Nonhydro"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
             'OSWEC', 'hydroData');
@@ -207,7 +231,7 @@ for iCase = 1:numel(cases)
     end
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
-    if string(model) == "RM3_END_STOPS"
+    if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
         stops = pto(1).hardStops;
         assert(strcmp(stops.upperLimitSpecify, 'on') && ...
             strcmp(stops.lowerLimitSpecify, 'on') && ...
@@ -223,7 +247,13 @@ for iCase = 1:numel(cases)
             stops.lowerLimitDamping, stops.upperLimitDamping, ...
             stops.lowerLimitTransitionRegionWidth, ...
             stops.upperLimitTransitionRegionWidth], ...
-            fullfile(outDir, 'RM3_END_STOPS_settings.csv'));
+            fullfile(outDir, string(model) + "_settings.csv"));
+        if string(model) == "RM3_END_STOPS_STEP"
+            assert(simu.dt == 0.05 && simu.endTime == 120, ...
+                'The End_Stops step diagnostic did not use its requested settings');
+            writematrix([simu.dt, simu.endTime, simu.rampTime], ...
+                fullfile(outDir, 'RM3_END_STOPS_STEP_run_settings.csv'));
+        end
     end
     if string(model) == "OSWEC"
         % The published case shuffles its random phase. The baseline sets
@@ -241,27 +271,27 @@ for iCase = 1:numel(cases)
         response = output.bodies(iBody);
         values = [response.time(:), response.position, response.velocity, ...
             response.forceTotal, response.forceExcitation];
-        if string(model) == "RM3_END_STOPS"
+        if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
             forceValues = [response.time(:), response.forceRadiationDamping, ...
                 response.forceAddedMass, response.forceRestoring, ...
                 response.acceleration];
             assert(all(isfinite(forceValues), 'all'), ...
                 'End-stop hydrodynamic forces contain nonfinite values');
             writematrix(forceValues, fullfile(outDir, sprintf( ...
-                'RM3_END_STOPS_body%d_forces.csv', iBody)));
+                '%s_body%d_forces.csv', model, iBody)));
             hydroForce = body(iBody).hydroForce.hf1;
             assert(isfield(hydroForce.storage, 'hydroForce_fAddedMass'), ...
                 'End-stop case is missing its applied added-mass matrix');
             writematrix(hydroForce.fAddedMass, fullfile(outDir, sprintf( ...
-                'RM3_END_STOPS_body%d_added_mass_original.csv', iBody)));
+                '%s_body%d_added_mass_original.csv', model, iBody)));
             writematrix(hydroForce.storage.hydroForce_fAddedMass, ...
                 fullfile(outDir, sprintf( ...
-                'RM3_END_STOPS_body%d_added_mass_applied.csv', iBody)));
+                '%s_body%d_added_mass_applied.csv', model, iBody)));
             properties = [body(iBody).mass, hydroForce.mass, ...
                 hydroForce.adjustedMass, body(iBody).inertia, ...
                 hydroForce.adjustedInertia];
             writematrix(properties, fullfile(outDir, sprintf( ...
-                'RM3_END_STOPS_body%d_mass_properties.csv', iBody)));
+                '%s_body%d_mass_properties.csv', model, iBody)));
         end
         if string(model) == "RM3_Radiation_Options"
             values = [values, response.forceRadiationDamping, ...
@@ -287,7 +317,7 @@ for iCase = 1:numel(cases)
             response = output.ptos(iPto);
             values = [response.time(:), response.position, response.velocity, ...
                 response.forceInternalMechanics, response.powerInternalMechanics];
-            if string(model) == "RM3_END_STOPS"
+            if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
                 values = [values, response.forceTotal, ...
                     response.forceConstraint, response.forceActuation, ...
                     response.acceleration];
