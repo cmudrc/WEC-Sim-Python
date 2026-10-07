@@ -95,15 +95,19 @@ Supported combinations are:
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
-| `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation or 60 s impulse-response convolution |
-| `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for free decay |
+| `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
+| `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
 an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
-`radiation_memory` for convolution cases. The general dynamics module
+`radiation_memory` for radiation-memory cases. For an RM3 `regularCIC` floating
+joint, set `simulation.radiation_method` to `"fir"` to use the published
+discrete FIR calculation; `"convolution"` remains the default. The same
+setting is available for no-wave free decay, without a paired FIR baseline. Both use
+`radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
@@ -113,8 +117,10 @@ base, `constraint.location` is the base's ground attachment and
 reaction forces are not yet calculated.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
-RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation
-state-space Cases 5 and 6 remain outside that validated path.
+RM3 Multiple Condition Runs Option 1 sweep. The published RM3 radiation
+options case also checks constant, convolution, and FIR dynamics over 500 s.
+MATLAB's fitted radiation state-space Cases 5 and 6 remain outside that
+validated path.
 For a no-wave floating joint, `constraint.initial_coordinate` and
 `constraint.initial_speed` accept four values or dictionaries keyed by
 `surge`, `float_heave`, `spar_heave`, and `pitch`. In the published RM3 PTO

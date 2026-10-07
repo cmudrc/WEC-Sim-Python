@@ -33,6 +33,7 @@ def solve_rm3_regular(
     pto_equilibrium: float = 0.0,
     b2b: bool = False,
     radiation_memory: float | None = None,
+    radiation_method: str | None = None,
     no_wave: bool = False,
     initial_coordinate: np.ndarray | None = None,
     initial_speed: np.ndarray | None = None,
@@ -51,9 +52,12 @@ def solve_rm3_regular(
     each step. Without ``radiation_memory``, fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
+    ``radiation_method="fir"`` instead samples the same kernel as a discrete
+    FIR filter and holds its force through each RK4 step.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
     memory. Initial coordinates are shared surge, float heave, spar heave,
-    and shared pitch. ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
+    and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
+    Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
@@ -70,6 +74,14 @@ def solve_rm3_regular(
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
     if radiation_memory is not None and radiation_memory <= 0:
         raise ValueError("radiation_memory must be positive")
+    if radiation_method is None:
+        radiation_method = ("convolution" if radiation_memory is not None
+                            else "constant")
+    if radiation_method not in ("constant", "convolution", "fir"):
+        raise ValueError("unsupported RM3 radiation method")
+    if ((radiation_method == "constant" and radiation_memory is not None)
+            or (radiation_method != "constant" and radiation_memory is None)):
+        raise ValueError("constant radiation has no memory; convolution and FIR need it")
     if not isinstance(no_wave, bool):
         raise ValueError("no_wave must be a boolean")
     if no_wave and (wave_height != 0 or radiation_memory is None):
@@ -211,6 +223,8 @@ def solve_rm3_regular(
         pto_damping=pto_damping * pto_coupling,
         pto_equilibrium=np.array([0, pto_equilibrium / 2,
                                   -pto_equilibrium / 2, 0]),
+        radiation_discretization=("fir" if radiation_method == "fir"
+                                  else "trapezoid"),
     )
     solved = system.integrate(
         dt=dt, end_time=end_time,

@@ -63,6 +63,7 @@ class GeneralizedDynamics:
         pto_damping: np.ndarray | None = None,
         pto_equilibrium: np.ndarray | None = None,
         pto_bias: np.ndarray | None = None,
+        radiation_discretization: str = "trapezoid",
     ):
         if not bodies or coordinate_count < 1:
             raise ValueError("a device needs bodies and independent coordinates")
@@ -84,6 +85,9 @@ class GeneralizedDynamics:
         self.pto_bias = (
             np.zeros(n) if pto_bias is None else np.asarray(pto_bias, dtype=float)
         )
+        if radiation_discretization not in ("trapezoid", "fir"):
+            raise ValueError("radiation_discretization must be trapezoid or fir")
+        self.radiation_discretization = radiation_discretization
         if (self.pto_stiffness.shape != (n, n)
                 or self.pto_damping.shape != (n, n)
                 or self.pto_equilibrium.shape != (n,)
@@ -111,6 +115,9 @@ class GeneralizedDynamics:
                 or not np.isfinite(kernel).all()
             ):
                 raise ValueError("radiation kernel must have shape (lags, 6, 6 * bodies)")
+        if (radiation_discretization == "fir"
+                and any(body.radiation_kernel is None for body in self.bodies)):
+            raise ValueError("FIR radiation needs a kernel for every body")
 
     def acceleration(
         self,
@@ -147,7 +154,8 @@ class GeneralizedDynamics:
                 body_force -= body.damping[k] @ velocities[k]
             if known_radiation is not None:
                 body_force -= known_radiation[i]
-                if body.radiation_kernel is not None:
+                if (body.radiation_kernel is not None
+                        and self.radiation_discretization == "trapezoid"):
                     current_velocity = np.concatenate(velocities)
                     body_force -= dt / 2 * (body.radiation_kernel[0] @ current_velocity)
             force += j.T @ body_force
@@ -186,7 +194,10 @@ class GeneralizedDynamics:
         time = np.arange(steps + 1) * dt
         memory = any(body.radiation_kernel is not None for body in self.bodies)
         if memory:
-            self._integrate_memory(time, q, v, a, dt)
+            if self.radiation_discretization == "fir":
+                self._integrate_fir(time, q, v, a, dt)
+            else:
+                self._integrate_memory(time, q, v, a, dt)
         else:
             self._integrate_regular(time, q, v, a, dt)
         positions = np.zeros((steps + 1, len(self.bodies), 6))
@@ -270,3 +281,44 @@ class GeneralizedDynamics:
                 body.motion(q[step], v[step]).jacobian @ v[step]
                 for body in self.bodies
             ])
+
+    def _integrate_fir(self, time, q, v, a, dt):
+        """Sample the IRF at each step and hold its FIR force through RK4."""
+        count = len(self.bodies)
+        kernels = [body.radiation_kernel for body in self.bodies]
+        velocity_history = np.zeros((len(time), count * 6))
+        n = self.coordinate_count
+        for step, at_time in enumerate(time):
+            velocity_history[step] = np.concatenate([
+                body.motion(q[step], v[step]).jacobian @ v[step]
+                for body in self.bodies
+            ])
+            known = []
+            for kernel in kernels:
+                memory = min(step + 1, len(kernel))
+                known.append(dt * np.einsum(
+                    "tij,tj->i", kernel[:memory],
+                    velocity_history[step - memory + 1:step + 1][::-1],
+                ))
+            known = tuple(known)
+            a[step] = self.acceleration(
+                at_time, q[step], v[step], known_radiation=known, dt=dt,
+            )
+            if step == len(time) - 1:
+                break
+
+            def derivative(stage_time, state):
+                coordinate, speed = state[:n], state[n:]
+                return np.concatenate((
+                    speed,
+                    self.acceleration(stage_time, coordinate, speed,
+                                      known_radiation=known, dt=dt),
+                ))
+
+            state = np.concatenate((q[step], v[step]))
+            k1 = derivative(at_time, state)
+            k2 = derivative(at_time + dt / 2, state + dt * k1 / 2)
+            k3 = derivative(at_time + dt / 2, state + dt * k2 / 2)
+            k4 = derivative(at_time + dt, state + dt * k3)
+            next_state = state + dt * (k1 + 2 * k2 + 2 * k3 + k4) / 6
+            q[step + 1], v[step + 1] = next_state[:n], next_state[n:]

@@ -20,3 +20,9 @@ def test_rm3_coupled_regular_wave_pipeline(b2b):
     assert np.isfinite(response.pto_force).all()
     assert np.max(np.abs(response.body_position[:, 0, 0])) > 0
     np.testing.assert_allclose(response.body_position[:, 0, 4], response.body_position[:, 1, 4])
+
+
+def test_fir_requires_radiation_memory():
+    h5_file = Path(__file__).resolve().parents[1] / "examples" / "data" / "rm3.h5"
+    with pytest.raises(ValueError, match="convolution and FIR need it"):
+        solve_rm3_regular(h5_file, radiation_method="fir", end_time=0)
