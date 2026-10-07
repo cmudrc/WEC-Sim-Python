@@ -20,6 +20,7 @@ import trimesh
 
 from numpy.linalg import inv
 from scipy import interpolate
+from scipy.signal import fftconvolve
 from copy import copy
 
 
@@ -328,7 +329,7 @@ class BodyClass:
         elif waveType == 'irregular' or waveType == 'spectrumImport':
             self.irrExcitation(w,numFreq,waveDir,rho,g)
             self.irfInfAddedMassAndDamping(CIkt,CTTime,ssCalc,rho,B2B)
-        elif waveType == 'etaImport':
+        elif waveType in ('etaImport', 'elevationImport'):
             self.userDefinedExcitation(waveAmpTime,dt,waveDir,rho,g)
             self.irfInfAddedMassAndDamping(CIkt,CTTime,ssCalc,rho,B2B)
 
@@ -551,21 +552,33 @@ class BodyClass:
         Used by hydroForcePre
         
         """
-        nDOF = int(self.dof[0])
-        kf = self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['f']*rho*g
-        kt = self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']['t'][0]
-        t =  arange_MATLAB(np.min(kt),np.max(kt)+dt,dt)
+        elevation = np.asarray(waveAmpTime, dtype=float)
+        if (elevation.ndim != 2 or elevation.shape[0] != 2
+                or not np.isfinite(elevation).all() or dt <= 0):
+            raise ValueError("imported wave elevation must be finite 2-by-time data")
+        nDOF = int(np.asarray(self.dof).item())
+        irf = self.hydroData['hydro_coeffs']['excitation']['impulse_response_fun']
+        kernel = np.asarray(irf['f'], dtype=float) * rho * g
+        source_lag = np.asarray(irf['t'], dtype=float).ravel()
+        count = round((source_lag[-1] - source_lag[0]) / dt)
+        lag = source_lag[0] + np.arange(count + 1) * dt
+        directions = np.asarray(
+            self.hydroData['simulation_parameters']['wave_dir'], dtype=float,
+        ).ravel()
+        direction = float(np.asarray(waveDir).item())
+        if len(directions) == 1 and not np.isclose(directions[0], direction):
+            raise ValueError("imported wave direction differs from the hydro database")
         for ii in range(nDOF):
-            if np.size(self.hydroData['simulation_parameters']['wave_dir']) > 1:
-                y = self.hydroData['simulation_parameters']['wave_dir'][0] 
-                self.userDefinedExcIRF = _directional_interp(kt, y, np.squeeze(kf[ii]), t, waveDir).squeeze()
-            elif self.hydroData['simulation_parameters']['wave_dir'] == waveDir:
-                s1 = interpolate.CubicSpline(kt, np.squeeze(kf[ii][0])) # interpolate using CubicSline to get interpolation of spline 3d space
-                self.userDefinedExcIRF = s1(t)
+            if len(directions) > 1:
+                sampled_kernel = _directional_interp(
+                    source_lag, directions, kernel[ii], lag, direction,
+                ).ravel()
             else:
-                warnings.warn("Default wave direction different from hydro database value. Wave direction (waves.waveDir) should be specified on input file.",DeprecationWarning)
-                
-            self.hydroForce['userDefinedFe'][:,ii] = np.convolve(waveAmpTime[1],self.userDefinedExcIRF,'valid')*dt
+                sampled_kernel = np.interp(lag, source_lag, kernel[ii, 0])
+            self.userDefinedExcIRF = sampled_kernel
+            self.hydroForce['userDefinedFe'][:, ii] = (
+                fftconvolve(elevation[1], sampled_kernel, mode='same') * dt
+            )
         
         self.hydroForce['fExt']['re'] = np.zeros(nDOF)
         self.hydroForce['fExt']['im'] = np.zeros(nDOF)

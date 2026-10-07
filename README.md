@@ -144,6 +144,13 @@ RM3 Multiple Condition Runs Option 1 sweep. The published RM3 radiation
 options case also checks constant, convolution, and FIR dynamics over 500 s.
 MATLAB's fitted radiation state-space Cases 5 and 6 remain outside that
 validated path.
+The programmatic RM3 solver also accepts `mooring_surge_stiffness` for a
+linear spring at its floating joint and `excitation_force` for sampled imported
+waves. The pinned `MooringMatrix` case pairs these forces and the full 400 s
+body, PTO, and mooring trajectories with MATLAB. Its source body block applies
+the wave ramp again after the imported-elevation convolution; the paired test
+reproduces that source-specific step explicitly. The generic case runner does
+not yet load imported-elevation MAT files or general mooring connections.
 
 The RM3 floating-joint solver accepts optional PTO hard stops in Python:
 
