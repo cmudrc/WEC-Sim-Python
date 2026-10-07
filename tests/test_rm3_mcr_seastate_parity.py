@@ -6,6 +6,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+from scipy.interpolate import CubicSpline
+from scipy.signal import fftconvolve
 
 from wecsim import mcr_spectrum_files, run_rm3_spectrum_mcr
 from wecsim.irregularWave import imported_spectrum_components, synthesize_irregular_response
@@ -182,6 +184,46 @@ def test_all_three_imported_waves_and_excitation_against_matlab():
                 _max_error(incident.excitation_force[:, dof],
                            expected[:, 19 + dof], force_limit,
                            f"case {index} body {body} {name} excitation")
+
+
+def test_matlab_radiation_force_on_matlab_velocities():
+    """Pair the source convolution force independently of Python dynamics."""
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    with h5py.File(hydro) as h5:
+        rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+        for body in (1, 2):
+            irf = h5[f"body{body}/hydro_coeffs/radiation_damping/impulse_response_fun"]
+            irf_time = np.asarray(irf["t"]).ravel()
+            own = slice(6 * (body - 1), 6 * body)
+            raw_kernel = np.asarray(irf["K"])[:, own, :]
+            lag_count = 601  # Published 60 s memory at 0.1 s output steps.
+            dt = 0.1
+            kernel = rho * CubicSpline(irf_time, raw_kernel, axis=2)(
+                np.arange(lag_count) * dt,
+            )
+            for case in (1, 2, 3):
+                name = f"RM3_MCR_SEASTATE_case{case}_body{body}"
+                motion = np.loadtxt(reference / f"{name}.csv", delimiter=",")
+                force = np.loadtxt(reference / f"{name}_forces.csv", delimiter=",")
+                velocity = motion[:, 7:13]
+                calculated = np.zeros_like(velocity)
+                for output in range(6):
+                    for input_dof in range(6):
+                        calculated[:, output] += dt * fftconvolve(
+                            velocity[:, input_dof], kernel[output, input_dof],
+                            mode="full",
+                        )[:len(velocity)]
+                calculated -= dt / 2 * np.einsum(
+                    "ij,tj->ti", kernel[:, :, 0], velocity,
+                )
+                calculated[lag_count - 1:] -= dt / 2 * np.einsum(
+                    "ij,tj->ti", kernel[:, :, -1],
+                    velocity[:-(lag_count - 1)],
+                )
+                _max_error(calculated, force[:, 1:7], 1e-6,
+                           f"case {case} body {body} radiation force")
 
 
 def test_published_three_sea_state_mcr_against_matlab():
