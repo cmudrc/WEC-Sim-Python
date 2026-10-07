@@ -47,7 +47,7 @@ on:
       model:
         description: Run all models or a selected RM3 application
         type: choice
-        options: [all, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
+        options: [all, RM3_B2B, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
         default: all
 
 jobs:
@@ -57,7 +57,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "Sphere", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
+        model: ${{ fromJSON(inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "Sphere", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
