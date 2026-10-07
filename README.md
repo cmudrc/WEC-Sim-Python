@@ -153,7 +153,7 @@ stops = LinearHardStops(
     lower_stiffness=100_000_000, upper_stiffness=100_000_000,
 )
 response = solve_rm3_regular(
-    "rm3.h5", pto_hard_stops=stops, dt=0.025, end_time=120,
+    "rm3.h5", pto_hard_stops=stops, dt=0.025, end_time=400,
 )
 print(response.pto_stroke, response.pto_stop_force)
 ```
@@ -163,7 +163,8 @@ The case runner also accepts these names under `pto.hard_stops` for a
 constant-frequency radiation, and implicit added mass. Ordinary RM3 cases
 retain their existing solver. The published MATLAB End_Stops run is
 time-step sensitive after contact. Paired motion, force, and energy checks
-pass through 120 s against refined 0.025 and 0.0125 s MATLAB runs; see
+pass through 400 s against the 0.0125 s MATLAB run; a 0.025 s run gates source
+time-step convergence. See
 `PARITY.md` for the limits and the published 0.1 s discrepancy.
 
 RM3 multiple-condition runs can be configured in Python without a JSON input:

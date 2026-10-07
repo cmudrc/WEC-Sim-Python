@@ -6,6 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from wecsim import LinearHardStops
+
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
 MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL", "RM3_END_STOPS_STEP")
@@ -41,10 +43,15 @@ def test_finer_step_export_has_force_and_acceleration_history():
     assert np.isfinite(pto).all()
     stroke, speed, force = pto[:, 3], pto[:, 9], pto[:, 15]
     expected_force = (-1_200_000 * speed
-                      - 1e8 * np.maximum(stroke - 0.6, 0)
-                      + 1e8 * np.maximum(-0.6 - stroke, 0))
+                      + LinearHardStops(-0.6, 0.6, 1e8, 1e8).force(
+                          stroke, speed))
     assert np.max(np.abs(force - expected_force)) < 1e-5
     assert np.count_nonzero(np.abs(stroke) > 0.6) > 0
+    if MODEL == "RM3_END_STOPS_FULL_FINER":
+        # The 400 s trace includes samples inside the source's 0.1 mm
+        # transition, so this checks the smoothing law as well as the spring.
+        assert np.count_nonzero((np.abs(stroke) > 0.6)
+                                & (np.abs(stroke) < 0.6001)) > 0
     for body in (1, 2):
         response = np.loadtxt(
             reference / f"{MODEL}_{case}_body{body}.csv",

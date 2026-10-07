@@ -29,19 +29,20 @@ def test_refined_end_stop_motion_against_matlab():
     # These variants change only the MATLAB integration step and end time;
     # the published 0.1 s source run is tracked separately for step sensitivity.
     variants = {
-        "RM3_END_STOPS_STEP_FINE": (0.025, "End_Stops_dt0025"),
-        "RM3_END_STOPS_STEP_FINER": (0.0125, "End_Stops_dt00125"),
+        "RM3_END_STOPS_STEP_FINE": (0.025, 120, "End_Stops_dt0025"),
+        "RM3_END_STOPS_STEP_FINER": (0.0125, 120, "End_Stops_dt00125"),
+        "RM3_END_STOPS_FULL_FINER": (0.0125, 400, "End_Stops_dt00125_full"),
     }
     assert MODEL in variants
-    dt, case = variants[MODEL]
+    dt, end_time, case = variants[MODEL]
     reference = Path(REFERENCE)
     hydro = (Path(APPLICATIONS) /
              "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
     pto = np.loadtxt(reference / f"{MODEL}_{case}_pto1.csv", delimiter=",")
-    assert pto.shape == (round(120 / dt) + 1, 49)
+    assert pto.shape == (round(end_time / dt) + 1, 49)
     response = solve_rm3_regular(
         hydro, pto_hard_stops=LinearHardStops(-0.6, 0.6, 1e8, 1e8),
-        dt=dt, end_time=120,
+        dt=dt, end_time=end_time,
     )
     np.testing.assert_allclose(response.time, pto[:, 0], rtol=0, atol=1e-10)
     for body in (1, 2):
