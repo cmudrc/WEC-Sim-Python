@@ -94,7 +94,7 @@ Supported combinations are:
 | --- | --- | --- | --- |
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
-| `floating_joint` | `regular` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation |
+| `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation or 60 s impulse-response convolution |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
@@ -176,7 +176,9 @@ produce a spring force. The zero-offset cases have paired MATLAB checks;
 nonzero offsets have analytical and case-level tests. Each actuator in `ptos`
 can instead set `damping`, `stiffness`, and either `equilibrium_position` or
 `pretension`. Connection geometry and nonzero offsets have case-level and
-analytical checks; the paired MATLAB cases use the original PTO geometry.
+analytical checks. A paired MATLAB Sphere case covers nonzero stiffness,
+extra damping, and a body-local attachment shifted 1 m in x. Its heave-only
+motion does not validate the attachment's rotational moment arm.
 Force limits, hard stops, time-varying controllers, and hydraulic PTO models
 are not implemented.
 

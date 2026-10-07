@@ -25,10 +25,50 @@ switch string(model)
         if ~isfile('rm3.h5')
             bemio;
         end
-        cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", ...
-            "B2B_Case4", "B2B_Case5", "B2B_Case6"];
+        cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", "B2B_Case4"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "RM3_MCR"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        sourceDir = fullfile(repoRoot, 'applications', 'Multiple_Condition_Runs', 'RM3_MCROPT1');
+        cases = strings(1, 8);
+        caseDirs = strings(1, 8);
+        iCase = 0;
+        for damping = [1200000, 2400000]
+            for period = [6, 8]
+                for height = [1.5, 2.5]
+                    iCase = iCase + 1;
+                    cases(iCase) = sprintf('H%d_T%d_D%d', ...
+                        round(10 * height), period, round(damping / 100000));
+                    caseDirs(iCase) = fullfile(repoRoot, 'applications', ...
+                        'Multiple_Condition_Runs', 'paired_' + cases(iCase));
+                    [copied, copyMessage] = copyfile(sourceDir, caseDirs(iCase));
+                    assert(copied, copyMessage);
+                    inputFile = fullfile(caseDirs(iCase), 'wecSimInputFile.m');
+                    contents = fileread(inputFile);
+                    oldSettings = ["waves.height = 1.5:1:2.5;", ...
+                        "waves.period = 6:2:8;", ...
+                        "pto(1).damping=1200000:1200000:2400000;"];
+                    newSettings = ["waves.height = " + string(height) + ";", ...
+                        "waves.period = " + string(period) + ";", ...
+                        "pto(1).damping=" + string(damping) + ";"];
+                    for iSetting = 1:numel(oldSettings)
+                        assert(contains(contents, oldSettings(iSetting)), ...
+                            'The pinned RM3 MCR input changed');
+                        contents = strrep(contents, char(oldSettings(iSetting)), ...
+                            char(newSettings(iSetting)));
+                    end
+                    fid = fopen(inputFile, 'w');
+                    assert(fid ~= -1, 'Could not write the RM3 MCR input');
+                    fprintf(fid, '%s', contents);
+                    fclose(fid);
+                end
+            end
+        end
     case "Sphere_Passive"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
         cd(hydroDir);

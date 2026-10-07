@@ -17,6 +17,15 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+def _max_error(actual, expected, limit, label):
+    actual = np.asarray(actual)
+    expected = np.asarray(expected)
+    assert actual.shape == expected.shape, label
+    assert np.isfinite(expected).all(), label
+    error = np.max(np.abs(actual - expected))
+    assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
+
+
 def test_configured_sphere_pto_against_matlab():
     reference = Path(REFERENCE)
     body = np.loadtxt(
@@ -44,17 +53,22 @@ def test_configured_sphere_pto_against_matlab():
     np.testing.assert_allclose(response.time, controller[:, 0], rtol=0, atol=1e-10)
     position = response.bodies["sphere"].position[:, 2]
     velocity = response.bodies["sphere"].velocity[:, 2]
-    for name, actual, expected in (
-        ("position", position, body[:, 3]),
-        ("velocity", velocity, body[:, 9]),
-        ("PTO force", response.ptos["main"].force, pto[:, 15]),
-        ("controller force", response.ptos["main"].force, controller[:, 3]),
-        ("combined force", response.ptos["main"].force, pto[:, 15] + controller[:, 3]),
-        ("PTO power", response.ptos["main"].force * response.ptos["main"].velocity,
-         pto[:, 21] + controller[:, 9]),
-    ):
-        difference = np.max(np.abs(actual - expected))
-        opposite = np.max(np.abs(-actual - expected))
-        print(f"{name}: max error {difference:.6g}, opposite sign {opposite:.6g}")
-    assert np.max(np.abs(position - body[:, 3])) < 0.1
-    assert np.max(np.abs(velocity - body[:, 9])) < 0.1
+    stroke = response.ptos["main"].stroke
+    speed = response.ptos["main"].velocity
+    # MATLAB's PTO and controller force/stroke channels use the opposite
+    # sign to Python's from-to axis. Their power channels have the same sign.
+    native_force = -(50_000 * stroke + 100_000 * speed)
+    controller_force = -860_870 * speed
+    _max_error(position, body[:, 3], 1e-4, "sphere heave position")
+    _max_error(velocity, body[:, 9], 1e-4, "sphere heave velocity")
+    _max_error(-stroke, pto[:, 3], 1e-4, "PTO stroke")
+    _max_error(-speed, pto[:, 9], 1e-4, "PTO speed")
+    _max_error(-native_force, pto[:, 15], 15, "native PTO force")
+    _max_error(-controller_force, controller[:, 3], 100, "controller force")
+    _max_error(-response.ptos["main"].force,
+               pto[:, 15] + controller[:, 3], 120, "combined force")
+    _max_error(native_force * speed, pto[:, 21], 8, "native PTO power")
+    _max_error(controller_force * speed, controller[:, 9], 40,
+               "controller power")
+    _max_error(response.ptos["main"].force * speed,
+               pto[:, 21] + controller[:, 9], 50, "combined power")
