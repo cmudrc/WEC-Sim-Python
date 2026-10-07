@@ -71,6 +71,18 @@ def test_matlab_applied_added_mass_matches_pinned_coefficients():
             ]
             np.testing.assert_allclose(properties, expected_properties,
                                        rtol=1e-12, atol=1e-6)
+            nominal_rigid = np.diag(np.r_[
+                np.repeat(properties[0], 3), properties[3:6],
+            ])
+            adjusted_rigid = np.diag(np.r_[
+                np.repeat(properties[2], 3), properties[6:9],
+            ])
+            active = np.ix_([0, 2, 4], [0, 2, 4])
+            np.testing.assert_allclose(
+                (adjusted_rigid + saved_applied)[active],
+                (nominal_rigid + saved_original)[active],
+                rtol=1e-12, atol=1e-6,
+            )
 
 
 def test_matlab_sea_state_joint_and_force_balance():
@@ -113,6 +125,8 @@ def test_matlab_sea_state_joint_and_force_balance():
                    separation * cosine, 1e-9, f"case {case} joint z")
         _max_error(pto[:, 15], -1_200_000 * pto[:, 9],
                    1e-6, f"case {case} PTO damper")
+        _max_error(pto[:, 21], pto[:, 15] * pto[:, 9],
+                   1e-6, f"case {case} PTO mechanical power")
 
         residual = np.zeros((len(angle), 4))
         for index in (0, 1):
@@ -224,6 +238,36 @@ def test_matlab_radiation_force_on_matlab_velocities():
                 )
                 _max_error(calculated, force[:, 1:7], 1e-6,
                            f"case {case} body {body} radiation force")
+
+
+def test_matlab_restoring_and_logged_force_decomposition():
+    """Exclude unreported hydrodynamic terms from the sea-state mismatch."""
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    with h5py.File(hydro) as h5:
+        rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+        g = float(np.asarray(h5["simulation_parameters/g"]).item())
+        for body in (1, 2):
+            prefix = f"body{body}"
+            restoring = rho * g * np.asarray(
+                h5[f"{prefix}/hydro_coeffs/linear_restoring_stiffness"]
+            )
+            center = np.asarray(h5[f"{prefix}/properties/cg"]).ravel()
+            for case in (1, 2, 3):
+                name = f"RM3_MCR_SEASTATE_case{case}_body{body}"
+                motion = np.loadtxt(reference / f"{name}.csv", delimiter=",")
+                force = np.loadtxt(reference / f"{name}_forces.csv", delimiter=",")
+                displacement = motion[:, 1:7].copy()
+                displacement[:, :3] -= center
+                active = [0, 2, 4]  # RM3 floating-joint surge, heave, pitch.
+                _max_error((displacement @ restoring.T)[:, active],
+                           force[:, 13:19][:, active], 1e-6,
+                           f"case {case} body {body} active restoring")
+                total = (motion[:, 19:25] - force[:, 1:7]
+                         - force[:, 7:13] - force[:, 13:19])
+                _max_error(total, motion[:, 13:19], 1e-6,
+                           f"case {case} body {body} total force")
 
 
 def test_published_three_sea_state_mcr_against_matlab():
