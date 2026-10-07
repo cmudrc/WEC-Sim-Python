@@ -10,6 +10,10 @@ if any(string(model) == ["RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT"])
     run_rm3_mcr_baseline(repoRoot, outDir, string(model));
     return;
 end
+if string(model) == "RM3_MCR_SEASTATE"
+    run_rm3_mcr_seastate_baseline(repoRoot, outDir);
+    return;
+end
 
 switch string(model)
     case "RM3"
@@ -352,6 +356,67 @@ for iCase = 1:8
             'RM3 MCR PTO output contains nonfinite values');
         writematrix(values, fullfile(outDir, sprintf( ...
             '%s_case%d_pto%d.csv', label, iCase, iPto)));
+    end
+end
+close_system('RM3', 0);
+close all;
+end
+
+function run_rm3_mcr_seastate_baseline(repoRoot, outDir)
+% Run the three published spectrumImport cases with their imported phases.
+hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+    'RM3', 'hydroData');
+cd(hydroDir);
+if ~isfile('rm3.h5')
+    bemio;
+end
+caseDir = fullfile(repoRoot, 'applications', 'Multiple_Condition_Runs', ...
+    'RM3_MCROPT3_SeaState');
+cd(caseDir);
+wecSimMCR;
+assert(isequal(mcr.header, {'waves.spectrumFile', 'simu.solver'}), ...
+    'Pinned sea-state MCR header changed');
+assert(isequal(size(mcr.cases), [3, 2]), ...
+    'Pinned sea-state MCR must contain three cases');
+assert(isequal(string(mcr.cases(:,1)), ...
+    ["spectrumData1.mat"; "spectrumData2.mat"; "spectrumData3.mat"]), ...
+    'Pinned sea-state MCR spectrum order changed');
+assert(all(strcmp(mcr.cases(:,2), 'ode4')), ...
+    'Pinned sea-state MCR solver changed');
+assert(numel(mcr.Avgpower) == 3 && all(isfinite(mcr.Avgpower)), ...
+    'Sea-state MCR did not calculate three finite powers');
+writematrix(mcr.Avgpower(:), ...
+    fullfile(outDir, 'RM3_MCR_SEASTATE_summary.csv'));
+for iCase = 1:3
+    saved = load(fullfile(caseDir, sprintf('savedData%03d.mat', iCase)), ...
+        'output', 'waves');
+    assert(~isempty(saved.output.bodies) && isstruct(saved.output.ptos), ...
+        'Sea-state MCR savedData is missing body or PTO output');
+    components = [saved.waves.omega(:), saved.waves.amplitude(:), ...
+        saved.waves.dOmega(:), saved.waves.phase(:)];
+    assert(size(components, 2) == 4 && all(isfinite(components), 'all'), ...
+        'Sea-state MCR has invalid wave components');
+    writematrix(components, fullfile(outDir, sprintf( ...
+        'RM3_MCR_SEASTATE_case%d_components.csv', iCase)));
+    writematrix(saved.waves.waveAmpTime, fullfile(outDir, sprintf( ...
+        'RM3_MCR_SEASTATE_case%d_wave.csv', iCase)));
+    for iBody = 1:numel(saved.output.bodies)
+        response = saved.output.bodies(iBody);
+        values = [response.time(:), response.position, response.velocity, ...
+            response.forceTotal, response.forceExcitation];
+        assert(all(isfinite(values), 'all'), ...
+            'Sea-state MCR body output contains nonfinite values');
+        writematrix(values, fullfile(outDir, sprintf( ...
+            'RM3_MCR_SEASTATE_case%d_body%d.csv', iCase, iBody)));
+    end
+    for iPto = 1:numel(saved.output.ptos)
+        response = saved.output.ptos(iPto);
+        values = [response.time(:), response.position, response.velocity, ...
+            response.forceInternalMechanics, response.powerInternalMechanics];
+        assert(all(isfinite(values), 'all'), ...
+            'Sea-state MCR PTO output contains nonfinite values');
+        writematrix(values, fullfile(outDir, sprintf( ...
+            'RM3_MCR_SEASTATE_case%d_pto%d.csv', iCase, iPto)));
     end
 end
 close_system('RM3', 0);

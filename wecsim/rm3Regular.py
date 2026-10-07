@@ -42,6 +42,7 @@ def solve_rm3_regular(
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
+    excitation_force: np.ndarray | None = None,
     no_wave: bool = False,
     initial_coordinate: np.ndarray | None = None,
     initial_speed: np.ndarray | None = None,
@@ -62,6 +63,9 @@ def solve_rm3_regular(
     the radiation impulse-response kernel use a trapezoidal history step.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
+    ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
+    every output time for imported irregular spectra; RK4 stage forces are
+    linearly interpolated between those samples.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
     memory. Initial coordinates are shared surge, float heave, spar heave,
     and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
@@ -100,6 +104,13 @@ def solve_rm3_regular(
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
     time = np.arange(steps + 1) * dt
+    if excitation_force is not None:
+        excitation_force = np.asarray(excitation_force, dtype=float)
+        if (excitation_force.shape != (steps + 1, 2, 6)
+                or not np.isfinite(excitation_force).all()):
+            raise ValueError("excitation_force must have shape (time, 2, 6) and be finite")
+        if no_wave or radiation_memory is None or wave_height != 0:
+            raise ValueError("sampled excitation needs zero regular-wave height and radiation memory")
     omega = 2 * np.pi / wave_period
     if radiation_memory is not None:
         memory_steps = round(radiation_memory / dt)
@@ -134,9 +145,11 @@ def solve_rm3_regular(
             if radiation_memory > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             body.hydroForcePre(
-                [] if no_wave else omega, [0], len(convolution_time),
+                [] if no_wave or excitation_force is not None else omega,
+                [0], len(convolution_time),
                 convolution_time, [], dt, rho, g,
-                "noWaveCIC" if no_wave else "regularCIC",
+                "noWaveCIC" if no_wave or excitation_force is not None
+                else "regularCIC",
                 np.vstack((time, np.zeros_like(time))),
                 index, 2, 0, 0, int(b2b),
             )
@@ -206,7 +219,14 @@ def solve_rm3_regular(
             ])
             return BodyMotion(displacement, jacobian, curvature)
 
-        def excitation(at_time, *, re=body["re"], im=body["im"]):
+        def excitation(at_time, *, re=body["re"], im=body["im"],
+                       body_index=index):
+            if excitation_force is not None:
+                sample = min(max(at_time / dt, 0.0), float(steps))
+                left = min(int(sample), steps - 1)
+                fraction = sample - left
+                return ((1 - fraction) * excitation_force[left, body_index]
+                        + fraction * excitation_force[left + 1, body_index])
             ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time
                     else (1.0 - np.cos(np.pi * at_time / ramp_time)) / 2)
             return wave_height / 2 * ramp * (

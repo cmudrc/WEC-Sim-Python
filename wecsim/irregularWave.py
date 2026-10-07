@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+from scipy.io import loadmat
 
 from .bodyClass import BodyClass
 
@@ -29,6 +30,53 @@ class IrregularResponse:
     time: np.ndarray
     elevation: np.ndarray
     excitation_force: np.ndarray
+
+
+def imported_spectrum_components(
+    h5_file: str | Path,
+    spectrum_file: str | Path,
+) -> IrregularComponents:
+    """Read a three-column WEC-Sim spectrumImport MAT file with saved phases.
+
+    The columns are frequency in Hz, spectral density in m²/Hz, and phase in
+    radians. The current MATLAB wave class keeps only BEM-range frequencies,
+    computes midpoint bin widths in rad/s, and converts density to m²/(rad/s).
+    Its phase column makes the realized sea state deterministic.
+    """
+    source = loadmat(spectrum_file)
+    if "spectrumData" not in source:
+        raise ValueError("imported spectrum MAT file needs spectrumData")
+    values = np.asarray(source["spectrumData"], dtype=float)
+    if (values.ndim != 2 or values.shape[1] != 3
+            or not np.isfinite(values).all()):
+        raise ValueError("spectrumData must have three finite columns")
+
+    body = BodyClass(str(h5_file))
+    body.bodyNumber = 1
+    body.readH5file()
+    bem_omega = np.asarray(body.hydroData["simulation_parameters"]["w"]).ravel()
+    if len(bem_omega) < 2 or not np.isfinite(bem_omega).all():
+        raise ValueError("hydrodynamic frequency range is invalid")
+    frequency = values[:, 0]
+    keep = ((frequency >= bem_omega.min() / (2 * np.pi))
+            & (frequency <= bem_omega.max() / (2 * np.pi)))
+    selected = values[keep]
+    if (len(selected) < 2 or np.any(np.diff(selected[:, 0]) <= 0)
+            or np.any(selected[:, 1] < 0)):
+        raise ValueError("imported BEM-range spectrum needs increasing frequencies and nonnegative density")
+    omega = selected[:, 0] * (2 * np.pi)
+    width = np.empty(len(omega))
+    width[0] = omega[1] - omega[0]
+    width[-1] = omega[-1] - omega[-2]
+    width[1:-1] = (omega[2:] - omega[:-2]) / 2
+    return IrregularComponents(
+        omega=omega,
+        spectral_amplitude=selected[:, 1] / np.pi,
+        d_omega=width,
+        directions=np.array([0.0]),
+        spreading=np.array([1.0]),
+        phase=selected[:, 2, None],
+    )
 
 
 def pm_equal_energy_components(
