@@ -8,11 +8,11 @@ import sys
 import numpy as np
 import pytest
 
-from source.objects.caseDynamics import run_case
+from wecsim.caseDynamics import run_case
 
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLE = ROOT / "examples/python/rm3.json"
+EXAMPLE = ROOT / "examples/rm3.json"
 
 
 def test_example_case_runs_and_records_provenance(tmp_path):
@@ -24,7 +24,7 @@ def test_example_case_runs_and_records_provenance(tmp_path):
     case_file.write_text(json.dumps(case), encoding="utf-8")
     output = tmp_path / "motion.csv"
     subprocess.run(
-        [sys.executable, "-m", "source.objects.wecSimPython",
+        [sys.executable, "-m", "wecsim",
          str(case_file), "--output", str(output)],
         cwd=ROOT, check=True, capture_output=True, text=True,
     )

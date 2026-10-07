@@ -14,14 +14,14 @@
   "bodies": [
     {
       "name": "float",
-      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_file": "data/rm3.h5",
       "hydro_body": 1,
       "mass": "equilibrium",
       "inertia": [0, 21306090.66, 0]
     },
     {
       "name": "spar",
-      "hydro_file": "../../source/objects/rm3.h5",
+      "hydro_file": "data/rm3.h5",
       "hydro_body": 2,
       "mass": "equilibrium",
       "inertia": [0, 94407091.24, 0]

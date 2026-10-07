@@ -6,7 +6,7 @@ on:
       - '.github/workflows/matlab-reference.yml'
       - 'tests/matlab/regular_wave_reference.m'
       - 'tests/test_live_matlab_parity.py'
-      - 'source/objects/waveClass.py'
+      - 'wecsim/waveClass.py'
   workflow_dispatch:
 
 jobs:

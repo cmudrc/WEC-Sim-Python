@@ -24,7 +24,7 @@ def _run(tmp_path, case):
     output = tmp_path / "motion.csv"
     case_file.write_text(json.dumps(case), encoding="utf-8")
     completed = subprocess.run(
-        [sys.executable, "-m", "source.objects.wecSimPython",
+        [sys.executable, "-m", "wecsim",
          str(case_file), "--output", str(output)],
         cwd=ROOT, check=False, capture_output=True, text=True,
     )

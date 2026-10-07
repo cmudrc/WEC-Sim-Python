@@ -10,9 +10,8 @@ import numpy as np
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "source" / "objects"))
 
-from bodyClass import BodyClass  # noqa: E402
+from wecsim.bodyClass import BodyClass  # noqa: E402
 
 SPHERE_H5 = os.environ.get("WEC_SIM_SPHERE_H5")
 pytestmark = pytest.mark.skipif(not SPHERE_H5, reason="MATLAB BEMIO Sphere file not provided")
@@ -45,7 +44,7 @@ def test_matlab_generated_sphere_hydrodynamics_preprocess():
 def test_sphere_reference_command_exports_result(tmp_path):
     output = tmp_path / "sphere.csv"
     subprocess.run(
-        [sys.executable, "-m", "source.objects.referenceRunner", "sphere",
+        [sys.executable, "-m", "wecsim.reference", "sphere",
          "--h5", SPHERE_H5, "--output", str(output),
          "--initial-displacement", "1", "--end-time", "2"],
         cwd=ROOT, check=True, capture_output=True, text=True,

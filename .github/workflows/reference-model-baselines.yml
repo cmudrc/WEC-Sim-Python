@@ -14,14 +14,14 @@ on:
       - 'tests/test_oswec_hinge_dynamics_parity.py'
       - 'tests/test_oswec_irregular_wave_parity.py'
       - 'tests/test_sphere_dynamics_parity.py'
-      - 'source/objects/linearHeave.py'
-      - 'source/objects/hingePitch.py'
-      - 'source/objects/irregularWave.py'
-      - 'source/objects/rm3Regular.py'
-      - 'source/objects/generalDynamics.py'
-      - 'source/objects/caseDynamics.py'
-      - 'source/objects/wecSimPython.py'
-      - 'source/objects/bodyClass.py'
+      - 'wecsim/linearHeave.py'
+      - 'wecsim/hingePitch.py'
+      - 'wecsim/irregularWave.py'
+      - 'wecsim/rm3Regular.py'
+      - 'wecsim/generalDynamics.py'
+      - 'wecsim/caseDynamics.py'
+      - 'wecsim/cli.py'
+      - 'wecsim/bodyClass.py'
   workflow_dispatch:
 
 jobs:

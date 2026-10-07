@@ -6,13 +6,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from examples.python.configurable_rm3_pto import HYDRO, build_wec
-from source.objects.caseDynamics import run_case
+from examples.configurable_rm3_pto import HYDRO, build_wec
+from wecsim.caseDynamics import run_case
 from wecsim import NoWave, RegularWave, WEC, WorldPoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
-JSON_EXAMPLE = ROOT / "examples/python/configurable_rm3_pto.json"
+JSON_EXAMPLE = ROOT / "examples/configurable_rm3_pto.json"
 
 
 def test_python_builder_matches_equivalent_case():

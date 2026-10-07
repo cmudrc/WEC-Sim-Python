@@ -10,10 +10,9 @@ import sys
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "source" / "objects"))
 
-from waveClass import WaveClass  # noqa: E402
-from paraviewClass import ParaviewClass  # noqa: E402
+from wecsim.waveClass import WaveClass  # noqa: E402
+from wecsim.paraviewClass import ParaviewClass  # noqa: E402
 
 
 def test_regular_wave_matches_matlab_fixture():

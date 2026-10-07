@@ -2,7 +2,7 @@
 
 Run from the repository root:
 
-    python -m examples.python.configurable_rm3_pto
+    python -m examples.configurable_rm3_pto
 
 This is a linearized configuration example, not a MATLAB parity case.
 """
@@ -12,7 +12,7 @@ from pathlib import Path
 from wecsim import RegularWave, WEC, WorldPoint
 
 
-HYDRO = Path(__file__).resolve().parents[2] / "source/objects/rm3.h5"
+HYDRO = Path(__file__).resolve().parent / "data/rm3.h5"
 
 
 def build_wec() -> WEC:

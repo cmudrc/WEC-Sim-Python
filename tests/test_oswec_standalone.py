@@ -4,8 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
-from source.objects.hingePitch import solve_hinged_pitch_from_excitation
-from source.objects.irregularWave import (
+from wecsim.hingePitch import solve_hinged_pitch_from_excitation
+from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
 
