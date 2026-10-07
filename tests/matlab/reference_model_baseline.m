@@ -167,6 +167,16 @@ switch string(model)
         cases = "Declutching";
         caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', ...
             'Declutching'));
+    case "Sphere_Latching"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Latching";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', ...
+            'Latching'));
     otherwise
         error('Unknown reference model: %s', model);
 end
@@ -205,7 +215,7 @@ for iCase = 1:numel(cases)
         writematrix(values, fullfile(outDir, filename));
     end
     if ismember(string(model), ["Sphere_Passive", "Sphere_PTO_Config", ...
-            "Sphere_Reactive_PI", "Sphere_Declutching"])
+            "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching"])
         assert(exist('controller1_out', 'var') == 1, ...
             'The Sphere controller produced no logged output');
         controllerValues = [controller1_out.time(:), controller1_out.signals.values];

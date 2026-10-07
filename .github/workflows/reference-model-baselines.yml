@@ -42,7 +42,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, OSWEC_Nonhydro, Sphere, RM3_B2B, RM3_PTO_Extension, RM3_Radiation_Options, Sphere_Passive, Sphere_PTO_Config, Sphere_Reactive_PI, Sphere_Declutching, RM3_MCR]
+        model: [RM3, OSWEC, OSWEC_Nonhydro, Sphere, RM3_B2B, RM3_PTO_Extension, RM3_Radiation_Options, Sphere_Passive, Sphere_PTO_Config, Sphere_Reactive_PI, Sphere_Declutching, Sphere_Latching, RM3_MCR]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -56,7 +56,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'OSWEC_Nonhydro'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'OSWEC_Nonhydro'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -78,11 +78,12 @@ jobs:
             Controls/Passive (P)
             Controls/Reactive (PI)
             Controls/Declutching
+            Controls/Latching
             Multiple_Condition_Runs/RM3_MCROPT1
       - uses: matlab-actions/setup-matlab@v3
         with:
           release: R2025b
-          products: ${{ (matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching') && 'Simulink Simscape Simscape_Multibody Control_System_Toolbox' || 'Simulink Simscape Simscape_Multibody' }}
+          products: ${{ (matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching') && 'Simulink Simscape Simscape_Multibody Control_System_Toolbox' || 'Simulink Simscape Simscape_Multibody' }}
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('tests/matlab'); reference_model_baseline('${{ matrix.model }}')
