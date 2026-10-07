@@ -33,9 +33,9 @@ For development, run the production-code parity checks with:
 converter simulator. This fork is developing and checking the Python code
 against MATLAB WEC-Sim while preserving the original author's work.
 
-The installable code is in `wecsim/`, runnable cases and bundled RM3 inputs
-are in `examples/`, and the original unfinished class sketches are retained
-in `legacy/`. The Git history still contains Sungjun Won's commits.
+The installable code is in `wecsim/`, and runnable cases and bundled RM3
+inputs are in `examples/`. Sungjun Won's early sketches remain available in
+Git history.
 
 ## Goal of WEC-Sim-Python
 **WEC-Sim-Python** aims to help researchers, start-up companies, and enthusiasts without access to MATLAB in order to use the open-source code provided by NREL and Sandia lab. Also, with growing research in the field of machine learning, **WEC-Sim-Python** could be more convenient for those who develop machine learning projects utilizing Python.
