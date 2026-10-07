@@ -6,6 +6,8 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
+from scipy.interpolate import CubicSpline
+from scipy.signal import fftconvolve
 
 from wecsim.caseDynamics import run_case
 
@@ -23,6 +25,26 @@ def _max_error(actual, expected, limit, label):
     assert np.isfinite(expected).all(), label
     error = np.max(np.abs(actual - expected))
     assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
+
+
+def _fir_radiation_force(h5, body, velocity, dt=0.1, memory=60):
+    """Reconstruct each body's FIR output from source HDF5 and body velocity."""
+    path = f"body{body}/hydro_coeffs/radiation_damping/impulse_response_fun"
+    kernel = np.asarray(h5[f"{path}/K"])
+    kernel_time = np.asarray(h5[f"{path}/t"]).ravel()
+    rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+    taps = rho * CubicSpline(kernel_time, kernel, axis=2)(
+        np.arange(round(memory / dt) + 1) * dt,
+    )
+    force = np.zeros_like(velocity)
+    for output in range(6):
+        for input_dof in range(6):
+            force[:, output] += dt * fftconvolve(
+                velocity[:, input_dof],
+                taps[output, 6 * (body - 1) + input_dof],
+                mode="full",
+            )[:len(velocity)]
+    return force
 
 
 @pytest.mark.parametrize("mode", ["constant", "convolution", "FIR"])
@@ -100,6 +122,24 @@ def test_published_rm3_radiation_options(mode):
                f"{mode} PTO force")
     _max_error(response.pto_force * speed, pto[:, 21], 3000,
                f"{mode} PTO power")
+
+    if mode == "FIR":
+        with h5py.File(hydro) as h5:
+            for body in (1, 2):
+                expected = np.loadtxt(
+                    reference / f"RM3_Radiation_Options_FIR_body{body}.csv",
+                    delimiter=",",
+                )
+                calculated = _fir_radiation_force(
+                    h5, body, response.body_velocity[:, body - 1, :],
+                )
+                for dof, name, limit in (
+                    (0, "surge", 2_000 if body == 1 else 500),
+                    (2, "heave", 1_300 if body == 1 else 150),
+                    (4, "pitch", 10_000 if body == 1 else 3_000),
+                ):
+                    _max_error(calculated[:, dof], expected[:, 25 + dof],
+                               limit, f"FIR body{body} {name} radiation force")
 
 
 def test_matlab_radiation_modes_are_distinct():
