@@ -26,6 +26,51 @@ def _max_error(actual, expected, limit, label):
     assert error < limit, f"{label}: max error {error:.6g} exceeds {limit}"
 
 
+def test_matlab_applied_added_mass_matches_pinned_coefficients():
+    """Pair the matrix used by Simscape with the BEM matrix and mass split."""
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    input_inertias = ((20_907_301, 21_306_090.66, 37_085_481.11),
+                     (94_419_614.57, 94_407_091.24, 28_542_224.82))
+    with h5py.File(hydro) as h5:
+        rho = float(np.asarray(h5["simulation_parameters/rho"]).item())
+        for body in (1, 2):
+            prefix = f"body{body}"
+            original = rho * np.asarray(
+                h5[f"{prefix}/hydro_coeffs/added_mass/inf_freq"]
+            )[:, 6 * (body - 1):6 * body]
+            applied = original.copy()
+            mass_shift = 2 * np.trace(original[:3, :3])
+            applied[:3, :3] -= np.eye(3) * mass_shift
+            applied[3:6, 3:6] -= np.diag(np.diag(original[3:6, 3:6]))
+            for row, column in ((3, 4), (3, 5), (4, 5)):
+                applied[row, column] -= original[row, column]
+                applied[column, row] -= original[row, column]
+            saved_original = np.loadtxt(reference / (
+                f"RM3_MCR_SEASTATE_body{body}_added_mass_original.csv"),
+                delimiter=",")
+            saved_applied = np.loadtxt(reference / (
+                f"RM3_MCR_SEASTATE_body{body}_added_mass_applied.csv"),
+                delimiter=",")
+            np.testing.assert_allclose(saved_original, original,
+                                       rtol=1e-12, atol=1e-6)
+            np.testing.assert_allclose(saved_applied, applied,
+                                       rtol=1e-12, atol=1e-6)
+            volume = float(np.asarray(h5[f"{prefix}/properties/disp_vol"]).item())
+            nominal_mass = rho * volume
+            properties = np.loadtxt(reference / (
+                f"RM3_MCR_SEASTATE_body{body}_mass_properties.csv"),
+                delimiter=",")
+            expected_properties = np.r_[
+                nominal_mass, nominal_mass, nominal_mass + mass_shift,
+                input_inertias[body - 1],
+                np.asarray(input_inertias[body - 1]) + np.diag(original)[3:6],
+            ]
+            np.testing.assert_allclose(properties, expected_properties,
+                                       rtol=1e-12, atol=1e-6)
+
+
 def test_matlab_sea_state_joint_and_force_balance():
     """Identify the joint motion and applied mass convention in the baseline.
 
