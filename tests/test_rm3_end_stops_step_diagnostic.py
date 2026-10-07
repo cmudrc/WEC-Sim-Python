@@ -16,9 +16,13 @@ pytestmark = pytest.mark.skipif(
 
 def test_finer_step_export_has_force_and_acceleration_history():
     reference = Path(REFERENCE)
-    assert MODEL in ("RM3_END_STOPS_STEP", "RM3_END_STOPS_STEP_FINE")
-    step = 0.05 if MODEL == "RM3_END_STOPS_STEP" else 0.025
-    case = "End_Stops_dt005" if step == 0.05 else "End_Stops_dt0025"
+    models = {
+        "RM3_END_STOPS_STEP": (0.05, "End_Stops_dt005"),
+        "RM3_END_STOPS_STEP_FINE": (0.025, "End_Stops_dt0025"),
+        "RM3_END_STOPS_STEP_FINER": (0.0125, "End_Stops_dt00125"),
+    }
+    assert MODEL in models
+    step, case = models[MODEL]
     sample_count = round(120 / step) + 1
     np.testing.assert_array_equal(
         np.loadtxt(reference / f"{MODEL}_run_settings.csv",
