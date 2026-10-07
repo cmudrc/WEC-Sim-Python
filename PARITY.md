@@ -78,11 +78,13 @@ This is a source inventory, not a claim that every case runs in Python.
 
 The `MATLAB reference model baselines` workflow runs the two canonical core
 examples, all five Sphere free-decay cases, RM3 body-to-body Cases 1–4,
-both RM3 PTO extension free decays,
+both RM3 PTO extension free decays, four RM3 radiation-force baselines (three
+paired to Python),
 all eight physical conditions from RM3 Multiple Condition Runs Option 1,
-the published Sphere passive-controller case, a configured Sphere PTO case
-derived from that published input, and the published OSWEC `Nonhydro_Body`
-case. The [nine-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37641710801)
+the published Sphere passive, reactive PI, declutching, and latching
+controllers, a configured Sphere PTO case derived from the passive input,
+and the published OSWEC `Nonhydro_Body` case. An earlier
+[nine-job run](https://github.com/cmudrc/wec-sim-python/actions/runs/37641710801)
 passed against fresh MATLAB R2025b outputs. The MCR input was expanded into
 eight scalar simulations; the Python checks compare their dynamics and PTO
 signals, not the `wecSimMCR` orchestration or its power-matrix postprocessing.
