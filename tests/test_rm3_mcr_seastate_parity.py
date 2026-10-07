@@ -335,9 +335,9 @@ def test_published_three_sea_state_mcr_against_matlab():
             np.testing.assert_allclose(response.time, expected[:, 0],
                                        rtol=0, atol=1e-10)
             for dof, name, position_limit, velocity_limit in (
-                (0, "surge", 0.12, 0.06),
-                (2, "heave", 0.012, 0.008),
-                (4, "pitch", 0.0045, 0.002),
+                (0, "surge", 0.020, 0.005),
+                (2, "heave", 0.0015, 0.0013),
+                (4, "pitch", 0.0009, 0.0004),
             ):
                 _max_error(response.body_position[:, body - 1, dof],
                            expected[:, 1 + dof], position_limit,
@@ -355,18 +355,25 @@ def test_published_three_sea_state_mcr_against_matlab():
                                    rtol=0, atol=1e-10)
         center_gap = (response.body_position[0, 0, 2]
                       - response.body_position[0, 1, 2])
-        stroke = (response.body_position[:, 0, 2]
-                  - response.body_position[:, 1, 2]
-                  - center_gap * np.cos(response.body_position[:, 0, 4]))
-        _max_error(stroke, pto[:, 3], 0.015, f"case {index} PTO stroke")
-        _max_error(response.pto_velocity, pto[:, 9], 0.009,
+        pitch = response.body_position[:, 0, 4]
+        cosine = np.cos(pitch)
+        stroke = ((response.body_position[:, 0, 2]
+                   - response.body_position[:, 1, 2]) / cosine - center_gap)
+        speed = ((response.body_velocity[:, 0, 2]
+                  - response.body_velocity[:, 1, 2]
+                  + (center_gap + stroke) * np.sin(pitch)
+                  * response.body_velocity[:, 0, 4]) / cosine)
+        np.testing.assert_allclose(stroke, response.pto_stroke, rtol=0, atol=1e-12)
+        np.testing.assert_allclose(speed, response.pto_velocity, rtol=0, atol=1e-12)
+        _max_error(stroke, pto[:, 3], 0.0035, f"case {index} PTO stroke")
+        _max_error(speed, pto[:, 9], 0.002,
                    f"case {index} PTO speed")
-        _max_error(response.pto_force, pto[:, 15], 11_000,
+        _max_error(response.pto_force, pto[:, 15], 2_500,
                    f"case {index} PTO force")
-        _max_error(trace.absorbed_power, -pto[:, 21], 10_000,
+        _max_error(trace.absorbed_power, -pto[:, 21], 1_800,
                    f"case {index} PTO absorbed power")
         np.testing.assert_allclose(-summary[index - 1],
                                    np.mean(-pto[1999:, 21]), rtol=0, atol=1e-6)
 
-    _max_error(result.mean_absorbed_power, -summary, 3_000,
+    _max_error(result.mean_absorbed_power, -summary, 75,
                "three sea-state MCR mean powers")

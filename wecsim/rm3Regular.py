@@ -58,10 +58,13 @@ def solve_rm3_regular(
 
     The bodies use equilibrium displaced-volume masses, fixed-frequency
     added mass and radiation damping, hydrostatic restoring, and regular-wave
-    excitation. Rigid-body rotation changes their surge/heave Jacobians at
-    each step. Without ``radiation_memory``, fixed-frequency damping uses
+    excitation. Rigid-body rotation and slider travel change their
+    surge/heave Jacobians at each step. Without ``radiation_memory``,
+    fixed-frequency damping uses
     classical RK4. With radiation memory, infinite-frequency added mass and
     the radiation impulse-response kernel use a trapezoidal history step.
+    The added-mass force follows WEC-Sim's rigid-body mass split and delayed
+    acceleration feedback with a 1e-7 s delay.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
     ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
@@ -203,19 +206,25 @@ def solve_rm3_regular(
 
         def motion(q, v, *, index=index, lever=lever):
             angle = q[3]
+            slide = q[index + 1]
+            radius = lever + slide
+            sine, cosine = np.sin(angle), np.cos(angle)
             jacobian = np.zeros((6, 4))
             jacobian[0, 0] = 1.0
-            jacobian[2, index + 1] = 1.0
-            jacobian[0, 3] = lever * np.cos(angle)
-            jacobian[2, 3] = -lever * np.sin(angle)
+            jacobian[0, index + 1] = sine
+            jacobian[2, index + 1] = cosine
+            jacobian[0, 3] = radius * cosine
+            jacobian[2, 3] = -radius * sine
             jacobian[4, 3] = 1.0
             curvature = np.array([
-                -lever * np.sin(angle), 0.0, -lever * np.cos(angle),
+                2 * cosine * v[index + 1] * v[3] - radius * sine * v[3]**2,
+                0.0,
+                -2 * sine * v[index + 1] * v[3] - radius * cosine * v[3]**2,
                 0.0, 0.0, 0.0,
-            ]) * v[3]**2
+            ])
             displacement = np.array([
-                q[0] + lever * np.sin(angle), 0.0,
-                q[index + 1] + lever * (np.cos(angle) - 1.0),
+                q[0] + radius * sine, 0.0,
+                slide * cosine + lever * (cosine - 1.0),
                 0.0, angle, 0.0,
             ])
             return BodyMotion(displacement, jacobian, curvature)
@@ -254,6 +263,7 @@ def solve_rm3_regular(
                                   -pto_equilibrium / 2, 0]),
         radiation_discretization=("fir" if radiation_method == "fir"
                                   else "trapezoid"),
+        added_mass_delay=(1e-7 if radiation_method == "convolution" else None),
     )
     solved = system.integrate(
         dt=dt, end_time=end_time,

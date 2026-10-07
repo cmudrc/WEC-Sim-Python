@@ -122,6 +122,9 @@ discrete FIR calculation; `"convolution"` remains the default. The same
 setting is available for no-wave free decay, without a paired FIR baseline. Both use
 `radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+For this RM3 convolution layout, the solver follows the published pitched
+slider geometry and Simulink's delayed added-mass feedback. The tiny delay is
+a numerical setting of the source model, not a WEC property.
 For the regular-wave `fixed_hinge` layout, an optional second body can be
 declared with `nonhydro: true`, `fixed: true`, and a three-component
 `center_gravity`. Its stationary motion appears in the response. With this
@@ -166,10 +169,11 @@ and PTO trajectories, average powers, and power matrices. The Option 1
 physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
 multiple PTOs, and other MCR postprocessing remain unverified.
 
-For the published three imported-spectrum RM3 sea states, pass its MAT-file
-table to the experimental Python runner. Its incident waves and excitation
-match the paired MATLAB output, but body trajectories currently fail the
-paired gate, so do not use its motion or power predictions as validated parity:
+For the published three imported-spectrum RM3 sea states, pass the MAT-file
+table to the Python runner. Paired MATLAB checks cover the incident waves,
+excitation, body and PTO trajectories, and absorbed power. Across the three
+400 s runs, the largest position differences are 14.4 mm surge, 1.03 mm
+heave, and 0.000638 rad pitch; mean absorbed powers differ by at most 29 W:
 
 ```python
 from wecsim import run_rm3_spectrum_mcr

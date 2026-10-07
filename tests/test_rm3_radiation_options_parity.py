@@ -106,12 +106,12 @@ def test_published_rm3_radiation_options(mode):
         )
     pitch = response.body_position[:, 0, 4]
     pitch_speed = response.body_velocity[:, 0, 4]
-    stroke = (response.body_position[:, 0, 2]
-              - response.body_position[:, 1, 2]
-              - center_gap * np.cos(pitch))
-    speed = (response.body_velocity[:, 0, 2]
-             - response.body_velocity[:, 1, 2]
-             + center_gap * np.sin(pitch) * pitch_speed)
+    cosine = np.cos(pitch)
+    stroke = ((response.body_position[:, 0, 2]
+               - response.body_position[:, 1, 2]) / cosine - center_gap)
+    speed = ((response.body_velocity[:, 0, 2]
+              - response.body_velocity[:, 1, 2]
+              + (center_gap + stroke) * np.sin(pitch) * pitch_speed) / cosine)
     pto = np.loadtxt(
         reference / f"RM3_Radiation_Options_{mode}_pto1.csv", delimiter=",",
     )

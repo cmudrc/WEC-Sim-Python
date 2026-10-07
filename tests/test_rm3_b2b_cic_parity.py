@@ -71,12 +71,12 @@ def test_rm3_regular_cic_against_matlab(case, b2b):
                   - response.body_position[0, 1, 2])
     pitch = response.body_position[:, 0, 4]
     pitch_speed = response.body_velocity[:, 0, 4]
-    stroke = (response.body_position[:, 0, 2]
-              - response.body_position[:, 1, 2] - center_gap
-              - center_gap * (np.cos(pitch) - 1))
-    speed = (response.body_velocity[:, 0, 2]
-             - response.body_velocity[:, 1, 2]
-             + center_gap * np.sin(pitch) * pitch_speed)
+    cosine = np.cos(pitch)
+    stroke = ((response.body_position[:, 0, 2]
+               - response.body_position[:, 1, 2]) / cosine - center_gap)
+    speed = ((response.body_velocity[:, 0, 2]
+              - response.body_velocity[:, 1, 2]
+              + (center_gap + stroke) * np.sin(pitch) * pitch_speed) / cosine)
     _max_error(stroke, pto[:, 3], 0.008, f"{case} PTO stroke")
     _max_error(speed, pto[:, 9], 0.005, f"{case} PTO speed")
     _max_error(response.pto_force, pto[:, 15], 6_000, f"{case} PTO force")
