@@ -1,4 +1,4 @@
-# wecsim-python
+# wec-sim-python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
 > wave energy converter simulator. A case-driven dynamics runner now covers
@@ -177,7 +177,7 @@ response = solve_heave_free_decay("path/to/sphere.h5", initial_displacement=1.0)
 This solver assumes one heave-only body, zero incident waves, and no PTO,
 mooring, or nonlinear force. Generate `sphere.h5` with the published
 WEC-Sim_Applications Sphere `bemio.m`, or download the HDF5 artifact from the
-[MATLAB reference-model run](https://github.com/cmudrc/wecsim-python/actions/runs/37472556464).
+[MATLAB reference-model run](https://github.com/cmudrc/wec-sim-python/actions/runs/37472556464).
 The RM3 regular-wave heave subsystem can be calculated with the same module:
 
 ```python
