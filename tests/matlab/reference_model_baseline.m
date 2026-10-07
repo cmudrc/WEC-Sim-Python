@@ -58,7 +58,7 @@ switch string(model)
         end
         cases = "End_Stops";
         caseDirs = string(fullfile(repoRoot, 'applications', 'End_Stops'));
-    case "RM3_END_STOPS_STEP"
+    case {"RM3_END_STOPS_STEP", "RM3_END_STOPS_STEP_FINE"}
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
             'RM3', 'hydroData');
         cd(hydroDir);
@@ -66,7 +66,13 @@ switch string(model)
             bemio;
         end
         sourceDir = fullfile(repoRoot, 'applications', 'End_Stops');
-        cases = "End_Stops_dt005";
+        if string(model) == "RM3_END_STOPS_STEP"
+            cases = "End_Stops_dt005";
+            stepSize = 0.05;
+        else
+            cases = "End_Stops_dt0025";
+            stepSize = 0.025;
+        end
         caseDirs = string(fullfile(repoRoot, 'applications', cases));
         [copied, copyMessage] = copyfile(sourceDir, caseDirs);
         assert(copied, copyMessage);
@@ -75,7 +81,8 @@ switch string(model)
         assert(contains(contents, 'simu.dt = 0.1;') && ...
             contains(contents, 'simu.endTime = 400;'), ...
             'The pinned End_Stops time settings changed');
-        contents = strrep(contents, 'simu.dt = 0.1;', 'simu.dt = 0.05;');
+        contents = strrep(contents, 'simu.dt = 0.1;', ...
+            sprintf('simu.dt = %.3f;', stepSize));
         contents = strrep(contents, 'simu.endTime = 400;', ...
             'simu.endTime = 120;');
         fid = fopen(inputFile, 'w');
@@ -231,7 +238,8 @@ for iCase = 1:numel(cases)
     end
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
-    if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
+    if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP", ...
+                             "RM3_END_STOPS_STEP_FINE"])
         stops = pto(1).hardStops;
         assert(strcmp(stops.upperLimitSpecify, 'on') && ...
             strcmp(stops.lowerLimitSpecify, 'on') && ...
@@ -248,11 +256,12 @@ for iCase = 1:numel(cases)
             stops.lowerLimitTransitionRegionWidth, ...
             stops.upperLimitTransitionRegionWidth], ...
             fullfile(outDir, string(model) + "_settings.csv"));
-        if string(model) == "RM3_END_STOPS_STEP"
-            assert(simu.dt == 0.05 && simu.endTime == 120, ...
+        if any(string(model) == ["RM3_END_STOPS_STEP", ...
+                                 "RM3_END_STOPS_STEP_FINE"])
+            assert(simu.dt == stepSize && simu.endTime == 120, ...
                 'The End_Stops step diagnostic did not use its requested settings');
             writematrix([simu.dt, simu.endTime, simu.rampTime], ...
-                fullfile(outDir, 'RM3_END_STOPS_STEP_run_settings.csv'));
+                fullfile(outDir, string(model) + "_run_settings.csv"));
         end
     end
     if string(model) == "OSWEC"
@@ -271,7 +280,8 @@ for iCase = 1:numel(cases)
         response = output.bodies(iBody);
         values = [response.time(:), response.position, response.velocity, ...
             response.forceTotal, response.forceExcitation];
-        if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
+        if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP", ...
+                                 "RM3_END_STOPS_STEP_FINE"])
             forceValues = [response.time(:), response.forceRadiationDamping, ...
                 response.forceAddedMass, response.forceRestoring, ...
                 response.acceleration];
@@ -317,7 +327,8 @@ for iCase = 1:numel(cases)
             response = output.ptos(iPto);
             values = [response.time(:), response.position, response.velocity, ...
                 response.forceInternalMechanics, response.powerInternalMechanics];
-            if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP"])
+            if any(string(model) == ["RM3_END_STOPS", "RM3_END_STOPS_STEP", ...
+                                     "RM3_END_STOPS_STEP_FINE"])
                 values = [values, response.forceTotal, ...
                     response.forceConstraint, response.forceActuation, ...
                     response.acceleration];

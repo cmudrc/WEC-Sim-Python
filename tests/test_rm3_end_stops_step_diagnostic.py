@@ -8,6 +8,7 @@ import pytest
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL", "RM3_END_STOPS_STEP")
 pytestmark = pytest.mark.skipif(
     not REFERENCE, reason="finer-step MATLAB End_Stops output not provided",
 )
@@ -15,17 +16,21 @@ pytestmark = pytest.mark.skipif(
 
 def test_finer_step_export_has_force_and_acceleration_history():
     reference = Path(REFERENCE)
+    assert MODEL in ("RM3_END_STOPS_STEP", "RM3_END_STOPS_STEP_FINE")
+    step = 0.05 if MODEL == "RM3_END_STOPS_STEP" else 0.025
+    case = "End_Stops_dt005" if step == 0.05 else "End_Stops_dt0025"
+    sample_count = round(120 / step) + 1
     np.testing.assert_array_equal(
-        np.loadtxt(reference / "RM3_END_STOPS_STEP_run_settings.csv",
+        np.loadtxt(reference / f"{MODEL}_run_settings.csv",
                    delimiter=","),
-        [0.05, 120, 100],
+        [step, 120, 100],
     )
-    time = np.arange(2401) * 0.05
+    time = np.arange(sample_count) * step
     pto = np.loadtxt(
-        reference / "RM3_END_STOPS_STEP_End_Stops_dt005_pto1.csv",
+        reference / f"{MODEL}_{case}_pto1.csv",
         delimiter=",",
     )
-    assert pto.shape == (2401, 49)
+    assert pto.shape == (sample_count, 49)
     np.testing.assert_allclose(pto[:, 0], time, rtol=0, atol=1e-10)
     assert np.isfinite(pto).all()
     stroke, speed, force = pto[:, 3], pto[:, 9], pto[:, 15]
@@ -36,15 +41,15 @@ def test_finer_step_export_has_force_and_acceleration_history():
     assert np.count_nonzero(np.abs(stroke) > 0.6) > 0
     for body in (1, 2):
         response = np.loadtxt(
-            reference / f"RM3_END_STOPS_STEP_End_Stops_dt005_body{body}.csv",
+            reference / f"{MODEL}_{case}_body{body}.csv",
             delimiter=",",
         )
         forces = np.loadtxt(
-            reference / f"RM3_END_STOPS_STEP_body{body}_forces.csv",
+            reference / f"{MODEL}_body{body}_forces.csv",
             delimiter=",",
         )
-        assert response.shape == (2401, 25)
-        assert forces.shape == (2401, 25)
+        assert response.shape == (sample_count, 25)
+        assert forces.shape == (sample_count, 25)
         np.testing.assert_allclose(response[:, 0], time, rtol=0, atol=1e-10)
         np.testing.assert_allclose(forces[:, 0], time, rtol=0, atol=1e-10)
         assert np.isfinite(response).all() and np.isfinite(forces).all()

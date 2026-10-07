@@ -44,7 +44,7 @@ on:
       model:
         description: Run all models or a selected RM3 application
         type: choice
-        options: [all, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP]
+        options: [all, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE]
         default: all
 
 jobs:
@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "Sphere", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
+        model: ${{ fromJSON(inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "Sphere", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -68,7 +68,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -148,8 +148,9 @@ jobs:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_rm3_end_stops_step_diagnostic.py
-        if: matrix.model == 'RM3_END_STOPS_STEP'
+        if: matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE'
         env:
+          WEC_SIM_REFERENCE_MODEL: ${{ matrix.model }}
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_rm3_radiation_options_parity.py
         if: matrix.model == 'RM3_Radiation_Options'
