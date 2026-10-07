@@ -16,6 +16,7 @@ dependencies = [
     "trimesh",
     "networkx",
     "control",
+    "openpyxl",
 ]
 
 [project.urls]

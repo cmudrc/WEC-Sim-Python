@@ -6,6 +6,10 @@ outDir = fullfile(repoRoot, 'matlab-reference-model-output');
 if ~isfolder(outDir)
     mkdir(outDir);
 end
+if string(model) == "RM3_MCR_MAT"
+    run_rm3_mcr_mat_baseline(repoRoot, outDir);
+    return;
+end
 
 switch string(model)
     case "RM3"
@@ -258,4 +262,85 @@ switch option
         error('Unknown RM3 radiation option: %s', option);
 end
 wecSim;
+end
+
+function run_rm3_mcr_mat_baseline(repoRoot, outDir)
+% Execute the pinned MAT-file MCR driver, including its postprocessing.
+hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+    'RM3', 'hydroData');
+cd(hydroDir);
+if ~isfile('rm3.h5')
+    bemio;
+end
+caseDir = fullfile(repoRoot, 'applications', 'Multiple_Condition_Runs', ...
+    'RM3_MCROPT3');
+cd(caseDir);
+wecSimMCR;
+expectedHeader = {'waves.height', 'waves.period', ...
+    'pto(1).damping', 'pto(1).stiffness'};
+assert(isequal(mcr.header, expectedHeader), ...
+    'Pinned RM3 MCR header changed');
+assert(isequal(size(mcr.cases), [8, 4]), ...
+    'Pinned RM3 MCR must contain eight four-parameter cases');
+assert(numel(mcr.Avgpower) == 8 && all(isfinite(mcr.Avgpower)), ...
+    'RM3 MCR did not calculate eight finite average powers');
+assert(numel(mcr.CPTO) == 8 && all(isfinite(mcr.CPTO)), ...
+    'RM3 MCR did not record eight finite PTO damping values');
+writematrix([mcr.cases, mcr.Avgpower(:), mcr.CPTO(:)], ...
+    fullfile(outDir, 'RM3_MCR_MAT_summary.csv'));
+
+% Export the actual CData plotted by the pinned userDefinedFunctionsMCR.m.
+% Its axes labels are transposed in the source example, but the tick values
+% and 2-by-2 cell placement identify period rows and wave-height columns.
+powerImages = findall(groot, 'Type', 'image');
+foundD12 = false;
+foundD24 = false;
+for iImage = 1:numel(powerImages)
+    matrix = double(powerImages(iImage).CData);
+    if ~isequal(size(matrix), [2, 2])
+        continue
+    end
+    axesHandle = ancestor(powerImages(iImage), 'axes');
+    titleText = string(axesHandle.Title.String);
+    if contains(titleText, 'Damping = 1200000')
+        assert(~foundD12 && all(isfinite(matrix), 'all'), ...
+            'RM3 MCR first power matrix is invalid');
+        writematrix(matrix, fullfile(outDir, 'RM3_MCR_MAT_power_matrix_D12.csv'));
+        foundD12 = true;
+    elseif contains(titleText, 'Damping = 2400000')
+        assert(~foundD24 && all(isfinite(matrix), 'all'), ...
+            'RM3 MCR second power matrix is invalid');
+        writematrix(matrix, fullfile(outDir, 'RM3_MCR_MAT_power_matrix_D24.csv'));
+        foundD24 = true;
+    end
+end
+assert(foundD12 && foundD24, ...
+    'RM3 MCR did not plot both published PTO power matrices');
+
+for iCase = 1:8
+    saved = load(fullfile(caseDir, sprintf('savedData%03d.mat', iCase)), ...
+        'output');
+    assert(~isempty(saved.output.bodies) && isstruct(saved.output.ptos), ...
+        'RM3 MCR savedData is missing motion or PTO output');
+    for iBody = 1:numel(saved.output.bodies)
+        response = saved.output.bodies(iBody);
+        values = [response.time(:), response.position, response.velocity, ...
+            response.forceTotal, response.forceExcitation];
+        assert(all(isfinite(values), 'all'), ...
+            'RM3 MCR body output contains nonfinite values');
+        writematrix(values, fullfile(outDir, sprintf( ...
+            'RM3_MCR_MAT_case%d_body%d.csv', iCase, iBody)));
+    end
+    for iPto = 1:numel(saved.output.ptos)
+        response = saved.output.ptos(iPto);
+        values = [response.time(:), response.position, response.velocity, ...
+            response.forceInternalMechanics, response.powerInternalMechanics];
+        assert(all(isfinite(values), 'all'), ...
+            'RM3 MCR PTO output contains nonfinite values');
+        writematrix(values, fullfile(outDir, sprintf( ...
+            'RM3_MCR_MAT_case%d_pto%d.csv', iCase, iPto)));
+    end
+end
+close_system('RM3', 0);
+close all;
 end
