@@ -31,6 +31,8 @@ class RM3RegularResponse:
     pto_mechanical_power: np.ndarray
     pto_dissipated_power: np.ndarray
     pto_stop_force: np.ndarray | None = None
+    mooring_surge_position: np.ndarray | None = None
+    mooring_surge_force: np.ndarray | None = None
 
 
 def solve_rm3_regular(
@@ -43,6 +45,7 @@ def solve_rm3_regular(
     pto_stiffness: float = 0.0,
     pto_equilibrium: float = 0.0,
     pto_hard_stops: LinearHardStops | None = None,
+    mooring_surge_stiffness: float = 0.0,
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
@@ -79,6 +82,8 @@ def solve_rm3_regular(
     ``excitation_force`` supplies a sampled two-body, six-DOF wave force at
     every output time for imported irregular spectra; RK4 stage forces are
     linearly interpolated between those samples.
+    ``mooring_surge_stiffness`` connects a linear surge spring to the floating
+    joint, as in the published RM3 MooringMatrix case.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
     memory. Initial coordinates are shared surge, float heave, spar heave,
     and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
@@ -86,7 +91,7 @@ def solve_rm3_regular(
     full Simscape joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
-              pto_equilibrium,
+              pto_equilibrium, mooring_surge_stiffness,
               joint_z, dt, end_time, ramp_time, rho, g, *pitch_inertias]
     if radiation_memory is not None:
         inputs.append(radiation_memory)
@@ -94,7 +99,8 @@ def solve_rm3_regular(
         raise ValueError("solver inputs must be finite")
     if (len(pitch_inertias) != 2 or wave_height < 0 or wave_period <= 0
             or any(inertia <= 0 for inertia in pitch_inertias)
-            or pto_damping < 0 or pto_stiffness < 0 or dt <= 0
+            or pto_damping < 0 or pto_stiffness < 0
+            or mooring_surge_stiffness < 0 or dt <= 0
             or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0):
         raise ValueError("invalid RM3 wave, body, PTO, or time parameters")
     if radiation_memory is not None and radiation_memory <= 0:
@@ -217,6 +223,8 @@ def solve_rm3_regular(
     pto_coupling = np.zeros((4, 4))
     pto_coupling[1, 1] = pto_coupling[2, 2] = 1
     pto_coupling[1, 2] = pto_coupling[2, 1] = -1
+    mechanical_stiffness = pto_stiffness * pto_coupling
+    mechanical_stiffness[0, 0] = mooring_surge_stiffness
 
     dynamic_bodies = []
     for index, body in enumerate(data):
@@ -281,7 +289,7 @@ def solve_rm3_regular(
 
     system = GeneralizedDynamics(
         tuple(dynamic_bodies), 4,
-        pto_stiffness=pto_stiffness * pto_coupling,
+        pto_stiffness=mechanical_stiffness,
         pto_damping=pto_damping * pto_coupling,
         pto_equilibrium=np.array([0, pto_equilibrium / 2,
                                   -pto_equilibrium / 2, 0]),
@@ -313,4 +321,7 @@ def solve_rm3_regular(
         pto_mechanical_power=-pto_force * pto_velocity,
         pto_dissipated_power=pto_damping * pto_velocity**2,
         pto_stop_force=pto_stop_force,
+        mooring_surge_position=q[:, 0] if mooring_surge_stiffness else None,
+        mooring_surge_force=(-mooring_surge_stiffness * q[:, 0]
+                             if mooring_surge_stiffness else None),
     )
