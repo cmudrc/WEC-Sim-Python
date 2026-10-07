@@ -90,3 +90,10 @@ def test_published_sphere_declutching_against_matlab():
                "disengaged controller force")
     _max_error(response.raw.pto_generalized_force[:, 0], force, 1e-8,
                "applied generalized controller force")
+    python_energy = np.trapezoid(
+        response.ptos["declutch"].absorbed_power, response.time,
+    )
+    matlab_energy = -np.trapezoid(controller[:, 9], response.time)
+    assert abs(python_energy - matlab_energy) < 15_000, (
+        f"absorbed energy differs by {python_energy - matlab_energy:.1f} J"
+    )
