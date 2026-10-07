@@ -27,7 +27,7 @@ def _max_error(actual, expected, limit, label):
 
 
 def test_rm3_mooring_matrix_full_duration_against_matlab():
-    apps = Path(APPLICATIONS)
+    apps = Path(APPLICATIONS).resolve()
     reference = Path(REFERENCE)
     prefix = "RM3_MOORING_MATRIX"
     hydro = apps / "_Common_Input_Files/RM3/hydroData/rm3.h5"
