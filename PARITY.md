@@ -198,6 +198,16 @@ irregular-wave cases.
 RM3 state-space Cases 5 and 6 remain a radiation-fit investigation: a
 passive fit would need its own evidence against source BEM data and
 convolution trajectories before it could count as physically validated.
+The [pinned Applications `End_Stops` input](https://github.com/WEC-Sim/WEC-Sim_Applications/blob/d53d4d4c9eda2581f04204f5d394a6ef84bb099e/End_Stops/wecSimInputFile.m) sets
+`upperLimitTransitionRegion` and `lowerLimitTransitionRegion` to 0.5 m, but
+the [pinned `ptoClass.hardStops` defaults](https://github.com/WEC-Sim/WEC-Sim/blob/0753b2e47f2457c078751dcfe5d251d1767b80ab/source/objects/ptoClass.m) and the referenced translational PTO
+Simulink block read the fields ending in `TransitionRegionWidth`. The input
+therefore leaves the effective widths at their 1e-4 m defaults. Its upstream
+[test](https://github.com/WEC-Sim/WEC-Sim_Applications/blob/d53d4d4c9eda2581f04204f5d394a6ef84bb099e/End_Stops/TestEndStops.m) only checks that `wecSim` runs; it has no stroke or force assertion.
+The example is not a validated Python trajectory target until its effective
+settings and MATLAB motion/stop forces are exported and paired. The no-stop
+Python RM3 trajectory reaches about ±0.87 m relative stroke against the
+example's ±0.6 m limits, so this is dynamically relevant.
 Further dynamics targets include other published OSWEC and Sphere
 configurations. The Sphere free-decay cases already have direct Python motion
 comparisons. A comparison must
