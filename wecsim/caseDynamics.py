@@ -14,7 +14,9 @@ import numpy as np
 
 from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
-from .hingePitch import solve_hinged_pitch_from_excitation
+from .hingePitch import (
+    solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
+)
 from .irregularWave import pm_equal_energy_components, synthesize_irregular_response
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
@@ -64,6 +66,22 @@ def _number(value, name, *, positive=False, nonnegative=False):
 
 
 def _hydro_file(body, base_dir):
+    if isinstance(body, Mapping) and body.get("nonhydro", False):
+        _section(body, "fixed nonhydrodynamic body",
+                 {"nonhydro", "fixed", "center_gravity"},
+                 {"nonhydro", "fixed", "center_gravity", "name", "mass", "inertia"})
+        if body["nonhydro"] is not True or body["fixed"] is not True:
+            raise ValueError("nonhydrodynamic body must be fixed in this layout")
+        center = np.asarray(body["center_gravity"], dtype=float)
+        if center.shape != (3,) or not np.isfinite(center).all():
+            raise ValueError("fixed body center_gravity must be three finite coordinates")
+        if "mass" in body:
+            _number(body["mass"], "fixed body mass", positive=True)
+        if "inertia" in body:
+            inertia = np.asarray(body["inertia"], dtype=float)
+            if inertia.shape != (3,) or not np.isfinite(inertia).all() or np.any(inertia <= 0):
+                raise ValueError("fixed body inertia must have three positive values")
+        return None
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name"})
@@ -152,6 +170,11 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+    if any(path is None for path in hydro) and not (
+        kind == "fixed_hinge" and len(bodies) == 2
+        and hydro[0] is not None and hydro[1] is None
+    ):
+        raise ValueError("a fixed nonhydrodynamic body requires a two-body fixed_hinge")
     if "ptos" in case and kind != "linear_subspace":
         raise ValueError("configurable PTO connections require linear_subspace")
 
@@ -195,8 +218,11 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "fixed_hinge":
-        if len(bodies) != 1 or wave["type"] != "pm" or b2b:
-            raise ValueError("fixed-hinge pitch needs one body and PM waves")
+        if (len(bodies) not in (1, 2) or wave["type"] not in ("pm", "regular")
+                or (len(bodies) == 2 and hydro[1] is not None) or b2b):
+            raise ValueError("fixed-hinge pitch needs one flap, optional fixed base, and PM or regular waves")
+        if len(bodies) == 2 and wave["type"] != "regular":
+            raise ValueError("the fixed nonhydrodynamic base currently needs regular waves")
         _body_number(bodies[0], 1)
         if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "pitch_inertia"}:
             raise ValueError("fixed-hinge pitch uses mass and pitch_inertia")
@@ -209,6 +235,39 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         damping, stiffness, equilibrium = _pto(case.get("pto"), "pitch")
         height = _number(wave.get("height"), "wave.height", positive=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
+        if wave["type"] == "regular":
+            if set(wave) - {"type", "height", "period", "direction"}:
+                raise ValueError("regular waves use height, period, and direction")
+            direction = _number(wave.get("direction", 0), "wave.direction")
+            if direction != 0:
+                raise ValueError("fixed-hinge regular dynamics currently support 0-degree waves")
+            if "radiation_memory" in sim:
+                raise ValueError("regular fixed-hinge dynamics use constant-frequency radiation")
+            solved = solve_hinged_pitch_regular(
+                hydro[0], wave_height=height, wave_period=period,
+                hinge_z=location[2], body_mass=mass, pitch_inertia=inertia,
+                pto_damping=damping, pto_stiffness=stiffness,
+                pto_equilibrium=equilibrium, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, rho=rho, g=g,
+            )
+            ramp = np.ones(len(solved.time))
+            if ramp_time > 0:
+                early = solved.time < ramp_time
+                ramp[early] = (1 - np.cos(np.pi * solved.time[early] / ramp_time)) / 2
+            elevation = height / 2 * ramp * np.cos(2 * np.pi * solved.time / period)
+            position = np.zeros((len(solved.time), len(bodies), 6))
+            velocity = np.zeros_like(position)
+            position[:, 0, :3] = solved.center_position
+            position[:, 0, 4] = solved.angle
+            velocity[:, 0, :3] = solved.center_velocity
+            velocity[:, 0, 4] = solved.angular_velocity
+            if len(bodies) == 2:
+                position[:, 1, :3] = np.asarray(bodies[1]["center_gravity"], dtype=float)
+            return CaseResponse(
+                solved.time, position, velocity, (hydro[0],),
+                pto_force=solved.pto_torque, pto_label="pto_pitch_torque",
+                wave_elevation=elevation,
+            )
         if "direction" in wave:
             raise ValueError("PM waves use directions and spreading arrays")
         if "seed" in wave and "phase_file" in wave:

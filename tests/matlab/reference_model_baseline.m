@@ -28,6 +28,15 @@ switch string(model)
         cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", "B2B_Case4"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "OSWEC_Nonhydro"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'OSWEC', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('oswec.h5')
+            bemio;
+        end
+        cases = "Nonhydro";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Nonhydro_Body'));
     case "RM3_MCR"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
         cd(hydroDir);

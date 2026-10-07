@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 
 from wecsim.hingePitch import solve_hinged_pitch_from_excitation
+from wecsim.caseDynamics import run_case
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
@@ -32,3 +33,30 @@ def test_seeded_oswec_wave_and_pitch_pipeline():
     assert np.isfinite(motion.angle).all()
     assert 0 < np.max(np.abs(motion.angle)) < 1
     np.testing.assert_allclose(motion.time, wave.time, rtol=0, atol=1e-12)
+
+
+def test_regular_hinged_flap_reports_fixed_nonhydrodynamic_base():
+    h5_file = (Path(__file__).parent / "test_objects" / "test_bodyclass"
+               / "testData" / "hydroData" / "oswec.h5")
+    case = {
+        "simulation": {"dt": 0.1, "end_time": 8, "ramp_time": 0},
+        "wave": {"type": "regular", "height": 2.5, "period": 8},
+        "bodies": [
+            {"hydro_file": str(h5_file.resolve()), "mass": 127_000,
+             "pitch_inertia": 1.85e6},
+            {"name": "base", "nonhydro": True, "fixed": True,
+             "center_gravity": [0, 0, -10.9], "mass": 999,
+             "inertia": [1, 1, 1]},
+        ],
+        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -8.9]},
+        "pto": {"kind": "pitch", "damping": 0},
+    }
+    response = run_case(case)
+    assert response.body_position.shape == (81, 2, 6)
+    assert len(response.hydro_files) == 1
+    np.testing.assert_array_equal(
+        response.body_position[:, 1, :],
+        np.tile([0, 0, -10.9, 0, 0, 0], (81, 1)),
+    )
+    assert np.max(np.abs(response.body_position[:, 0, 4])) > 0.01
+    np.testing.assert_array_equal(response.pto_force, np.zeros(81))
