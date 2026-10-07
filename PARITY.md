@@ -48,6 +48,12 @@ to the original rigid mass plus HDF5 infinite-frequency added mass in the
 active surge/heave/pitch block. The paired matrix gate passes for both bodies.
 The run still fails the sea-state trajectory gate, so changing the static
 added-mass coefficients would not address the evidenced discrepancy.
+The exact MATLAB joint adds `PTO stroke * sin(pitch)` to the two bodies'
+relative surge, a term absent from the reduced Python geometry. In the saved
+MATLAB traces this term peaks at 0.304, 0.222, and 0.140 m across the three
+sea states, compared with 0.039 m in regular MCR case 8. An exact-geometry
+trial improved the sea-state trajectory but regressed regular-wave gates, so
+joint dynamics still require a correction that passes both families.
 
 The published RM3 body-to-body Cases 5 and 6 use the same suspect fitted
 state-space radiation as the fourth `Radiation_Force_Options` setting. At 400 s,
