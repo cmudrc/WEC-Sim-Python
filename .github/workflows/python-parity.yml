@@ -17,4 +17,4 @@ jobs:
       - run: python -m pip install -e . pytest
       - run: cd /tmp && python -c 'from wecsim import WEC; print(WEC.__module__)'
       - run: python -m compileall -q wecsim
-      - run: python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py tests/test_pto_connections.py tests/test_python_api.py
+      - run: python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_rm3_pto_extension_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py tests/test_pto_connections.py tests/test_python_api.py
