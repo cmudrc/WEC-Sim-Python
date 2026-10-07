@@ -5,10 +5,8 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from scipy.io import loadmat
 
-from wecsim.bodyClass import BodyClass
-from wecsim.rm3Regular import solve_rm3_regular
+from wecsim import run_case
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
@@ -34,30 +32,32 @@ def test_rm3_mooring_matrix_full_duration_against_matlab():
     prefix = "RM3_MOORING_MATRIX"
     hydro = apps / "_Common_Input_Files/RM3/hydroData/rm3.h5"
     dt, end_time, ramp_time = 0.01, 400.0, 40.0
-    time = np.arange(40_001) * dt
-    input_wave = loadmat(apps / "Mooring/MooringMatrix/etaData.mat")["etaData"]
-    ramp = np.ones_like(time)
-    early = time < ramp_time
-    ramp[early] = (1 - np.cos(np.pi * time[early] / ramp_time)) / 2
-    elevation = np.interp(time, input_wave[:, 0], input_wave[:, 1]) * ramp
-    force = np.zeros((len(time), 2, 6))
-    for number in (1, 2):
-        body = BodyClass(str(hydro))
-        body.bodyNumber = number
-        body.bodyTotal = 2
-        body.readH5file()
-        body.hydroForce["userDefinedFe"] = np.zeros((len(time), 6))
-        body.userDefinedExcitation(np.vstack((time, elevation)),
-                                   dt, [0], 1000, 9.81)
-        # The source body block applies the wave ramp a second time.
-        force[:, number - 1] = body.hydroForce["userDefinedFe"] * ramp[:, None]
-
-    result = solve_rm3_regular(
-        hydro, wave_height=0, radiation_memory=60,
-        excitation_force=force, mooring_surge_stiffness=100_000,
-        initial_coordinate=np.array([0.0, 0.0, -0.21, 0.0]),
-        dt=dt, end_time=end_time, ramp_time=ramp_time,
+    result = run_case(
+        {
+            "simulation": {"dt": dt, "end_time": end_time,
+                           "ramp_time": ramp_time, "radiation_memory": 60},
+            "wave": {"type": "elevationImport",
+                     "file": "Mooring/MooringMatrix/etaData.mat",
+                     "variable": "etaData", "direction": 0,
+                     "reapply_force_ramp": True},
+            "bodies": [
+                {"hydro_file": str(hydro), "hydro_body": number,
+                 "mass": "equilibrium", "pitch_inertia": inertia}
+                for number, inertia in ((1, 21_306_090.66), (2, 94_407_091.24))
+            ],
+            "constraint": {"kind": "floating_joint", "location": [0, 0, 0],
+                           "initial_coordinate": {"spar_heave": -0.21}},
+            "pto": {"kind": "relative_heave", "damping": 1_200_000},
+            "mooring": {"kind": "joint_surge_spring", "stiffness": 100_000},
+        },
+        base_dir=apps,
     )
+    assert result.auxiliary_files == (apps / "Mooring/MooringMatrix/etaData.mat",)
+    assert result.wave_elevation.shape == result.time.shape
+    outputs = dict(result.extra_outputs)
+    source_wave = np.loadtxt(reference / f"{prefix}_wave.csv", delimiter=",")
+    _max_error(result.wave_elevation, source_wave[:, 1], 1e-10,
+               "imported wave elevation")
     bodies = [np.loadtxt(reference / f"{prefix}_MooringMatrix_body{number}.csv",
                          delimiter=",") for number in (1, 2)]
     for index, saved in enumerate(bodies):
@@ -73,9 +73,9 @@ def test_rm3_mooring_matrix_full_duration_against_matlab():
                        velocity_limit, f"body{index+1} {name} velocity")
 
     mooring = np.loadtxt(reference / f"{prefix}_mooring1.csv", delimiter=",")
-    _max_error(result.mooring_surge_position, mooring[:, 1], 0.015,
+    _max_error(outputs["mooring_surge_position"], mooring[:, 1], 0.015,
                "mooring surge position")
-    _max_error(result.mooring_surge_force, mooring[:, 13], 1_500,
+    _max_error(outputs["mooring_surge_force"], mooring[:, 13], 1_500,
                "mooring surge force")
 
     pto = np.loadtxt(reference / f"{prefix}_MooringMatrix_pto1.csv",
