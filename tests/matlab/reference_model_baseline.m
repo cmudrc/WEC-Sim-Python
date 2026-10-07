@@ -28,6 +28,14 @@ switch string(model)
         cases = ["B2B_Case1", "B2B_Case2"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "Sphere_Passive"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Passive_P";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Controls', 'Passive (P)'));
     otherwise
         error('Unknown reference model: %s', model);
 end
@@ -55,6 +63,16 @@ for iCase = 1:numel(cases)
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
+    end
+    if string(model) == "Sphere_Passive"
+        assert(exist('controller1_out', 'var') == 1, ...
+            'The passive controller produced no logged output');
+        controllerValues = [controller1_out.time(:), controller1_out.signals.values];
+        assert(size(controllerValues, 2) == 13, ...
+            'Expected six force and six power components from passive controller');
+        assert(all(isfinite(controllerValues), 'all'), ...
+            'The passive controller output contains nonfinite values');
+        writematrix(controllerValues, fullfile(outDir, 'Sphere_Passive_controller.csv'));
     end
     if isstruct(output.ptos) && isfield(output.ptos, 'time')
         for iPto = 1:numel(output.ptos)
