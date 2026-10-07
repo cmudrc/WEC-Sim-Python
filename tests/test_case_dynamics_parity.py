@@ -9,6 +9,8 @@ import sys
 import numpy as np
 import pytest
 
+from wecsim_python import NoWave, RegularWave, WEC
+
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL")
 CORE = os.environ.get("WEC_SIM_MATLAB_CORE_DIR")
@@ -108,6 +110,24 @@ def test_rm3_linear_subspace_general_runner(tmp_path):
         columns["pto_coordinate1_force"], -columns["pto_coordinate2_force"],
         rtol=0, atol=1e-9,
     )
+    wec = WEC("RM3 heave in Python")
+    float_body = wec.body("float", hydro)
+    spar = wec.body("spar", hydro)
+    wec.coordinate("float_heave", float_body.move("heave"))
+    wec.coordinate("spar_heave", spar.move("heave"))
+    wec.pto("main", float_body.at(0, 0, 0), spar.at(0, 0, 0),
+            axis=(0, 0, 1), damping=1_200_000)
+    python = wec.run(RegularWave(2.5, 8), dt=0.1, end_time=400, ramp_time=100)
+    for body, name in ((1, "float"), (2, "spar")):
+        expected = np.loadtxt(
+            Path(REFERENCE) / f"RM3_RM3_body{body}.csv", delimiter=",",
+        )
+        assert np.max(np.abs(
+            python.bodies[name].position[:, 2] - expected[:, 3]
+        )) < 0.0065
+    assert np.max(np.abs(
+        -python.ptos["main"].force - expected_pto[:, 15]
+    )) < 9_000
 
 
 @pytest.mark.skipif(MODEL != "RM3_B2B" or not (APPLICATIONS and REFERENCE),
@@ -204,3 +224,14 @@ def test_sphere_linear_subspace_general_runner(tmp_path):
     assert not any(name.startswith("pto_") for name in columns)
     assert np.max(np.abs(columns["body1_heave_position"] - expected[:, 3])) < 0.001
     assert np.max(np.abs(columns["body1_heave_velocity"] - expected[:, 9])) < 0.001
+    wec = WEC("Sphere free decay in Python")
+    sphere = wec.body("sphere", Path(SPHERE_H5).resolve())
+    wec.coordinate("heave", sphere.move("heave"))
+    python = wec.run(
+        NoWave(), dt=0.01, end_time=40, radiation_memory=15,
+        initial_coordinate={"heave": 5},
+    )
+    assert np.max(np.abs(python.bodies["sphere"].position[:, 2]
+                         - expected[:, 3])) < 0.001
+    assert np.max(np.abs(python.bodies["sphere"].velocity[:, 2]
+                         - expected[:, 9])) < 0.001

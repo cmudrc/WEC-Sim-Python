@@ -12,8 +12,8 @@ To run the production-code parity checks with Python 3.12:
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt pytest
-.venv/bin/python -m compileall -q source/objects
-.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py
+.venv/bin/python -m compileall -q source wecsim_python
+.venv/bin/python -m pytest -q tests/test_wave_parity.py tests/test_body_io.py tests/test_oswec_standalone.py tests/test_rm3_standalone.py tests/test_reference_cli.py tests/test_general_dynamics.py tests/test_case_dynamics.py tests/test_pto_connections.py tests/test_python_api.py
 ```
 
 **WEC-Sim-Python** is Sungjun Won's Python port of
@@ -27,9 +27,39 @@ against MATLAB WEC-Sim while preserving the original author's work.
 ## Current status
 
 Wave generation, RM3 and OSWEC hydrodynamic input, force preprocessing, and
-the supported device dynamics have paired MATLAB checks. The main runner
-accepts a JSON case that specifies simulation, wave, bodies, constraint, and
-PTO settings. The included RM3 example runs with the historical bundled HDF5:
+the supported device dynamics have paired MATLAB checks. The Python API is
+the primary way to configure a linearized device. It constructs bodies,
+named motions, attachment points, PTOs, and waves as Python objects, then
+returns NumPy arrays directly:
+
+```python
+from wecsim_python import NoWave, WEC, WorldPoint
+
+wec = WEC("Heaving float")
+float_body = wec.body("float", "path/to/hydro.h5")
+wec.coordinate("heave", float_body.move("heave"))
+wec.pto("main", float_body.at(0, 0, 0), WorldPoint(0, 0, 10),
+        damping=1_200_000)
+result = wec.run(NoWave(), dt=0.1, end_time=20,
+                 radiation_memory=15,
+                 initial_coordinate={"heave": 1})
+heave = result.bodies["float"].position[:, 2]
+pto_force = result.ptos["main"].force
+```
+
+The [full Python example](examples/python/configurable_rm3_pto.py) defines a
+two-body device with a shared pitch pivot and body-local PTO points. Run it
+with `python -m examples.python.configurable_rm3_pto`. Relative HDF5 paths in
+the Python API resolve from the current directory unless `base_dir` is passed
+to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
+Python builder currently covers the `linear_subspace` layout with regular or
+no waves; its named coordinates use small-motion kinematics and fixed-axis
+PTOs. The other validated reference layouts remain available through the
+case runner and focused solver functions.
+
+The JSON runner remains available for saved and reproducible cases. It
+accepts simulation, wave, body, constraint, and PTO settings. The included
+RM3 example runs with the historical bundled HDF5:
 
 ```sh
 python -m source.objects.wecSimPython examples/python/rm3.json --output results/rm3.csv

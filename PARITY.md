@@ -96,6 +96,10 @@ body-local or fixed-world PTO endpoints. Its attachment geometry, projected
 stroke, generalized forces, and damping power have analytical and case-level
 checks. A non-default attachment-point case has not yet been paired with a
 MATLAB Simscape trajectory.
+`wecsim_python.WEC` provides a Python builder for this same validated path and
+returns named NumPy body, coordinate, and PTO histories. The JSON case runner
+remains available for saved cases; the Python builder currently covers the
+`linear_subspace` layout only.
 `python -m source.objects.wecSimPython CASE.json --output motion.csv` runs a
 supported dynamics configuration. The case declares wave, body, constraint,
 PTO, and time settings; the result includes all six body position and
