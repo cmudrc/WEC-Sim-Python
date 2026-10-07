@@ -94,6 +94,7 @@ Supported combinations are:
 | --- | --- | --- | --- |
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
+| `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation or 60 s impulse-response convolution |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
@@ -103,6 +104,12 @@ an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
 `radiation_memory` for convolution cases. The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+For the regular-wave `fixed_hinge` layout, an optional second body can be
+declared with `nonhydro: true`, `fixed: true`, and a three-component
+`center_gravity`. Its stationary motion appears in the response. With this
+base, `constraint.location` is the base's ground attachment and
+`pto.location` is the flap's hinge attachment. The fixed base's constraint
+reaction forces are not yet calculated.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
 RM3 Multiple Condition Runs Option 1 sweep. MATLAB's fitted radiation

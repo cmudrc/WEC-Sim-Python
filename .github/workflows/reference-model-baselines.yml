@@ -15,6 +15,7 @@ on:
       - 'tests/test_sphere_pto_config_parity.py'
       - 'tests/test_case_dynamics_parity.py'
       - 'tests/test_oswec_hinge_dynamics_parity.py'
+      - 'tests/test_oswec_nonhydro_parity.py'
       - 'tests/test_oswec_irregular_wave_parity.py'
       - 'tests/test_sphere_dynamics_parity.py'
       - 'wecsim/linearHeave.py'
@@ -34,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
+        model: [RM3, OSWEC, OSWEC_Nonhydro, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -48,7 +49,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MCR'
+        if: matrix.model == 'Sphere' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MCR' || matrix.model == 'OSWEC_Nonhydro'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -59,6 +60,8 @@ jobs:
             _Common_Input_Files/Sphere
             Free_Decay
             _Common_Input_Files/RM3
+            _Common_Input_Files/OSWEC
+            Nonhydro_Body
             Body-to-Body_Interactions/B2B_Case1
             Body-to-Body_Interactions/B2B_Case2
             Body-to-Body_Interactions/B2B_Case3
@@ -122,6 +125,11 @@ jobs:
           WEC_SIM_REFERENCE_MODEL: OSWEC
           WEC_SIM_MATLAB_CORE_DIR: matlab-ref
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_oswec_nonhydro_parity.py
+        if: matrix.model == 'OSWEC_Nonhydro'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_oswec_irregular_wave_parity.py
         if: matrix.model == 'OSWEC'
         env:
@@ -151,3 +159,4 @@ jobs:
             matlab-reference-model-output/
             applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
             applications/_Common_Input_Files/RM3/hydroData/rm3.h5
+            applications/_Common_Input_Files/OSWEC/hydroData/oswec.h5
