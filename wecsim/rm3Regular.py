@@ -1,7 +1,7 @@
 """Reduced four-coordinate model of the published RM3 regular-wave case.
 
-The two bodies share surge and pitch at the floating joint and have separate
-heave coordinates. Hydrodynamic coefficients come from production ``BodyClass``
+The two bodies share surge and pitch at the floating joint and slide
+independently along its pitched axis. Hydrodynamic coefficients come from production ``BodyClass``
 preprocessing. This is a reference-case model, not the general WEC-Sim runner.
 """
 
@@ -25,6 +25,7 @@ class RM3RegularResponse:
     body_position: np.ndarray
     body_velocity: np.ndarray
     pto_force: np.ndarray
+    pto_stroke: np.ndarray
     pto_velocity: np.ndarray
     pto_mechanical_power: np.ndarray
     pto_dissipated_power: np.ndarray
@@ -67,8 +68,9 @@ def solve_rm3_regular(
     every output time for imported irregular spectra; RK4 stage forces are
     linearly interpolated between those samples.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
-    memory. Initial coordinates are shared surge, float heave, spar heave,
-    and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
+    memory. Initial coordinates are shared surge, float and spar translations
+    along the pitched joint axis, and shared pitch. ``b2b=True`` includes
+    cross-body radiation blocks.
     Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
@@ -202,19 +204,26 @@ def solve_rm3_regular(
 
         def motion(q, v, *, index=index, lever=lever):
             angle = q[3]
+            slide = q[index + 1]
+            radius = lever + slide
+            sine = np.sin(angle)
+            cosine = np.cos(angle)
             jacobian = np.zeros((6, 4))
             jacobian[0, 0] = 1.0
-            jacobian[2, index + 1] = 1.0
-            jacobian[0, 3] = lever * np.cos(angle)
-            jacobian[2, 3] = -lever * np.sin(angle)
+            jacobian[0, index + 1] = sine
+            jacobian[2, index + 1] = cosine
+            jacobian[0, 3] = radius * cosine
+            jacobian[2, 3] = -radius * sine
             jacobian[4, 3] = 1.0
             curvature = np.array([
-                -lever * np.sin(angle), 0.0, -lever * np.cos(angle),
+                2 * cosine * v[index + 1] * v[3] - radius * sine * v[3]**2,
+                0.0,
+                -2 * sine * v[index + 1] * v[3] - radius * cosine * v[3]**2,
                 0.0, 0.0, 0.0,
-            ]) * v[3]**2
+            ])
             displacement = np.array([
-                q[0] + lever * np.sin(angle), 0.0,
-                q[index + 1] + lever * (np.cos(angle) - 1.0),
+                q[0] + radius * sine, 0.0,
+                slide * cosine + lever * (cosine - 1.0),
                 0.0, angle, 0.0,
             ])
             return BodyMotion(displacement, jacobian, curvature)
@@ -260,13 +269,15 @@ def solve_rm3_regular(
     )
     q = solved.coordinate
     v = solved.speed
+    pto_stroke = q[:, 1] - q[:, 2]
     pto_velocity = v[:, 1] - v[:, 2]
     pto_force = (-pto_damping * pto_velocity
-                 - pto_stiffness * (q[:, 1] - q[:, 2] - pto_equilibrium))
+                 - pto_stiffness * (pto_stroke - pto_equilibrium))
     return RM3RegularResponse(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
-        pto_force=pto_force, pto_velocity=pto_velocity,
+        pto_force=pto_force, pto_stroke=pto_stroke,
+        pto_velocity=pto_velocity,
         pto_mechanical_power=-pto_force * pto_velocity,
         pto_dissipated_power=pto_damping * pto_velocity**2,
     )

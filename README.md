@@ -165,6 +165,26 @@ The paired MATLAB workflow executes the actual Option 1, 2, and 3
 and PTO trajectories, average powers, and power matrices. The Option 1
 physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
 multiple PTOs, and other MCR postprocessing remain unverified.
+
+For the published three imported-spectrum RM3 sea states, pass its MAT-file
+table to the separate Python runner:
+
+```python
+from wecsim import run_rm3_spectrum_mcr
+
+sea_states = run_rm3_spectrum_mcr(
+    "rm3.h5", "RM3_MCROPT3_SeaState/mcrExample.mat",
+)
+print(sea_states.mean_absorbed_power)
+first_wave = sea_states.wave_elevation[0]
+first_float = sea_states.traces[0].response.body_position[:, 0, :]
+```
+
+The three `spectrumData*.mat` files must sit beside `mcrExample.mat`. Their
+third column supplies the exact phase used for each wave component; no random
+seed is needed. The runner uses the same 60 s convolution radiation model as
+the validated RM3 cases 3 and 4.
+
 For a no-wave floating joint, `constraint.initial_coordinate` and
 `constraint.initial_speed` accept four values or dictionaries keyed by
 `surge`, `float_heave`, `spar_heave`, and `pitch`. In the published RM3 PTO
