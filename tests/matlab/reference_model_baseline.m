@@ -26,9 +26,27 @@ switch string(model)
             bemio;
         end
         cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", ...
-            "B2B_Case4", "B2B_Case5", "B2B_Case6"];
+            "B2B_Case4", "B2B_Case5", "B2B_Case6", ...
+            "B2B_Case5_DT005", "B2B_Case6_DT005"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+        for source = ["B2B_Case5", "B2B_Case6"]
+            sourceDir = fullfile(repoRoot, 'applications', ...
+                'Body-to-Body_Interactions', source);
+            targetDir = fullfile(repoRoot, 'applications', ...
+                'Body-to-Body_Interactions', source + "_DT005");
+            [copied, copyMessage] = copyfile(sourceDir, targetDir);
+            assert(copied, copyMessage);
+            inputFile = fullfile(targetDir, 'wecSimInputFile.m');
+            contents = fileread(inputFile);
+            assert(contains(contents, 'simu.dt = 0.1;'), ...
+                'The pinned RM3 B2B time step changed');
+            contents = strrep(contents, 'simu.dt = 0.1;', 'simu.dt = 0.05;');
+            fid = fopen(inputFile, 'w');
+            assert(fid ~= -1, 'Could not write the RM3 B2B diagnostic input');
+            fprintf(fid, '%s', contents);
+            fclose(fid);
+        end
     case "RM3_MCR"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
         cd(hydroDir);

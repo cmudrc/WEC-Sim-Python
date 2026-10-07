@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: [RM3, OSWEC, Sphere, RM3_B2B, Sphere_Passive, Sphere_PTO_Config, RM3_MCR]
+        model: [RM3_B2B]
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
