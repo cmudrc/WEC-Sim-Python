@@ -167,7 +167,9 @@ physical conditions are also paired as scalar MATLAB runs. Phase-seed sweeps,
 multiple PTOs, and other MCR postprocessing remain unverified.
 
 For the published three imported-spectrum RM3 sea states, pass its MAT-file
-table to the separate Python runner:
+table to the experimental Python runner. Its incident waves and excitation
+match the paired MATLAB output, but body trajectories currently fail the
+paired gate, so do not use its motion or power predictions as validated parity:
 
 ```python
 from wecsim import run_rm3_spectrum_mcr
