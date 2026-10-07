@@ -316,6 +316,10 @@ class GeneralizedDynamics:
                     "tij,tj->i", kernel[1:memory + 1],
                     velocity_history[step - memory:step][::-1],
                 )
+                if len(kernel) > 1 and step >= len(kernel) - 1:
+                    known -= dt / 2 * (
+                        kernel[-1] @ velocity_history[step - memory]
+                    )
                 result.append(known)
             return tuple(result)
 

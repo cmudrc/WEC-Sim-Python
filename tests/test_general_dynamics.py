@@ -95,6 +95,19 @@ def test_radiation_memory_matches_augmented_state_equation():
     assert np.max(np.abs(response.speed[:, 0] - expected.y[1])) < 6e-4
 
 
+def test_trapezoidal_radiation_halves_full_window_endpoint():
+    kernel = np.zeros((3, 6, 6))
+    kernel[-1, 2, 2] = 1
+    system = _oscillator(mass=1, stiffness=0, radiation=kernel)
+    response = system.integrate(
+        dt=0.1, end_time=0.2, initial_speed=np.array([1.0]),
+    )
+    # At t=0.2 s the oldest velocity first reaches the 0.2 s memory
+    # boundary. The trapezoidal convolution gives that endpoint half weight.
+    np.testing.assert_allclose(response.acceleration[:, 0],
+                               [0, 0, -0.05], rtol=0, atol=1e-12)
+
+
 def test_fir_uses_full_sampled_taps_and_holds_force_during_each_step():
     kernel = np.zeros((2, 6, 6))
     kernel[:, 2, 2] = [2, 3]
