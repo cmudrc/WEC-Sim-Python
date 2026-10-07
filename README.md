@@ -79,6 +79,12 @@ The controller disengages at a velocity sign change and reengages after the
 configured interval; `minimum_on_time` defaults to 0.2 s. The published
 Sphere case is paired against MATLAB at a 0.01 s step. Other geometries and
 wave settings are not yet paired.
+For the published Sphere latching case, pass
+`control=LatchingControl(gain=49_181, latch_damping=37_308_296, latch_time=2.4)`.
+The controller applies the larger damping for the timed interval after a
+velocity reversal, then returns to its normal gain. It is a finite damping
+force, not a rigid lock. `minimum_normal_time` defaults to 0.2 s. The control
+settings serialize through `WEC.to_case` for reproducible saved cases.
 
 The JSON runner remains available for saved and reproducible cases. It
 accepts simulation, wave, body, constraint, and PTO settings. The included

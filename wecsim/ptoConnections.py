@@ -13,7 +13,7 @@ from typing import Mapping
 
 import numpy as np
 
-from .controls import DeclutchingControl
+from .controls import DeclutchingControl, LatchingControl
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class LinearPTOConnection:
     damping: float
     stiffness: float
     equilibrium_position: float
-    control: DeclutchingControl | None = None
+    control: DeclutchingControl | LatchingControl | None = None
 
     def force(self, coordinate: np.ndarray, speed: np.ndarray) -> np.ndarray:
         if self.control is not None:
@@ -174,20 +174,42 @@ def build_linear_ptos(specs, maps, centers, names):
         if "control" in spec:
             control_spec = _object(
                 spec["control"], f"ptos[{position}].control",
-                {"kind", "declutch_time"},
-                {"kind", "declutch_time", "minimum_on_time"},
+                {"kind"},
+                {"kind", "declutch_time", "minimum_on_time", "latch_time",
+                 "latch_damping", "minimum_normal_time"},
             )
-            if control_spec["kind"] != "declutching":
-                raise ValueError("only declutching PTO control is supported")
             if not coefficient or spring or equilibrium:
-                raise ValueError("declutching PTO needs damping and no spring")
-            control = DeclutchingControl(
-                coefficient,
-                _number(control_spec["declutch_time"],
-                        f"ptos[{position}].control.declutch_time"),
-                _number(control_spec.get("minimum_on_time", 0.2),
-                        f"ptos[{position}].control.minimum_on_time"),
-            )
+                raise ValueError("sampled PTO control needs damping and no spring")
+            kind = control_spec["kind"]
+            if kind == "declutching":
+                if set(control_spec) - {"kind", "declutch_time", "minimum_on_time"}:
+                    raise ValueError("unsupported declutching control settings")
+                if "declutch_time" not in control_spec:
+                    raise ValueError("declutching control needs declutch_time")
+                control = DeclutchingControl(
+                    coefficient,
+                    _number(control_spec["declutch_time"],
+                            f"ptos[{position}].control.declutch_time"),
+                    _number(control_spec.get("minimum_on_time", 0.2),
+                            f"ptos[{position}].control.minimum_on_time"),
+                )
+            elif kind == "latching":
+                if set(control_spec) - {"kind", "latch_time", "latch_damping",
+                                        "minimum_normal_time"}:
+                    raise ValueError("unsupported latching control settings")
+                if not {"latch_time", "latch_damping"} <= control_spec.keys():
+                    raise ValueError("latching control needs latch_time and latch_damping")
+                control = LatchingControl(
+                    coefficient,
+                    _number(control_spec["latch_damping"],
+                            f"ptos[{position}].control.latch_damping"),
+                    _number(control_spec["latch_time"],
+                            f"ptos[{position}].control.latch_time"),
+                    _number(control_spec.get("minimum_normal_time", 0.2),
+                            f"ptos[{position}].control.minimum_normal_time"),
+                )
+            else:
+                raise ValueError("unsupported PTO control kind")
         connection = LinearPTOConnection(name, jacobian, coefficient,
                                          spring, equilibrium, control)
         connections.append(connection)

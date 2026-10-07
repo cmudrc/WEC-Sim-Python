@@ -12,9 +12,6 @@ from typing import Callable
 
 import numpy as np
 
-from .controls import DeclutchingState
-
-
 @dataclass(frozen=True)
 class BodyMotion:
     """Six-DOF displacement and its generalized-coordinate derivatives."""
@@ -130,7 +127,7 @@ class GeneralizedDynamics:
             raise ValueError("FIR radiation needs a kernel for every body")
         if (self.controlled_ptos
                 and any(body.radiation_kernel is not None for body in self.bodies)):
-            raise ValueError("declutching control currently needs constant radiation")
+            raise ValueError("sampled PTO control currently needs constant radiation")
 
     def acceleration(
         self,
@@ -233,9 +230,10 @@ class GeneralizedDynamics:
                                 controlled_force)
 
     def _integrate_controlled_regular(self, time, q, v, a, dt):
-        """Integrate regular-wave dynamics with sampled declutching memory."""
+        """Integrate regular-wave dynamics with sampled PTO controller memory."""
         n = self.coordinate_count
-        states = [DeclutchingState() for _ in self.controlled_ptos]
+        states = [connection.control.initial_state()
+                  for connection in self.controlled_ptos]
         force_history = np.zeros((len(time), len(states)))
 
         def controller_force(speed, memories):
@@ -263,9 +261,9 @@ class GeneralizedDynamics:
 
             def derivative(stage_time, state):
                 coordinate, speed = state[:n], state[n:]
-                # Simulink's Memory blocks hold the last major-step controller
-                # state through intermediate RK4 evaluations.
-                stage_force, _, _ = controller_force(speed, next_states)
+                # Simulink's Memory blocks expose the previous major-step
+                # controller state through intermediate RK4 evaluations.
+                stage_force, _, _ = controller_force(speed, states)
                 return np.concatenate((
                     speed,
                     self.acceleration(stage_time, coordinate, speed,
