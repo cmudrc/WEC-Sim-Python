@@ -34,6 +34,9 @@ def solve_rm3_regular(
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
+    no_wave: bool = False,
+    initial_coordinate: np.ndarray | None = None,
+    initial_speed: np.ndarray | None = None,
     joint_z: float = 0.0,
     dt: float = 0.1,
     end_time: float = 400.0,
@@ -51,7 +54,10 @@ def solve_rm3_regular(
     the radiation impulse-response kernel use a trapezoidal history step.
     ``radiation_method="fir"`` instead samples the same kernel as a discrete
     FIR filter and holds its force through each RK4 step.
-    ``b2b=True`` includes cross-body radiation blocks. Sway, roll, yaw, and
+    ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
+    memory. Initial coordinates are shared surge, float heave, spar heave,
+    and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
+    Sway, roll, yaw, and
     full Simscape joint forces are outside this reduced model.
     """
     inputs = [wave_height, wave_period, pto_damping, pto_stiffness,
@@ -76,6 +82,10 @@ def solve_rm3_regular(
     if ((radiation_method == "constant" and radiation_memory is not None)
             or (radiation_method != "constant" and radiation_memory is None)):
         raise ValueError("constant radiation has no memory; convolution and FIR need it")
+    if not isinstance(no_wave, bool):
+        raise ValueError("no_wave must be a boolean")
+    if no_wave and (wave_height != 0 or radiation_memory is None):
+        raise ValueError("no_wave needs zero wave height and radiation memory")
     if not isinstance(b2b, bool):
         raise ValueError("b2b must be a boolean")
     steps = round(end_time / dt)
@@ -116,8 +126,9 @@ def solve_rm3_regular(
             if radiation_memory > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             body.hydroForcePre(
-                omega, [0], len(convolution_time), convolution_time, [],
-                dt, rho, g, "regularCIC",
+                [] if no_wave else omega, [0], len(convolution_time),
+                convolution_time, [], dt, rho, g,
+                "noWaveCIC" if no_wave else "regularCIC",
                 np.vstack((time, np.zeros_like(time))),
                 index, 2, 0, 0, int(b2b),
             )
@@ -215,7 +226,10 @@ def solve_rm3_regular(
         radiation_discretization=("fir" if radiation_method == "fir"
                                   else "trapezoid"),
     )
-    solved = system.integrate(dt=dt, end_time=end_time)
+    solved = system.integrate(
+        dt=dt, end_time=end_time,
+        initial_coordinate=initial_coordinate, initial_speed=initial_speed,
+    )
     q = solved.coordinate
     v = solved.speed
     return RM3RegularResponse(

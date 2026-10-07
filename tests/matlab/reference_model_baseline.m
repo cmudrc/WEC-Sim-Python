@@ -8,9 +8,22 @@ if ~isfolder(outDir)
 end
 
 switch string(model)
-    case {"RM3", "OSWEC"}
+    case "RM3"
         cases = string(model);
         caseDirs = string(fullfile(repoRoot, 'matlab-ref', 'examples', model));
+    case "OSWEC"
+        cases = string(model);
+        caseDirs = string(fullfile(repoRoot, 'matlab-ref', 'examples', model));
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        oldSetting = 'waves.spread = [0.1,0.2,0.7];';
+        assert(contains(contents, oldSetting), 'The pinned OSWEC input changed');
+        contents = strrep(contents, oldSetting, ...
+            sprintf('%s\nwaves.phaseSeed = 1;', oldSetting));
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not seed the pinned OSWEC input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
     case "Sphere"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'Sphere', 'hydroData');
         cd(hydroDir);
@@ -28,6 +41,25 @@ switch string(model)
         cases = ["B2B_Case1", "B2B_Case2", "B2B_Case3", "B2B_Case4"];
         caseDirs = fullfile(repoRoot, 'applications', ...
             'Body-to-Body_Interactions', cases);
+    case "OSWEC_Nonhydro"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'OSWEC', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('oswec.h5')
+            bemio;
+        end
+        cases = "Nonhydro";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Nonhydro_Body'));
+    case "RM3_PTO_Extension"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'RM3', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('rm3.h5')
+            bemio;
+        end
+        cases = ["float", "spar"];
+        caseDirs = fullfile(repoRoot, 'applications', ...
+            'RM3_PTO_Extension', cases);
     case "RM3_Radiation_Options"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
             'RM3', 'hydroData');
@@ -129,8 +161,9 @@ for iCase = 1:numel(cases)
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
     if string(model) == "OSWEC"
-        % The published case shuffles its random phase on each run. Save the
-        % actual components so wave and force checks use the paired realization.
+        % The published case shuffles its random phase. The baseline sets
+        % phaseSeed=1 and saves the realized components for paired checks.
+        assert(waves.phaseSeed == 1, 'OSWEC phase seed was not applied');
         components = [waves.omega(:), waves.amplitude(:), ...
             waves.dOmega(:), waves.phase];
         assert(all(isfinite(components), 'all'), 'Nonfinite wave components');
