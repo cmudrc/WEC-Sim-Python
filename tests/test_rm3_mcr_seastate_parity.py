@@ -132,7 +132,7 @@ def test_matlab_sea_state_joint_and_force_balance():
                    f"case {case} generalized force balance")
 
 
-def test_published_three_sea_state_mcr_against_matlab():
+def test_all_three_imported_waves_and_excitation_against_matlab():
     root = Path(APPLICATIONS)
     reference = Path(REFERENCE)
     mat_file = root / "Multiple_Condition_Runs/RM3_MCROPT3_SeaState/mcrExample.mat"
@@ -141,12 +141,6 @@ def test_published_three_sea_state_mcr_against_matlab():
         f"spectrumData{index}.mat" for index in (1, 2, 3)
     )
     hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
-    result = run_rm3_spectrum_mcr(hydro, mat_file)
-    assert result.spectrum_files == files
-    assert len(result.traces) == 3
-    summary = np.loadtxt(reference / "RM3_MCR_SEASTATE_summary.csv", delimiter=",")
-    assert summary.shape == (3,)
-
     for index, spectrum_file in enumerate(files, start=1):
         components = imported_spectrum_components(hydro, spectrum_file)
         expected_components = np.loadtxt(
@@ -162,21 +156,51 @@ def test_published_three_sea_state_mcr_against_matlab():
                                    rtol=0, atol=1e-11)
         assert len(components.directions) == 1
         assert components.directions[0] == 0
-
-        trace = result.traces[index - 1]
-        response = trace.response
-        assert response is not None
-        assert response.body_position.shape == (4001, 2, 6)
         expected_wave = np.loadtxt(
             reference / f"RM3_MCR_SEASTATE_case{index}_wave.csv",
             delimiter=",",
         )
         assert expected_wave.shape == (4001, 2)
-        np.testing.assert_allclose(trace.time, expected_wave[:, 0],
-                                   rtol=0, atol=1e-10)
-        _max_error(result.wave_elevation[index - 1], expected_wave[:, 1],
-                   1e-10, f"case {index} wave elevation")
+        for body in (1, 2):
+            expected = np.loadtxt(
+                reference / f"RM3_MCR_SEASTATE_case{index}_body{body}.csv",
+                delimiter=",",
+            )
+            assert expected.shape == (4001, 25)
+            incident = synthesize_irregular_response(
+                hydro, components, dt=0.1, end_time=400,
+                ramp_time=100, body_number=body,
+            )
+            np.testing.assert_allclose(incident.time, expected_wave[:, 0],
+                                       rtol=0, atol=1e-10)
+            if body == 1:
+                _max_error(incident.elevation, expected_wave[:, 1],
+                           1e-10, f"case {index} wave elevation")
+            for dof, name, force_limit in (
+                (0, "surge", 1), (2, "heave", 1), (4, "pitch", 1),
+            ):
+                _max_error(incident.excitation_force[:, dof],
+                           expected[:, 19 + dof], force_limit,
+                           f"case {index} body {body} {name} excitation")
 
+
+def test_published_three_sea_state_mcr_against_matlab():
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    mat_file = root / "Multiple_Condition_Runs/RM3_MCROPT3_SeaState/mcrExample.mat"
+    files = mcr_spectrum_files(mat_file)
+    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    result = run_rm3_spectrum_mcr(hydro, mat_file)
+    assert result.spectrum_files == files
+    assert len(result.traces) == 3
+    summary = np.loadtxt(reference / "RM3_MCR_SEASTATE_summary.csv", delimiter=",")
+    assert summary.shape == (3,)
+
+    for index, _ in enumerate(files, start=1):
+        trace = result.traces[index - 1]
+        response = trace.response
+        assert response is not None
+        assert response.body_position.shape == (4001, 2, 6)
         for body in (1, 2):
             expected = np.loadtxt(
                 reference / f"RM3_MCR_SEASTATE_case{index}_body{body}.csv",
@@ -185,16 +209,6 @@ def test_published_three_sea_state_mcr_against_matlab():
             assert expected.shape == (4001, 25)
             np.testing.assert_allclose(response.time, expected[:, 0],
                                        rtol=0, atol=1e-10)
-            incident = synthesize_irregular_response(
-                hydro, components, dt=0.1, end_time=400,
-                ramp_time=100, body_number=body,
-            )
-            for dof, name, force_limit in (
-                (0, "surge", 1), (2, "heave", 1), (4, "pitch", 1),
-            ):
-                _max_error(incident.excitation_force[:, dof],
-                           expected[:, 19 + dof], force_limit,
-                           f"case {index} body {body} {name} excitation")
             for dof, name, position_limit, velocity_limit in (
                 (0, "surge", 0.12, 0.06),
                 (2, "heave", 0.012, 0.008),
