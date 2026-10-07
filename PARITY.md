@@ -28,7 +28,7 @@ the production Python code. The live wave comparison passed on 6 October
 | RM3 coupled surge, heave, pitch, and PTO | Current MATLAB RM3 example and current RM3 HDF5 | A four-coordinate two-body model uses the published joint geometry, body inertias, regular-wave forcing, and nonlinear rotation kinematics. Over 400 s, the two body surge positions differ by at most 36.3 mm, heaves by 4.2 mm, shared pitch by 0.00086 rad, and PTO force by 4.7 kN. It covers the canonical active DOFs but not general Simscape joint mechanics or other RM3 cases. |
 | RM3 body-to-body Cases 1 and 2 | Pinned MATLAB Applications inputs and RM3 HDF5 generated with current BEMIO | Both published regular-wave cases run for 400 s with coupling off and on. In Case 2, body positions differ by at most 36.1 mm surge, 4.6 mm heave, and 0.00107 rad pitch; PTO force differs by at most 5.3 kN over a 1.65 MN range. Turning on cross-body coupling reduces the body-1 heave RMS error against Case 2 from 22.8 mm to 2.9 mm. These are reduced-model comparisons, not full Simscape mechanics. |
 | RM3 body-to-body Cases 3 and 4 | Pinned MATLAB Applications `regularCIC` cases, with coupling off and on | The Python floating-joint solver integrates the 60 s radiation impulse-response kernel. Over 400 s, the largest differences across both cases are 63.3 mm surge, 3.6 mm heave, 0.00119 rad pitch, 6.5 mm PTO stroke, 3.9 mm/s PTO speed, 4.6 kN PTO force, and 5.3 kW PTO power. |
-| RM3 body-to-body Cases 5 and 6 | Pinned MATLAB Applications `regularCIC` cases with fitted radiation state space, coupling off and on | The Python solver integrates the HDF5 radiation states with the four mechanical coordinates only when the caller explicitly allows the negative common-surge damping in this fit. Against saved MATLAB R2025b trajectories over 400 s, the largest differences are 81.4 mm surge, 3.4 mm heave, 0.00167 rad pitch, 5.9 mm PTO stroke, 3.1 mm/s PTO speed, 3.8 kN PTO force, and 4.3 kW PTO power. Both solvers show a rising surge mean. The fitted body-1 surge radiation transfer is −14.2 kN s/m at zero frequency while the 60 s impulse-response kernel integrates to +0.059 kN s/m. A surge-only coupled linearization has a positive growth rate of 0.0053 s⁻¹ without body-to-body terms and 0.0064 s⁻¹ with them. This is numerical parity with a suspect fit, not validation of physical mean wave drift. |
+| RM3 body-to-body Cases 5 and 6 — diagnostic reproduction only | Pinned MATLAB Applications `regularCIC` cases with fitted radiation state space, coupling off and on | The Python solver integrates the HDF5 radiation states with the four mechanical coordinates only when the caller explicitly allows the negative common-surge damping in this fit. Against saved MATLAB R2025b trajectories over 400 s, the largest differences are 81.4 mm surge, 3.4 mm heave, 0.00167 rad pitch, 5.9 mm PTO stroke, 3.1 mm/s PTO speed, 3.8 kN PTO force, and 4.3 kW PTO power. Both solvers show a rising surge mean. At 400 s the MATLAB float surge is +0.515 m in Case 5 versus +0.110 m in convolution Case 3, and +0.686 m in Case 6 versus +0.075 m in convolution Case 4. The fitted body-1 surge radiation transfer is −14.2 kN s/m at zero frequency while the 60 s impulse-response kernel integrates to +0.059 kN s/m. A surge-only coupled linearization has a positive growth rate of 0.0053 s⁻¹ without body-to-body terms and 0.0064 s⁻¹ with them. These runs establish numerical reproduction of MATLAB's fitted model; they do **not** count as validated physical parity. |
 
 The diagnostic `python tools/rm3_radiation_diagnostic.py path/to/rm3.h5 --plot common_surge.png` compares source BEM damping with the fitted
 state-space response used by MATLAB. For the freshly generated pinned RM3 HDF5,
@@ -176,9 +176,11 @@ The historical fixtures therefore cannot establish parity for those modes.
 The focused OSWEC PM implementation above is checked against current MATLAB;
 the inherited general `WaveClass` still needs corresponding updates for other
 irregular-wave cases.
-The next dynamics targets are RM3 body-to-body state-space Cases 5 and 6,
-nonlinear hinged OSWEC with its fixed nonhydrodynamic base, and a rotational
-off-center PTO benchmark. The Sphere
+The next dynamics target is nonlinear hinged OSWEC with its fixed
+nonhydrodynamic base. RM3 state-space Cases 5 and 6 remain a radiation-fit
+investigation: a passive fit would need its own evidence against source BEM
+data and convolution trajectories before it could count as physically
+validated. The Sphere
 free-decay cases already have direct Python motion comparisons. A comparison must
 record both code revisions, the HDF5 input, time step, outputs, and numerical
 tolerances.
