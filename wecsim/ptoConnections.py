@@ -13,6 +13,8 @@ from typing import Mapping
 
 import numpy as np
 
+from .controls import DeclutchingControl
+
 
 @dataclass(frozen=True)
 class LinearPTOConnection:
@@ -21,23 +23,35 @@ class LinearPTOConnection:
     damping: float
     stiffness: float
     equilibrium_position: float
+    control: DeclutchingControl | None = None
 
     def force(self, coordinate: np.ndarray, speed: np.ndarray) -> np.ndarray:
+        if self.control is not None:
+            raise ValueError("controlled PTO force requires controller memory")
         stroke = coordinate @ self.stroke_jacobian
         stroke_speed = speed @ self.stroke_jacobian
         return (-self.stiffness * (stroke - self.equilibrium_position)
                 - self.damping * stroke_speed)
 
     def outputs(self, coordinate: np.ndarray,
-                speed: np.ndarray) -> tuple[tuple[str, np.ndarray], ...]:
+                speed: np.ndarray, *,
+                force_override: np.ndarray | None = None) -> tuple[tuple[str, np.ndarray], ...]:
         stroke = coordinate @ self.stroke_jacobian
         stroke_speed = speed @ self.stroke_jacobian
         prefix = f"pto_{self.name}"
+        if self.control is not None and force_override is None:
+            raise ValueError("controlled PTO output needs the simulated force")
+        force = (self.force(coordinate, speed) if force_override is None
+                 else np.asarray(force_override, dtype=float))
+        if force.shape != stroke_speed.shape:
+            raise ValueError("controlled PTO force must match the time grid")
+        absorbed_power = (self.damping * stroke_speed**2
+                          if force_override is None else -force * stroke_speed)
         return (
             (f"{prefix}_stroke", stroke),
             (f"{prefix}_velocity", stroke_speed),
-            (f"{prefix}_force", self.force(coordinate, speed)),
-            (f"{prefix}_absorbed_power", self.damping * stroke_speed**2),
+            (f"{prefix}_force", force),
+            (f"{prefix}_absorbed_power", absorbed_power),
         )
 
 
@@ -114,7 +128,8 @@ def build_linear_ptos(specs, maps, centers, names):
     for position, raw in enumerate(specs, start=1):
         spec = _object(raw, f"ptos[{position}]", {"name", "kind", "from", "to"},
                        {"name", "kind", "from", "to", "axis", "damping",
-                        "stiffness", "equilibrium_position", "pretension"})
+                        "stiffness", "equilibrium_position", "pretension",
+                        "control"})
         name = spec["name"]
         if (not isinstance(name, str)
                 or re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) is None
@@ -155,10 +170,29 @@ def build_linear_ptos(specs, maps, centers, names):
                                   f"ptos[{position}].equilibrium_position")
         if not np.isfinite(equilibrium) or (equilibrium and not spring):
             raise ValueError("nonzero PTO equilibrium needs positive stiffness")
+        control = None
+        if "control" in spec:
+            control_spec = _object(
+                spec["control"], f"ptos[{position}].control",
+                {"kind", "declutch_time"},
+                {"kind", "declutch_time", "minimum_on_time"},
+            )
+            if control_spec["kind"] != "declutching":
+                raise ValueError("only declutching PTO control is supported")
+            if not coefficient or spring or equilibrium:
+                raise ValueError("declutching PTO needs damping and no spring")
+            control = DeclutchingControl(
+                coefficient,
+                _number(control_spec["declutch_time"],
+                        f"ptos[{position}].control.declutch_time"),
+                _number(control_spec.get("minimum_on_time", 0.2),
+                        f"ptos[{position}].control.minimum_on_time"),
+            )
         connection = LinearPTOConnection(name, jacobian, coefficient,
-                                         spring, equilibrium)
+                                         spring, equilibrium, control)
         connections.append(connection)
         stiffness += spring * np.outer(jacobian, jacobian)
-        damping += coefficient * np.outer(jacobian, jacobian)
+        if control is None:
+            damping += coefficient * np.outer(jacobian, jacobian)
         bias += spring * equilibrium * jacobian
     return tuple(connections), stiffness, damping, bias

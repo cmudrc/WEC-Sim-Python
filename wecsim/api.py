@@ -14,6 +14,7 @@ from typing import Mapping, Sequence
 import numpy as np
 
 from .caseDynamics import CaseResponse, run_case
+from .controls import DeclutchingControl
 
 
 @dataclass(frozen=True)
@@ -83,6 +84,7 @@ class LinearPTO:
     stiffness: float = 0.0
     equilibrium_position: float | None = None
     pretension: float | None = None
+    control: DeclutchingControl | None = None
 
 
 @dataclass(frozen=True)
@@ -174,7 +176,8 @@ class WEC:
             axis: Sequence[float] | None = None,
             damping: float = 0.0, stiffness: float = 0.0,
             equilibrium_position: float | None = None,
-            pretension: float | None = None) -> LinearPTO:
+            pretension: float | None = None,
+            control: DeclutchingControl | None = None) -> LinearPTO:
         if any(existing.name == name for existing in self.ptos):
             raise ValueError(f"PTO name already exists: {name}")
         for point in (from_point, to_point):
@@ -183,10 +186,15 @@ class WEC:
             if (isinstance(point, BodyPoint)
                     and not any(point.body is body for body in self.bodies)):
                 raise ValueError("PTO body point must belong to this WEC")
+        if control is not None:
+            if not isinstance(control, DeclutchingControl):
+                raise TypeError("PTO control must be a DeclutchingControl")
+            if damping or stiffness or equilibrium_position is not None or pretension is not None:
+                raise ValueError("declutching PTO sets its own gain and has no spring")
         pto = LinearPTO(
             name, from_point, to_point,
             tuple(axis) if axis is not None else None,
-            damping, stiffness, equilibrium_position, pretension,
+            damping, stiffness, equilibrium_position, pretension, control,
         )
         self.ptos.append(pto)
         return pto
@@ -307,9 +315,16 @@ class WEC:
             "kind": "linear_actuator",
             "from": endpoint(pto.from_point),
             "to": endpoint(pto.to_point),
-            "damping": pto.damping,
+            "damping": (pto.control.gain if pto.control is not None
+                        else pto.damping),
             "stiffness": pto.stiffness,
         }
+        if pto.control is not None:
+            item["control"] = {
+                "kind": "declutching",
+                "declutch_time": pto.control.declutch_time,
+                "minimum_on_time": pto.control.minimum_on_time,
+            }
         if pto.axis is not None:
             item["axis"] = list(pto.axis)
         if pto.equilibrium_position is not None:
