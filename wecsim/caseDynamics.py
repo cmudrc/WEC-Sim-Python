@@ -26,6 +26,7 @@ from .irregularWave import (
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
+from .passiveYaw import PassiveYawExcitation
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
 
@@ -90,7 +91,8 @@ def _hydro_file(body, base_dir):
         return None
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
-              "inertia", "coordinate_map", "name", "mean_drift", "fixed"})
+              "inertia", "coordinate_map", "name", "mean_drift", "fixed",
+              "passive_yaw"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -730,6 +732,26 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         constraint, bodies, body_names, centers,
     )
     n = maps[0].shape[1]
+    passive_indices = [
+        index for index, spec in enumerate(bodies)
+        if spec.get("passive_yaw", False) is True
+    ]
+    if any(not isinstance(spec.get("passive_yaw", False), bool)
+           for spec in bodies):
+        raise ValueError("body.passive_yaw must be a boolean")
+    if passive_indices:
+        yaw_map = np.zeros((6, 1))
+        yaw_map[5, 0] = 1
+        if (len(passive_indices) != 1 or n != 1 or b2b
+                or wave["type"] != "regular"
+                or not np.array_equal(maps[passive_indices[0]], yaw_map)
+                or any(np.any(mapping) for index, mapping in enumerate(maps)
+                       if index != passive_indices[0])
+                or bodies[passive_indices[0]].get("mean_drift", "none") != "none"):
+            raise ValueError(
+                "passive yaw currently needs one pure-yaw body, stationary others, "
+                "regular waves, and independent radiation"
+            )
     initial_q = initial_coordinate(
         constraint.get("initial_coordinate", [0] * n), coordinate_names,
         "constraint.initial_coordinate",
@@ -765,6 +787,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     connections = ()
 
     dynamic_bodies = []
+    passive_model = None
     for index, (body_spec, body, mapping) in enumerate(
             zip(bodies, loaded_bodies, maps), start=1):
         mass_setting = body_spec.get("mass", "equilibrium")
@@ -851,6 +874,18 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             def excitation(at_time):
                 return np.zeros(6)
 
+        state_excitation = None
+        if body_spec.get("passive_yaw", False):
+            passive_model = PassiveYawExcitation.from_hydro_data(
+                body.hydroData, omega=frequency,
+                incident_direction=direction, amplitude=height / 2,
+                ramp_time=ramp_time, rho=rho, g=g,
+            )
+
+            def state_excitation(at_time, coordinate, speed, *,
+                                 model=passive_model):
+                return model.force(at_time, coordinate[0])
+
         dynamic_bodies.append(DynamicBody(
             rigid_mass=rigid_mass,
             added_mass=tuple(added_mass),
@@ -864,10 +899,11 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             motion=motion,
             excitation=excitation,
             radiation_kernel=kernel,
+            state_excitation=state_excitation,
         ))
     if "ptos" in case:
         connections, stiffness, damping, pto_bias = build_linear_ptos(
-            case["ptos"], maps, centers, body_names,
+            case["ptos"], maps, centers, body_names, coordinate_names,
         )
     controlled_connections = tuple(
         connection for connection in connections if connection.control is not None
@@ -929,11 +965,22 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
              np.stack([dynamic.excitation(t) for t in response.time])),
         )
     ) if wave["type"] in ("regular", "regularCIC") else ()
+    passive_outputs = ()
+    if passive_model is not None:
+        body_index = passive_indices[0] + 1
+        passive_outputs = ((
+            f"body{body_index}_excitation_force",
+            np.stack([
+                passive_model.force(t, angle)
+                for t, angle in zip(response.time, response.coordinate[:, 0])
+            ]),
+        ),)
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
         pto_generalized_force=(
             generalized_pto if "pto" in case or "ptos" in case else None
         ),
-        extra_outputs=coordinate_outputs + pto_outputs + drift_outputs,
+        extra_outputs=(coordinate_outputs + pto_outputs + drift_outputs
+                       + passive_outputs),
     )

@@ -2,6 +2,7 @@
 
 from .api import (
     Body, BodyPoint, Coordinate, LinearPTO, Motion, MotionHistory, NoWave,
+    RotationalPTO,
     PTOHistory, RegularCICWave, RegularWave, WEC, WECResult, WorldPoint,
 )
 from .controls import DeclutchingControl, LatchingControl
@@ -20,7 +21,7 @@ from .rm3Regular import solve_rm3_regular
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "DeclutchingControl", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
-    "MotionHistory", "NoWave", "PTOHistory", "RegularCICWave",
+    "MotionHistory", "NoWave", "PTOHistory", "RotationalPTO", "RegularCICWave",
     "RegularWave", "WEC",
     "WECResult", "WorldPoint",
     "MCRCondition", "MCRPowerMatrix", "MCRResult", "MCRSeaStateResult",
