@@ -68,6 +68,12 @@ def test_published_settings_and_both_wave_realizations():
         )
         assert body.shape == (1001, 25)
         assert np.isfinite(body).all()
+        if number == 1:
+            # The published Simscape hinge pitches about y. Passive-yaw
+            # interpolation is enabled, but the body has no yaw motion.
+            assert np.max(np.abs(body[:, 6])) < 1e-10
+        else:
+            assert np.max(np.abs(body[:, 1:7] - body[0, 1:7])) < 1e-10
     pto = np.loadtxt(
         reference / "OSWEC_MULTI_WAVE_Multiple_Wave_Spectra_pto1.csv",
         delimiter=",",

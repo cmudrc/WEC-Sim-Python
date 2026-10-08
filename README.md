@@ -106,7 +106,7 @@ Supported combinations are:
 | Constraint `kind` | Wave `type` | Bodies and PTO | Integration |
 | --- | --- | --- | --- |
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
-| `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
+| `fixed_hinge` | `pm` or `pm_multi` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Directional PM excitation and radiation convolution; `pm_multi` sums independently phased seas |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
@@ -180,12 +180,13 @@ numerical setting, not a WEC property. The published Cases 5 and 6 use a
 suspect fitted state-space radiation model and remain unsupported. The paired
 Cases 3 and 4 tests check the ordinary implicit solver separately from this
 opt-in numerical comparison; neither path uses the Cases 5 and 6 fit.
-For the regular-wave `fixed_hinge` layout, an optional second body can be
-declared with `nonhydro: true`, `fixed: true`, and a three-component
-`center_gravity`. Its stationary motion appears in the response. With this
-base, `constraint.location` is the base's ground attachment and
-`pto.location` is the flap's hinge attachment. The fixed base's constraint
-reaction forces are not yet calculated.
+For the `fixed_hinge` layout, an optional second body can be fixed. The
+regular-wave case accepts a nonhydrodynamic base declared with `nonhydro:
+true`, `fixed: true`, and a three-component `center_gravity`; PM cases can
+instead use a hydrodynamic base with `fixed: true`. Its stationary motion
+appears in the response. With this base, `constraint.location` is its ground
+attachment and `pto.location` is the flap's hinge attachment. The base's
+constraint reaction forces are not yet calculated.
 The `regularCIC` floating-joint path has paired MATLAB checks for RM3
 body-to-body Cases 3 and 4 and all eight physical settings in the published
 RM3 Multiple Condition Runs Option 1 sweep. The published RM3 radiation
