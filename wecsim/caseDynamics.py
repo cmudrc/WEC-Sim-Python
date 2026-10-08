@@ -866,6 +866,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             ).ravel()
             if depth.size != 1 or not np.isfinite(depth[0]) or depth[0] <= 0:
                 raise ValueError("nonlinear hydro needs positive HDF5 water depth")
+            if not np.allclose(centers[index - 1][:2], 0, rtol=0, atol=1e-10):
+                raise ValueError("heave mesh hydro currently needs CG at x=y=0")
             mesh_model = HeaveMeshHydro.from_stl(
                 geometry_path, center_z=centers[index - 1][2], rho=rho,
                 gravity=g, depth=float(depth[0]), period=period,

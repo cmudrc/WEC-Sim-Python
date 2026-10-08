@@ -466,7 +466,8 @@ The mode integrates mesh buoyancy, instantaneous free-surface
 Froude–Krylov correction, heave quadratic drag, BEM diffraction/radiation,
 and the configured PTO. The STL determines equilibrium mass when
 `mass="equilibrium"`; this can differ from the HDF5 displaced volume.
-Current validation covers one pure-heave body in zero-direction regular waves.
+Current validation covers one pure-heave body with its center of gravity at
+horizontal origin in zero-direction regular waves.
 Other motions and sea states raise an error until their mesh force and dynamics
 checks are paired with MATLAB.
 
