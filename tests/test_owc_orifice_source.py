@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy.io import loadmat
+from scipy.signal import fftconvolve
 
 from wecsim import OrificePTO
 from wecsim.bodyClass import BodyClass
@@ -138,3 +139,20 @@ def test_published_owc_wave_and_seventh_excitation_channel():
     mass = float(np.asarray(force["gbm"]["mass_ff"])[0, 0])
     _max_error(mass * flexible[:, 2], total + reaction, 1e-6,
                "source flexible acceleration and orifice balance")
+
+    # Reconstruct the seventh radiation channel from all seven source speeds.
+    # The finite-memory convolution is trapezoidal at its first and last
+    # samples, matching the source's continuous convolution block.
+    velocities = np.column_stack((rigid[:, 7:13], flexible[:, 1]))
+    kernel = np.asarray(force["irkb"])[:, 6, :]
+    radiation = 0.005 * sum(
+        fftconvolve(kernel[:, channel], velocities[:, channel])[:len(wave)]
+        for channel in range(7)
+    )
+    radiation -= 0.0025 * (velocities * kernel[0]).sum(axis=1)
+    last_lag = len(kernel) - 1
+    radiation[last_lag:] -= 0.0025 * (
+        velocities[:-last_lag] * kernel[-1]
+    ).sum(axis=1)
+    _max_error(radiation, flexible[:, 5], 0.01,
+               "source seventh radiation force")
