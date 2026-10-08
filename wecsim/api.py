@@ -90,7 +90,7 @@ class Body:
     volume: float = 0.0
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
-        """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
+        """Locate an attachment or Morison point relative to this body's CG."""
         return BodyPoint(self, x, y, z)
 
     def move(self, dof: str, *, scale: float = 1.0,

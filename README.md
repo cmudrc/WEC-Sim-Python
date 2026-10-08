@@ -232,7 +232,7 @@ wec.morison_element(sphere, point=sphere.at(0, 0, -2),
                     area=(0, 0, 100), volume=20)
 result = wec.run(RegularWave(1, 8), dt=.01, end_time=40, ramp_time=10,
                  initial_coordinate={"heave": 1})
-heave_force = result.body_forces["sphere"][:, 2]
+morison_wrench = result.body_forces["sphere"]  # time × 6, N and N m
 ```
 
 For pure heave, define only the heave coordinate. Still-water free decay
