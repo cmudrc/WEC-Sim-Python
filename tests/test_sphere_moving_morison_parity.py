@@ -48,8 +48,12 @@ def test_sphere_heave_morison_force_and_trajectory():
         for position, speed in zip(source[:, 3], source[:, 9])
     ])
     reconstructed = terms[:, 0] - terms[:, 1] * source[:, 33]
-    _max_error(reconstructed, expected_physical, 1e-5,
-               "Morison force on MATLAB's saved state")
+    # MATLAB's acceleration feedback is not the saved output acceleration
+    # during startup. Once settled, the saved acceleration reconstructs the
+    # applied source force closely; the early mismatch remains diagnostic.
+    _max_error(reconstructed[50:], expected_physical[50:], 20,
+               "Morison force on MATLAB's saved state after startup")
+    assert np.max(np.abs(reconstructed[:50] - expected_physical[:50])) > 30_000
     assert np.max(np.abs(expected_physical)) > 1000
 
     wec = WEC("Sphere with active heave Morison element")
@@ -67,8 +71,15 @@ def test_sphere_heave_morison_force_and_trajectory():
     )
     _max_error(result.time, source[:, 0], 1e-12, "time")
     _max_error(result.bodies["sphere"].position[:, 2], source[:, 3],
-               .01, "sphere heave")
+               .0005, "sphere heave")
     _max_error(result.bodies["sphere"].velocity[:, 2], source[:, 9],
-               .02, "sphere speed")
-    _max_error(result.body_forces["sphere"][:, 2], expected_physical,
-               2000, "moving Morison heave force")
+               .0011, "sphere speed")
+    physical_force = result.body_forces["sphere"][:, 2]
+    _max_error(physical_force[100:], expected_physical[100:],
+               50, "moving Morison heave force after startup")
+    impulse_difference = abs(np.trapezoid(
+        physical_force - expected_physical, result.time,
+    ))
+    assert impulse_difference < 250, (
+        f"moving Morison force impulse differs by {impulse_difference:.6g} N s"
+    )
