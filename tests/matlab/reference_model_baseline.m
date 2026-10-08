@@ -6,6 +6,7 @@ outDir = fullfile(repoRoot, 'matlab-reference-model-output');
 if ~isfolder(outDir)
     mkdir(outDir);
 end
+
 if any(string(model) == ["RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT"])
     run_rm3_mcr_baseline(repoRoot, outDir, string(model));
     return;
@@ -403,6 +404,9 @@ end
 
 for iCase = 1:numel(cases)
     cd(caseDirs(iCase));
+    if string(model) == "SPHERE_MPC"
+        instrument_sphere_mpc();
+    end
     if string(model) == "RM3_Radiation_Options"
         [output, simu] = run_radiation_option(cases(iCase));
     else
@@ -450,6 +454,14 @@ for iCase = 1:numel(cases)
             'Sphere MPC prediction-plant signal changed');
         writematrix([plantTime, plantValues], ...
             fullfile(outDir, 'SPHERE_MPC_plant_output.csv'));
+        export_mpc_trace(outDir, 'SPHERE_MPC_full_state.csv', ...
+            mpcFullState, 9);
+        export_mpc_trace(outDir, 'SPHERE_MPC_excitation_prediction.csv', ...
+            mpcExcitationPrediction, 31);
+        export_mpc_trace(outDir, 'SPHERE_MPC_command_rate.csv', ...
+            mpcCommandRate, 1);
+        export_mpc_trace(outDir, 'SPHERE_MPC_iteration.csv', ...
+            mpcIteration, 1);
     end
     if string(model) == "GBM_BARGE"
         assert(exist('Flex_out', 'var') == 1 && isstruct(Flex_out) && ...
@@ -1069,4 +1081,53 @@ for iCase = 1:3
 end
 close_system('RM3', 0);
 close all;
+end
+
+function instrument_sphere_mpc()
+% Add observation sinks to the disposable Actions checkout. The published
+% controller blocks and connections are otherwise unchanged.
+model = 'sphereMPC';
+load_system([model '.slx']);
+plant = [model '/Subsystem/Model Predictive Controller/Plant Model'];
+optimizer = [model '/Subsystem/Model Predictive Controller/Optimizer'];
+attach_mpc_trace(plant, 'Integrator', 1, ...
+    'MPC paired full state', 'mpcFullState', 0);
+attach_mpc_trace(optimizer, 'MATLAB Function1', 1, ...
+    'MPC paired excitation prediction', 'mpcExcitationPrediction', 0);
+attach_mpc_trace(optimizer, 'MATLAB Function', 1, ...
+    'MPC paired command rate', 'mpcCommandRate', 0);
+attach_mpc_trace(optimizer, 'MATLAB Function', 2, ...
+    'MPC paired iteration', 'mpcIteration', 75);
+save_system(model);
+end
+
+function attach_mpc_trace(parent, sourceName, outputNumber, sinkName, ...
+    variableName, verticalOffset)
+source = [parent '/' sourceName];
+sourcePosition = get_param(source, 'Position');
+sink = [parent '/' sinkName];
+add_block('simulink/Sinks/To Workspace', sink, ...
+    'VariableName', variableName, 'SaveFormat', 'Timeseries', ...
+    'Position', [sourcePosition(3) + 90, ...
+        sourcePosition(2) + verticalOffset, ...
+        sourcePosition(3) + 180, ...
+        sourcePosition(2) + verticalOffset + 30]);
+sourcePorts = get_param(source, 'PortHandles');
+sinkPorts = get_param(sink, 'PortHandles');
+add_line(parent, sourcePorts.Outport(outputNumber), sinkPorts.Inport(1), ...
+    'autorouting', 'on');
+end
+
+function export_mpc_trace(outDir, filename, trace, expectedWidth)
+assert(isa(trace, 'timeseries'), 'MPC diagnostic trace is missing');
+time = trace.Time(:);
+values = squeeze(trace.Data);
+if size(values, 1) ~= numel(time)
+    values = values.';
+end
+assert(numel(time) > 1 && size(values, 1) == numel(time) && ...
+    size(values, 2) == expectedWidth && ...
+    all(isfinite(values), 'all'), ...
+    'MPC diagnostic trace has invalid dimensions or values');
+writematrix([time, values], fullfile(outDir, filename));
 end
