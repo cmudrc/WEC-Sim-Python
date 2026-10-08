@@ -12,6 +12,11 @@ from .directLinearGenerator import (
 )
 from .caseDynamics import CaseResponse, run_case
 from .hardStops import LinearHardStops
+from .hydraulic import (
+    CompressibleCylinder, ConstantEfficiencyHydraulicMotor,
+    GasChargedAccumulator, RectifiedHydraulicPTO, RectifyingCheckValve,
+)
+from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .irregularWave import (
@@ -24,6 +29,7 @@ from .mcr import (
     run_mcr, run_rm3_mcr, run_rm3_spectrum_mcr,
 )
 from .rm3Regular import solve_rm3_regular
+from .rm3Hydraulic import RM3HydraulicResponse, run_rm3_rectified_hydraulic
 from .sphereMpc import SphereMPCResult, run_sphere_mpc
 
 __all__ = [
@@ -37,5 +43,9 @@ __all__ = [
     "mcr_wave_statistics", "run_mcr", "run_rm3_mcr", "run_rm3_spectrum_mcr",
     "run_case", "solve_rm3_regular", "SphereMPCResult", "run_sphere_mpc",
     "RM3DirectGeneratorResponse", "run_rm3_direct_linear_generator",
+    "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
+    "GasChargedAccumulator", "RectifiedHydraulicPTO", "RectifyingCheckValve",
+    "DiscretePILoadController", "EquivalentCircuitGenerator",
+    "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]

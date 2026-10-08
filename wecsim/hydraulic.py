@@ -1,12 +1,14 @@
 """Compressible hydraulic cylinder equations used by WEC-Sim PTO-Sim.
 
-This component maps prescribed chamber pressures and flows to cylinder force
-and pressure rates. It is not a coupled hydraulic PTO network or a WEC runner.
+The components below can be assembled into a rectified PTO network for a
+coupled WEC trajectory.
 """
 
 from dataclasses import dataclass
 
 import numpy as np
+
+from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 
 
 @dataclass(frozen=True)
@@ -149,3 +151,77 @@ class ConstantEfficiencyHydraulicMotor:
         return (self.displacement_m3_per_rev
                 * np.asarray(angular_speed, dtype=float)
                 / (2 * np.pi * self.volumetric_efficiency))
+
+
+@dataclass(frozen=True)
+class RectifiedHydraulicPTO:
+    """RM3-style cylinder, valve, accumulator, motor, and generator network.
+
+    State order is chamber pressures A/B (Pa), accumulated inlet volumes at
+    high/low pressure (m³), shaft speed (rad/s), current (A), and PI integral
+    resistance (ohm). The source uses forward Euler at each simulation step.
+    """
+
+    cylinder: CompressibleCylinder
+    valve: RectifyingCheckValve
+    high_accumulator: GasChargedAccumulator
+    low_accumulator: GasChargedAccumulator
+    motor: ConstantEfficiencyHydraulicMotor
+    generator: EquivalentCircuitGenerator
+    load_controller: DiscretePILoadController
+    initial_pressure_a: float
+    initial_pressure_b: float
+    initial_shaft_speed: float = 0.0
+    initial_current: float = 0.0
+    initial_load_integral: float = 0.0
+
+    def __post_init__(self):
+        expected = (
+            (self.cylinder, CompressibleCylinder),
+            (self.valve, RectifyingCheckValve),
+            (self.high_accumulator, GasChargedAccumulator),
+            (self.low_accumulator, GasChargedAccumulator),
+            (self.motor, ConstantEfficiencyHydraulicMotor),
+            (self.generator, EquivalentCircuitGenerator),
+            (self.load_controller, DiscretePILoadController),
+        )
+        if any(not isinstance(value, cls) for value, cls in expected):
+            raise TypeError("hydraulic PTO components have invalid types")
+        values = np.asarray((self.initial_pressure_a, self.initial_pressure_b,
+                             self.initial_shaft_speed, self.initial_current,
+                             self.initial_load_integral), dtype=float)
+        if (not np.isfinite(values).all() or (values[:2] <= 0).any()):
+            raise ValueError("hydraulic PTO initial state must be finite with positive pressures")
+
+    def initial_state(self):
+        return np.array([self.initial_pressure_a, self.initial_pressure_b,
+                         0., 0., self.initial_shaft_speed,
+                         self.initial_current, self.initial_load_integral])
+
+    def force(self, state):
+        values = np.asarray(state, dtype=float)
+        if values.ndim == 0 or values.shape[-1] != 7:
+            raise ValueError("hydraulic PTO state must have seven entries")
+        return self.cylinder.force(values[..., 0], values[..., 1])
+
+    def state_rate(self, stroke, stroke_speed, state):
+        values = np.asarray(state, dtype=float)
+        if values.shape != (7,) or not np.isfinite(values).all():
+            raise ValueError("hydraulic PTO state must have seven finite entries")
+        p_a, p_b, volume_high, volume_low, omega, current, integral = values
+        p_high = self.high_accumulator.pressure(volume_high)
+        p_low = self.low_accumulator.pressure(volume_low)
+        flow_a, flow_b, flow_high, flow_low = self.valve.flows(
+            p_a, p_b, p_high, p_low)
+        motor_flow = self.motor.flow(omega)
+        motor_torque = self.motor.torque(p_high - p_low)
+        shaft_rpm = omega * 60 / (2 * np.pi)
+        voltage = self.load_controller.voltage(shaft_rpm, current, integral)
+        rate_a, rate_b = self.cylinder.pressure_rates(
+            stroke, stroke_speed, flow_a, flow_b)
+        return np.array([
+            rate_a, rate_b, flow_high - motor_flow, flow_low + motor_flow,
+            self.generator.speed_rate(omega, current, motor_torque),
+            self.generator.current_rate(omega, current, voltage),
+            self.load_controller.integral_rate(shaft_rpm),
+        ], dtype=float)
