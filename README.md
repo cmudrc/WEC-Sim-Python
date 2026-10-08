@@ -119,25 +119,39 @@ surge = result.bodies["barge"].position[:, 0]
 mode_displacement = result.flexible_modes["barge"].position
 ```
 
-The published OWC orifice block has a component-level Python model:
+The published OWC orifice can be connected to its one flexible body mode:
 
 ```python
 from math import pi
-from wecsim import OrificePTO
+from wecsim import OrificePTO, PMWave, WEC
 
+wec = WEC("OWC")
+body = wec.body("OWC", "path/to/test17a_clean.h5",
+                inertia=(99.28, 11.04, 99.2))
 orifice = OrificePTO(piston_area=pi * 0.25**2,
                      orifice_area=pi * 0.01**2,
                      discharge_coefficient=0.62, air_density=1.2)
-reaction = orifice.evaluate(piston_speed=0.1)
-force = reaction.force                 # N, opposes piston motion
-power = reaction.absorbed_power        # W, positive dissipation
+wec.floating_gbm(body, orifice=orifice,
+                 heave_linear_damping=100, mode_linear_damping=100,
+                 heave_drag_cd=1.2, heave_drag_area=8,
+                 pitch_drag_cd=1.2, pitch_drag_area=8)
+result = wec.run(PMWave(height=1, period=4, seed=128),
+                 dt=0.005, end_time=6, ramp_time=10,
+                 radiation_memory=15)
+piston = result.ptos["orifice"]
+power_watts = piston.absorbed_power
+mach_flag = dict(result.raw.extra_outputs)["orifice_compressibility_flag"]
 ```
 
-This evaluates the incompressible pressure law at a supplied piston speed;
-it is not yet coupled to `WEC.run` or the OWC's generalized body mode.
-`compressibility_flag` marks speeds beyond the chosen Mach threshold. In the
-published case the flag is active for most of the simulated time, so matching
-its source force law does not establish physical accuracy of that air model.
+The rigid joint has surge, heave, and pitch; the orifice force acts on the
+flexible mode and reacts on rigid heave. The settings above reproduce the
+published OWC input file. `seed=128` makes a reproducible **Python** sea;
+replaying the MATLAB sea requires `phase_file` with its 500 saved phases.
+`compressibility_flag` marks speeds beyond the chosen Mach threshold without
+changing the incompressible law. Paired motion is gated only through 6 s;
+the Python and MATLAB heave and flexible trajectories diverge later. The
+published MATLAB air model first exceeds its Mach threshold at 10.13 s, so
+its later trajectory is not a physical-accuracy target.
 
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`

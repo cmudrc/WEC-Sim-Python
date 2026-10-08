@@ -17,7 +17,9 @@ from .bodyClass import BodyClass
 from .directDrive import integrate_direct_drive_heave
 from .directLinearGenerator import DirectLinearGenerator
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
-from .gbmFloating import solve_floating_gbm_regular
+from .gbmFloating import (
+    solve_floating_gbm_pm_orifice, solve_floating_gbm_regular,
+)
 from .hardStops import LinearHardStops
 from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
@@ -37,6 +39,7 @@ from .morison import (
     solve_fixed_morison_irregular,
 )
 from .nonlinearHydro import HeaveMeshHydro
+from .orifice import OrificePTO
 from .passiveYaw import (
     HeldPassiveYawExcitation, NearestHeadingExcitation,
     PassiveYawExcitation, SampledPassiveYawExcitation,
@@ -287,7 +290,11 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                      "frequency_range", "water_depth"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
-                           "initial_coordinate", "initial_speed", "coordinates"})
+                           "initial_coordinate", "initial_speed", "coordinates",
+                           "orifice", "heave_linear_damping",
+                           "mode_linear_damping", "heave_drag_cd",
+                           "heave_drag_area", "pitch_drag_cd",
+                           "pitch_drag_area"})
     bodies = case["bodies"]
     if not isinstance(bodies, list) or not bodies:
         raise ValueError("bodies must be a nonempty list")
@@ -346,16 +353,10 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "floating_gbm":
-        if (len(bodies) != 1 or wave["type"] != "regular" or b2b
+        if (len(bodies) != 1 or b2b
                 or "pto" in case or "ptos" in case):
-            raise ValueError("floating GBM needs one body, regular waves, and no PTO")
-        if set(sim) - {"dt", "end_time", "ramp_time", "rho", "g"}:
-            raise ValueError("floating GBM does not use radiation memory or source delay")
-        if set(wave) - {"type", "height", "period", "direction"}:
-            raise ValueError("floating GBM uses one regular wave direction")
-        if _number(wave.get("direction", 0), "wave.direction") != 0:
-            raise ValueError("floating GBM currently needs a zero-degree wave")
-        if set(constraint) - {"kind", "location"} or np.any(_location(constraint)):
+            raise ValueError("floating GBM needs one body and no separate PTO")
+        if np.any(_location(constraint)):
             raise ValueError("floating GBM needs a joint at the body origin")
         if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "inertia", "name"}:
             raise ValueError("floating GBM uses body mass and inertia only")
@@ -366,22 +367,108 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         body_mass = bodies[0].get("mass", "equilibrium")
         if body_mass != "equilibrium":
             body_mass = _number(body_mass, "body.mass", positive=True)
-        result = solve_floating_gbm_regular(
-            hydro[0], dt=dt, end_time=end_time,
-            height=_number(wave.get("height"), "wave.height", nonnegative=True),
-            period=_number(wave.get("period"), "wave.period", positive=True),
-            pitch_inertia=float(inertia[1]), mass=body_mass,
-            ramp_time=ramp_time, rho=rho, g=g,
-        )
+        if "orifice" not in constraint:
+            if (wave["type"] != "regular"
+                    or set(sim) - {"dt", "end_time", "ramp_time", "rho", "g"}
+                    or set(wave) - {"type", "height", "period", "direction"}
+                    or set(constraint) - {"kind", "location"}):
+                raise ValueError("floating GBM without an orifice needs one regular wave direction")
+            if _number(wave.get("direction", 0), "wave.direction") != 0:
+                raise ValueError("floating GBM currently needs a zero-degree wave")
+            result = solve_floating_gbm_regular(
+                hydro[0], dt=dt, end_time=end_time,
+                height=_number(wave.get("height"), "wave.height", nonnegative=True),
+                period=_number(wave.get("period"), "wave.period", positive=True),
+                pitch_inertia=float(inertia[1]), mass=body_mass,
+                ramp_time=ramp_time, rho=rho, g=g,
+            )
+        else:
+            if (wave["type"] != "pm"
+                    or set(sim) - {"dt", "end_time", "ramp_time", "rho", "g",
+                                   "radiation_memory"}
+                    or set(wave) - {"type", "height", "period", "directions",
+                                    "spreading", "seed", "phase_file",
+                                    "frequency_count"}
+                    or set(constraint) - {"kind", "location", "orifice",
+                                          "heave_linear_damping",
+                                          "mode_linear_damping", "heave_drag_cd",
+                                          "heave_drag_area", "pitch_drag_cd",
+                                          "pitch_drag_area"}):
+                raise ValueError("floating OWC orifice needs a zero-heading PM sea")
+            directions = np.asarray(wave.get("directions", [0]), dtype=float)
+            spreading = np.asarray(wave.get("spreading", [1]), dtype=float)
+            if (directions.shape != (1,) or spreading.shape != (1,)
+                    or not np.isfinite(directions).all()
+                    or not np.isfinite(spreading).all()
+                    or directions[0] != 0 or spreading[0] != 1):
+                raise ValueError("floating OWC currently needs one zero-heading PM component")
+            if "seed" in wave and "phase_file" in wave:
+                raise ValueError("PM wave uses either seed or phase_file")
+            if "phase_file" in wave:
+                phase_path = (base / wave["phase_file"]).resolve(strict=True)
+                phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+                seed = None
+            else:
+                phase = None
+                seed = wave.get("seed", 7)
+                if not isinstance(seed, int) or isinstance(seed, bool):
+                    raise ValueError("wave.seed must be an integer")
+            components = pm_equal_energy_components(
+                hydro[0],
+                significant_height=_number(wave.get("height"), "wave.height", positive=True),
+                peak_period=_number(wave.get("period"), "wave.period", positive=True),
+                directions=directions, spreading=spreading,
+                count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+            )
+            orifice_spec = _section(
+                constraint["orifice"], "constraint.orifice",
+                {"piston_area", "orifice_area"},
+                {"name", "piston_area", "orifice_area",
+                 "discharge_coefficient", "air_density", "mach_threshold",
+                 "sound_speed"},
+            )
+            orifice = OrificePTO(**{
+                key: value for key, value in orifice_spec.items()
+                if key != "name"
+            })
+            result = solve_floating_gbm_pm_orifice(
+                hydro[0], dt=dt, end_time=end_time,
+                components=components, pitch_inertia=float(inertia[1]),
+                orifice=orifice, mass=body_mass, ramp_time=ramp_time,
+                memory_time=_number(sim.get("radiation_memory", 15),
+                                    "simulation.radiation_memory", positive=True),
+                heave_linear_damping=_number(constraint.get("heave_linear_damping", 0),
+                                             "constraint.heave_linear_damping", nonnegative=True),
+                mode_linear_damping=_number(constraint.get("mode_linear_damping", 0),
+                                            "constraint.mode_linear_damping", nonnegative=True),
+                heave_drag_cd=_number(constraint.get("heave_drag_cd", 0),
+                                      "constraint.heave_drag_cd", nonnegative=True),
+                heave_drag_area=_number(constraint.get("heave_drag_area", 0),
+                                        "constraint.heave_drag_area", nonnegative=True),
+                pitch_drag_cd=_number(constraint.get("pitch_drag_cd", 0),
+                                      "constraint.pitch_drag_cd", nonnegative=True),
+                pitch_drag_area=_number(constraint.get("pitch_drag_area", 0),
+                                        "constraint.pitch_drag_area", nonnegative=True),
+                rho=rho, g=g,
+            )
+        extras = [
+            ("flex_position", result.mode_position),
+            ("flex_velocity", result.mode_velocity),
+            ("flex_acceleration", result.mode_acceleration),
+        ]
+        if result.orifice_force is not None:
+            extras += [
+                ("orifice_force", result.orifice_force),
+                ("orifice_power", result.orifice_power),
+                ("orifice_compressibility_flag",
+                 result.orifice_compressibility_flag),
+                ("pitch_unwrapped", result.unwrapped_pitch),
+            ]
         return CaseResponse(
             result.time, result.body_position[:, None, :],
             result.body_velocity[:, None, :], hydro,
             wave_elevation=result.wave_elevation,
-            extra_outputs=(
-                ("flex_position", result.mode_position),
-                ("flex_velocity", result.mode_velocity),
-                ("flex_acceleration", result.mode_acceleration),
-            ),
+            extra_outputs=tuple(extras),
         )
 
     if kind == "linear_subspace":

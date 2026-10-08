@@ -19,6 +19,7 @@ from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
 from .hardStops import LinearHardStops
 from .morison import MorisonElement
+from .orifice import OrificePTO
 
 
 @dataclass(frozen=True)
@@ -381,6 +382,7 @@ class WEC:
         self.ptos: list[LinearPTO] = []
         self.rotational_ptos: list[RotationalPTO] = []
         self._floating_gbm_body: Body | None = None
+        self._floating_gbm_orifice: dict | None = None
         self._floating_joint: _FloatingJoint | None = None
         self._fixed_hinge: _FixedHinge | None = None
         self._morison_elements: list[tuple[Body, MorisonElement]] = []
@@ -478,18 +480,48 @@ class WEC:
         self._morison_elements.append((body, element))
         return element
 
-    def floating_gbm(self, body: Body) -> None:
+    def floating_gbm(
+        self, body: Body, *, orifice: OrificePTO | None = None,
+        pto_name: str = "orifice",
+        heave_linear_damping: float = 0,
+        mode_linear_damping: float = 0,
+        heave_drag_cd: float = 0, heave_drag_area: float = 0,
+        pitch_drag_cd: float = 0, pitch_drag_area: float = 0,
+    ) -> None:
         """Select a floating surge/heave/pitch joint with HDF5 flexible modes.
 
         The joint and body center of gravity must coincide at the origin.
-        Current support is one body in zero-heading regular waves, without a
-        PTO or mooring.
+        Without an orifice, support is a regular-wave body without a PTO.
+        With an orifice, the published one-mode OWC layout supports a PM sea;
+        its piston reacts on rigid heave and the flexible mode.
         """
         if not any(body is item for item in self.bodies):
             raise ValueError("floating GBM body must belong to this WEC")
         if self._floating_gbm_body is not None:
             raise ValueError("a floating GBM body is already selected")
+        if orifice is not None and not isinstance(orifice, OrificePTO):
+            raise TypeError("orifice must be an OrificePTO")
+        settings = dict(
+            heave_linear_damping=heave_linear_damping,
+            mode_linear_damping=mode_linear_damping,
+            heave_drag_cd=heave_drag_cd,
+            heave_drag_area=heave_drag_area,
+            pitch_drag_cd=pitch_drag_cd,
+            pitch_drag_area=pitch_drag_area,
+        )
+        if (any(isinstance(value, bool) or not isinstance(value, Real)
+                for value in settings.values())
+                or not np.isfinite(list(settings.values())).all()
+                or any(value < 0 for value in settings.values())):
+            raise ValueError("floating GBM damping and drag settings must be nonnegative and finite")
+        if orifice is None and any(settings.values()):
+            raise ValueError("floating GBM damping and drag currently need an orifice")
+        if not isinstance(pto_name, str) or not pto_name:
+            raise ValueError("pto_name must be a nonempty string")
         self._floating_gbm_body = body
+        if orifice is not None:
+            self._floating_gbm_orifice = {"orifice": orifice, "name": pto_name,
+                                          **settings}
 
     def floating_joint(self, float_body: Body, spar_body: Body, *,
                        location: WorldPoint = WorldPoint(0, 0, 0),
@@ -746,11 +778,21 @@ class WEC:
         if self._floating_gbm_body is not None:
             if (len(self.bodies) != 1 or self.bodies[0] is not self._floating_gbm_body
                     or self.coordinates or self.ptos or self.rotational_ptos
-                    or self.body_to_body or not isinstance(wave, RegularWave)
+                    or self.body_to_body
                     or initial_coordinate is not None or initial_speed is not None
-                    or radiation_memory is not None):
-                raise ValueError("floating GBM needs one body, regular waves, and no PTO or custom coordinates")
+                    or (self._floating_gbm_orifice is None
+                        and (not isinstance(wave, RegularWave)
+                             or radiation_memory is not None))
+                    or (self._floating_gbm_orifice is not None
+                        and type(wave) is not PMWave)):
+                raise ValueError("floating GBM needs one body and a supported regular or PM/orifice layout")
             constraint = {"kind": "floating_gbm", "location": [0, 0, 0]}
+            if self._floating_gbm_orifice is not None:
+                config = self._floating_gbm_orifice
+                constraint["orifice"] = {"name": config["name"],
+                                          **asdict(config["orifice"])}
+                constraint.update({key: value for key, value in config.items()
+                                   if key not in ("name", "orifice")})
         for coordinate in self.coordinates:
             motions = []
             for motion in coordinate.motions:
@@ -1005,6 +1047,17 @@ class WEC:
                 extras["flex_acceleration"],
             )
         } if self._floating_gbm_body is not None else {})
+        if self._floating_gbm_orifice is not None:
+            name = self._floating_gbm_orifice["name"]
+            ptos[name] = PTOHistory(
+                extras["flex_position"][:, 0],
+                extras["flex_velocity"][:, 0],
+                extras["orifice_force"], extras["orifice_power"],
+            )
+            coordinates["pitch_unwrapped"] = MotionHistory(
+                extras["pitch_unwrapped"],
+                response.body_velocity[:, 0, 4],
+            )
         body_forces = {
             body.name: extras[f"morison_force_{body.name}"]
             for body in self.bodies

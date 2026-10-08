@@ -1,4 +1,4 @@
-"""Pair the published OWC orifice block with its saved MATLAB signal path."""
+"""Pair the published OWC orifice, force paths, and early motion with MATLAB."""
 
 import os
 from pathlib import Path
@@ -8,7 +8,7 @@ import pytest
 from scipy.io import loadmat
 from scipy.signal import fftconvolve
 
-from wecsim import OrificePTO
+from wecsim import OrificePTO, PMWave, WEC
 from wecsim.bodyClass import BodyClass
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
@@ -181,3 +181,70 @@ def test_published_owc_wave_and_seventh_excitation_channel():
         rigid[:, 13:19], 1e-7, "source rigid hydrodynamic force sum",
     )
     assert np.isfinite(rigid_acceleration).all()
+    rigid_mass = _load("body1_mass").ravel()
+    shifted_mass = (rigid_mass[0]
+                    + 2 * np.trace(np.asarray(force["fAddedMass"])[:3, :3]))
+    rigid_reaction = np.interp(
+        rigid[:, 0], source_orifice[:, 0], source_orifice[:, 1],
+    )
+    _max_error(shifted_mass * rigid_acceleration[:, 0],
+               rigid[:, 13], 1e-7, "source rigid surge balance")
+    _max_error(shifted_mass * rigid_acceleration[:, 2] + rigid_reaction,
+               rigid[:, 15], 1e-7, "source rigid heave and piston balance")
+    _max_error(rigid_mass[2] * rigid_acceleration[:, 4],
+               rigid[:, 17], 1e-8, "source rigid pitch balance")
+
+
+@pytest.mark.skipif(not APPLICATIONS,
+                    reason="BEMIO-generated OWC HDF5 absent")
+def test_owc_coupled_motion_before_source_air_flag(tmp_path):
+    hydro = (Path(APPLICATIONS)
+             / "OWC/OrificeModel/hydroData/test17a_clean.h5")
+    source = _load("OrificeModel_body1")
+    flexible = loadmat(
+        Path(REFERENCE) / "OWC_ORIFICE_Flex_out.mat",
+        simplify_cells=True,
+    )["Flex_out"]["signals"]["values"]
+    components = _load("components")
+    phase_file = tmp_path / "owc_phase.csv"
+    np.savetxt(phase_file, components[:, 3], delimiter=",")
+    model = WEC("OWC")
+    body = model.body("OWC", hydro, inertia=(99.28, 11.04, 99.2))
+    orifice = OrificePTO(*_load("parameters").ravel())
+    model.floating_gbm(
+        body, orifice=orifice,
+        heave_linear_damping=100, mode_linear_damping=100,
+        heave_drag_cd=1.2, heave_drag_area=8,
+        pitch_drag_cd=1.2, pitch_drag_area=8,
+    )
+    result = model.run(
+        PMWave(height=1, period=4, phase_file=phase_file),
+        dt=0.005, end_time=130, ramp_time=10, radiation_memory=15,
+    )
+    _max_error(result.time, source[:, 0], 1e-10, "OWC time")
+    _max_error(result.wave_elevation, _load("wave")[:, 1], 1e-11,
+               "OWC incident elevation")
+    unwrapped_pitch = np.r_[
+        0, np.cumsum((source[1:, 11] + source[:-1, 11]) * 0.005 / 2),
+    ]
+    early = result.time <= 6
+    source_orifice = _load("orifice")
+    assert not np.any(source_orifice[source_orifice[:, 0] <= 6, 2])
+    assert np.any(source_orifice[source_orifice[:, 0] > 10, 2])
+    _max_error(result.bodies["OWC"].position[early, 0],
+               source[early, 1], 0.012, "OWC early surge")
+    _max_error(result.bodies["OWC"].position[early, 2],
+               source[early, 3], 0.025, "OWC early heave")
+    _max_error(result.coordinates["pitch_unwrapped"].position[early],
+               unwrapped_pitch[early], 0.010, "OWC early physical pitch")
+    _max_error(result.flexible_modes["OWC"].position[early, 0],
+               flexible[early, 0], 0.0075, "OWC early flexible mode")
+    pto = result.ptos["orifice"]
+    _max_error(pto.absorbed_power, -pto.force * pto.velocity,
+               1e-8, "coupled orifice passivity")
+    np.testing.assert_array_equal(
+        dict(result.raw.extra_outputs)["orifice_compressibility_flag"],
+        orifice.evaluate(pto.velocity).compressibility_flag,
+    )
+    assert np.isfinite(result.bodies["OWC"].position).all()
+    assert np.isfinite(result.flexible_modes["OWC"].position).all()
