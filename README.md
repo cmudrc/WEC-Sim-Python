@@ -112,7 +112,7 @@ Supported combinations are:
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
-| `linear_subspace` | `regular`, `regularCIC`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular`, `regularCIC`, `pm`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
 
 The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
 PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at
@@ -134,11 +134,24 @@ absorbed_power = result.ptos["hinge"].absorbed_power
 ```
 
 The rotational PTO reports angle in radians as `stroke`, angular speed in
-rad/s as `velocity`, and torque in N m as `force`. Passive yaw currently
-supports one pure-yaw hydrodynamic body, stationary additional bodies,
-regular waves, and independent radiation with full-circle BEM headings.
-The Python excitation interpolates continuously; the pinned MATLAB case
-holds its heading coefficients until the angle changes by 0.01 degree.
+rad/s as `velocity`, and torque in N m as `force`. The same device accepts a
+Pierson–Moskowitz sea with radiation memory:
+
+```python
+from wecsim import PMWave
+
+result = wec.run(PMWave(2.5, 8, direction=10, seed=1),
+                 dt=0.01, end_time=250, ramp_time=100,
+                 radiation_memory=40)
+```
+
+`PMWave(..., phase_file="phases.csv")` replays a saved frequency-by-direction
+phase matrix; a seed creates a reproducible Python realization with a
+different random sequence from MATLAB. Passive yaw supports one pure-yaw
+hydrodynamic body, stationary additional bodies, and independent radiation
+with full-circle BEM headings. Python interpolates the wave heading
+continuously. The published MATLAB regular and irregular passive-yaw inputs
+hold heading coefficients until yaw changes by 0.01° and 1°, respectively.
 
 For the published Sphere `Mean_Drift` application, select the control-surface
 coefficient in the generated HDF5 file and use convolution radiation:
