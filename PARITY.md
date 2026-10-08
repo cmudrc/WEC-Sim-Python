@@ -15,7 +15,7 @@ the production Python code. The live wave comparison passed on 6 October
 | Regular-wave elevation, ramp, and three gauge positions | Original MATLAB-generated `regular_1_test` files | Production `WaveClass` agrees within `1e-12` absolute error. |
 | Finite-depth wave number | Current MATLAB `calcWaveNumber.m` dispersion relation | Python residual is checked to relative tolerance `1e-13`. |
 | Finite-depth regular-wave power | Current MATLAB `waveClass.m` group-velocity equation | Corrected denominator to `sinh(2kh)`; tested at 25 m depth. |
-| Current PM and JONSWAP spectra and replayed elevation | Pinned MATLAB `waveClass` using 64 traditional frequencies, 8 s peak period, significant heights of 2.5 m and 4 m, and its Threefry phase output | Production `WaveClass.waveSetup` uses the current height-dependent PM and JONSWAP equations, including inferred JONSWAP `gamma`. The paired live gate checks every spectral ordinate, total deep-water power, origin elevation, and three marker elevations; PM uses three incident directions. Python replays the exported phase matrix because NumPy and MATLAB do not generate identical phases from the same integer seed. |
+| Current PM and JONSWAP spectra and replayed elevation | Pinned MATLAB `waveClass` with both Traditional and EqualEnergy 64-frequency discretizations, 8 s peak period, significant heights of 2.5 m and 4 m, and its Threefry phase output; [live R2025b gate](https://github.com/cmudrc/wec-sim-python/actions/runs/37777444325) | Production `WaveClass.waveSetup` uses the current height-dependent PM and JONSWAP equations, including inferred JONSWAP `gamma`. All six live checks pass. In the new equal-energy pairs, the maximum difference across frequency, width, and spectrum entries is `5.4e-15`; deep-water power differs by at most `2.2e-11` W/m, and origin and three-marker elevation by at most `7.4e-15` m. PM uses three incident directions. Python replays the exported phase matrix because NumPy and MATLAB do not generate identical phases from the same integer seed. |
 | Irregular Bretschneider equal-energy binning | Original MATLAB-era test constants | Production `WaveClass` agrees after NumPy/SciPy API updates. This is historical compatibility only: current MATLAB WEC-Sim rejects the `BS` option. |
 | Wave-surface grid for no-wave, regular, and directional irregular waves | Current MATLAB `waveClass.waveElevationGrid` equations | Implemented and checked for regular and two-direction irregular cases. |
 | RM3 HDF5 hydrodynamic input | Original `rm3.h5` | Both bodies load, including their names and water depth, under NumPy 2. |
@@ -287,12 +287,13 @@ change the upstream regression assertions.
 
 ## Known differences and next reference case
 
-Current MATLAB WEC-Sim has changed its PM/JS spectra, seeded phase generator,
-object properties, and some wave inputs since the Python port was written.
-The historical fixtures therefore cannot establish parity for those modes.
-The focused OSWEC PM implementation above is checked against current MATLAB;
-the inherited general `WaveClass` still needs corresponding updates for other
-irregular-wave cases.
+Current MATLAB WEC-Sim changed its PM/JS spectra, seeded phase generator,
+object properties, and some wave inputs since the original Python port.
+The general `WaveClass` now has direct paired Traditional and EqualEnergy
+PM/JS checks using replayed MATLAB phases; the focused OSWEC PM and other
+application-specific irregular-wave paths above have separate paired gates.
+The historical fixtures alone do not establish parity for remaining wave modes
+or independent seeded realizations across MATLAB and NumPy.
 RM3 state-space Cases 5 and 6 remain a radiation-fit investigation: a
 passive fit would need its own evidence against source BEM data and
 convolution trajectories before it could count as physically validated.
