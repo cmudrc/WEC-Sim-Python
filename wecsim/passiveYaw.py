@@ -60,9 +60,13 @@ class PassiveYawExcitation:
         return cls(headings, real, imaginary, incident_direction,
                    omega, amplitude, ramp_time)
 
-    def force(self, time: float, yaw: float) -> np.ndarray:
+    def force(self, time: float, yaw: float, *,
+              coefficient_heading: float | None = None) -> np.ndarray:
         """Return the six-component excitation in the world frame."""
-        relative_heading = (self.incident_direction - np.degrees(yaw)) % 360
+        relative_heading = (
+            self.incident_direction - np.degrees(yaw)
+            if coefficient_heading is None else coefficient_heading
+        ) % 360
         real = np.array([
             np.interp(relative_heading, self.directions, row, period=360)
             for row in self.real
@@ -83,6 +87,37 @@ class PassiveYawExcitation:
             world[first] = c * local[first] - s * local[first + 1]
             world[first + 1] = s * local[first] + c * local[first + 1]
         return world
+
+
+@dataclass(frozen=True)
+class NearestHeadingExcitation:
+    """Select the nearest BEM heading as in the variable-hydro yaw example.
+
+    The published direction-bank files share mass, restoring, and radiation
+    coefficients; their excitation coefficients differ by heading. This
+    selector uses the full-direction HDF5 input for those coefficients.
+    """
+
+    model: PassiveYawExcitation
+    headings: np.ndarray
+
+    def __post_init__(self):
+        headings = np.asarray(self.headings, dtype=float)
+        if (headings.ndim != 1 or headings.size < 2
+                or not np.isfinite(headings).all()
+                or not np.all(np.diff(headings) > 0)
+                or headings[0] < -180 or headings[-1] > 180):
+            raise ValueError("heading bank needs ordered directions in [-180, 180]")
+        object.__setattr__(self, "headings", headings)
+
+    def heading(self, yaw: float) -> float:
+        relative = self.model.incident_direction - np.degrees(yaw)
+        return float(self.headings[np.argmin(np.abs(self.headings - relative))])
+
+    def force(self, time: float, yaw: float) -> np.ndarray:
+        return self.model.force(
+            time, yaw, coefficient_heading=self.heading(yaw),
+        )
 
 
 @dataclass(frozen=True)

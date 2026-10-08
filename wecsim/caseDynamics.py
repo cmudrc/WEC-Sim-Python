@@ -38,7 +38,8 @@ from .morison import (
 )
 from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import (
-    HeldPassiveYawExcitation, PassiveYawExcitation, SampledPassiveYawExcitation,
+    HeldPassiveYawExcitation, NearestHeadingExcitation,
+    PassiveYawExcitation, SampledPassiveYawExcitation,
 )
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
@@ -133,7 +134,8 @@ def _hydro_file(body, base_dir):
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name", "mean_drift", "fixed",
-              "passive_yaw", "passive_yaw_threshold", "geometry_file", "nonlinear_hydro",
+              "passive_yaw", "passive_yaw_threshold", "yaw_heading_bank",
+              "geometry_file", "nonlinear_hydro",
               "drag_coefficient", "drag_area", "variable_hydro", "morison_elements"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
@@ -1348,6 +1350,12 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                           or wave["type"] != "pm")
            for index, threshold in enumerate(yaw_thresholds)):
         raise ValueError("positive passive_yaw_threshold needs PM passive yaw")
+    yaw_banks = [spec.get("yaw_heading_bank") for spec in bodies]
+    if any(bank is not None and (not bodies[index].get("passive_yaw", False)
+                                 or yaw_thresholds[index]
+                                 or wave["type"] != "regular")
+           for index, bank in enumerate(yaw_banks)):
+        raise ValueError("yaw_heading_bank needs regular-wave passive yaw without a threshold")
     if passive_indices:
         yaw_map = np.zeros((6, 1))
         yaw_map[5, 0] = 1
@@ -1596,6 +1604,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     incident_direction=direction, amplitude=height / 2,
                     ramp_time=ramp_time, rho=rho, g=g,
                 )
+                if yaw_banks[index - 1] is not None:
+                    passive_model = NearestHeadingExcitation(
+                        passive_model, yaw_banks[index - 1],
+                    )
 
             if isinstance(passive_model, HeldPassiveYawExcitation):
                 state_excitation = passive_model
