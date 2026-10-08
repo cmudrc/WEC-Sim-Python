@@ -276,10 +276,17 @@ def test_oswec_general_runner(tmp_path):
         dt=0.1, end_time=400, ramp_time=100,
         radiation_memory=30, base_dir=tmp_path,
     )
-    _max_error(public.bodies["flap"].position[:, 4], expected[:, 5],
-               0.004, "configured OSWEC pitch")
-    _max_error(public.bodies["flap"].velocity[:, 4], expected[:, 11],
-               0.005, "configured OSWEC pitch speed")
+    for dof, label, position_limit, velocity_limit in (
+        (0, "surge", 0.02, 0.03),
+        (2, "heave", 0.005, 0.005),
+        (4, "pitch", 0.004, 0.005),
+    ):
+        _max_error(public.bodies["flap"].position[:, dof],
+                   expected[:, 1 + dof], position_limit,
+                   f"configured OSWEC {label} position")
+        _max_error(public.bodies["flap"].velocity[:, dof],
+                   expected[:, 7 + dof], velocity_limit,
+                   f"configured OSWEC {label} velocity")
     _max_error(public.ptos["hinge"].force, pto[:, 17],
                60, "configured OSWEC PTO torque")
     _max_error(-public.ptos["hinge"].absorbed_power, pto[:, 23],

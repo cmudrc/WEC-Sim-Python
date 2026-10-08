@@ -1,4 +1,4 @@
-"""Python interface for configuring supported linearized WEC devices.
+"""Python interface for configuring supported WEC devices.
 
 The objects in this module assemble the same validated case used by the JSON
 runner. Users can define bodies, named motions, attachment points, PTOs, and

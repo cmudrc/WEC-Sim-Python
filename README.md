@@ -47,7 +47,7 @@ the supported device dynamics have paired MATLAB checks. The published
 generalized-body-mode barge now has a coupled rigid and flexible regular-wave
 runner for its floating three-DOF joint. Other GBM layouts and wave options
 remain unsupported; see [PARITY.md](PARITY.md). The Python API is
-the primary way to configure a linearized device. It constructs bodies,
+the primary way to configure a supported device. It constructs bodies,
 named motions, attachment points, PTOs, and waves as Python objects, then
 returns NumPy arrays directly. Import it as `wecsim` after installation:
 
@@ -72,7 +72,8 @@ with `python -m examples.configurable_rm3_pto`. Relative HDF5 paths in
 the Python API resolve from the current directory unless `base_dir` is passed
 to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
 Python builder covers `linear_subspace`, the single-body `floating_gbm`
-regular-wave layout, and the paired two-body `floating_joint` layout. Mapped
+regular-wave layout, the paired two-body `floating_joint`, and the OSWEC
+`fixed_hinge` layout. Mapped
 coordinates use small-motion kinematics and fixed-axis PTOs. The floating
 joint uses its own pitched-slider geometry and a relative-heave PTO; arbitrary
 PTO attachment points are not part of that reduced layout.
