@@ -10,6 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from wecsim.hydraulic import CompressibleCylinder
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
@@ -58,5 +59,28 @@ def test_hydraulic_source_wave_and_component_traces():
         assert values.shape == (40_001, columns), name
         np.testing.assert_allclose(values[:, 0], matlab_wave[:, 0],
                                    atol=1e-10, rtol=0)
+
+
+def test_hydraulic_cylinder_pressure_and_force_balance():
     cylinder = _load("cylinder")
+    valve = _load("valve")
+    pto = _load("RM3_cHydraulic_PTO_pto1")
+    assert pto.shape == (40_001, 25)
+    np.testing.assert_allclose(pto[:, 0], cylinder[:, 0], atol=1e-10,
+                               rtol=0)
     assert np.max(np.abs(cylinder[:, 2])) > 1e3
+    model = CompressibleCylinder(.0378, .0378, 1.86e9, 70, 35)
+    reconstructed = model.force(cylinder[:, 1], cylinder[:, 3])
+    assert np.max(np.abs(reconstructed - cylinder[:, 2])) < 1e-4
+
+    # The source piston selects heave from the PTO response bus. Its first
+    # two valve outputs are chamber port flows, and pressure uses a discrete
+    # integrator at the model time step.
+    rate_a, rate_b = model.pressure_rates(
+        pto[:, 3], pto[:, 9], valve[:, 1], valve[:, 2],
+    )
+    dt = np.diff(cylinder[:, 0])
+    for pressure, rate in ((cylinder[:, 1], rate_a),
+                           (cylinder[:, 3], rate_b)):
+        predicted = pressure[:-1] + dt * rate[:-1]
+        assert np.max(np.abs(predicted - pressure[1:])) < 3e-6
