@@ -707,8 +707,8 @@ extra damping while specifying a body-local attachment shifted 1 m in x.
 Its heave-only motion cannot validate attachment-location dynamics or a
 rotational moment arm.
 Force limits, general controller networks, and general hydraulic PTO models
-are not implemented. The published RM3 hydraulic layout has the focused
-Python runner described below.
+are not implemented. The published RM3 and OSWEC hydraulic layouts have the
+focused Python runners described below.
 
 ### Reactive direct-drive PTO
 
@@ -969,6 +969,25 @@ equal-energy bins, directional excitation, and pitch are checked against
 current MATLAB WEC-Sim using the same saved random phase matrix. A Python
 integer seed creates a reproducible Python realization, with a different
 random sequence from MATLAB.
+
+The two published OSWEC hydraulic PTO applications use a fixed-base flap,
+one of two crank linkages, and the configurable rectified hydraulic network.
+Run the Python example with a BEMIO OSWEC HDF5 file:
+
+```bash
+python -m examples.oswec_hydraulic path/to/oswec.h5
+python -m examples.oswec_hydraulic path/to/oswec.h5 --layout fixed
+```
+
+`AdjustableRodCrank`, `FixedRodCrank`, `RectifiedHydraulicPTO`, and
+`run_oswec_rectified_hydraulic` are also importable from `wecsim`. The example
+shows the cylinder, valve, accumulators, motor, generator, and controller
+settings as editable Python objects. Paired tests use MATLAB's saved PM
+phases; the example uses a reproducible Python seed. This runner covers the
+two published pitch-hinge layouts, not arbitrary WEC or PTO attachment
+geometry. The adjustable-rod source controller commands negative electrical
+load resistance for much of its run, so trajectory agreement does not
+establish a passive load design.
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a

@@ -6,6 +6,7 @@ from .api import (
     PTOHistory, RegularCICWave, RegularWave, SimpleDirectDrive, VariableHydro, WEC, WECResult, WorldPoint,
 )
 from .controls import DeclutchingControl, LatchingControl
+from .crank import AdjustableRodCrank, FixedRodCrank
 from .directLinearGenerator import (
     DirectLinearGenerator, DirectLinearGeneratorSignals,
     RM3DirectGeneratorResponse, run_rm3_direct_linear_generator,
@@ -19,6 +20,7 @@ from .hydraulic import (
 from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
+from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
 from .irregularWave import (
     FullDirectionalComponents, IrregularResponse,
     imported_full_directional_components, synthesize_full_directional_response,
@@ -44,8 +46,10 @@ __all__ = [
     "run_case", "solve_rm3_regular", "SphereMPCResult", "run_sphere_mpc",
     "RM3DirectGeneratorResponse", "run_rm3_direct_linear_generator",
     "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
+    "AdjustableRodCrank", "FixedRodCrank",
     "GasChargedAccumulator", "RectifiedHydraulicPTO", "RectifyingCheckValve",
     "DiscretePILoadController", "EquivalentCircuitGenerator",
     "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",
+    "OSWECHydraulicResponse", "run_oswec_rectified_hydraulic",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]
