@@ -999,6 +999,11 @@ coupled response are still being validated (see [PARITY.md](PARITY.md)).
 hydraulic-resistance settings as a Python object. Given an inlet pressure,
 `permeate_flow(pressure)` solves their series pressure drop. It does not
 predict that pressure or the coupled flap motion.
+`GasChargedAccumulator` accepts optional atmospheric pressure, dead gas
+volume, and hard-stop settings for the published Desalination accumulator.
+Given its measured inlet flow and startup pressure, the Python component
+integrates liquid volume and reproduces the source pressure trace. The
+network must still predict that flow to run independently.
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
