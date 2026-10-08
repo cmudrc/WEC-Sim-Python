@@ -25,6 +25,7 @@ from .hydraulic import (
     RectifyingCheckValve,
 )
 from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
+from .fixedHydroMonopile import FixedHydroMonopileResponse, run_fixed_hydro_monopile
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
@@ -65,5 +66,6 @@ __all__ = [
     "OSWECHydraulicResponse", "run_oswec_rectified_hydraulic",
     "OSWECDesalinationResponse", "run_oswec_desalination",
     "PlanarCableAttachment", "WecSimCableTension",
+    "FixedHydroMonopileResponse", "run_fixed_hydro_monopile",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]
