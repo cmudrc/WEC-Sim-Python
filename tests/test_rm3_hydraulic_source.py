@@ -10,7 +10,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim.hydraulic import CompressibleCylinder, RectifyingCheckValve
+from wecsim.hydraulic import (
+    CompressibleCylinder, GasChargedAccumulator, RectifyingCheckValve,
+)
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
@@ -29,6 +31,19 @@ def _load(name):
                         delimiter=",")
     assert values.ndim == 2 and np.isfinite(values).all(), name
     return values
+
+
+def _published_valve():
+    area_max, area_min = .002, 1e-8
+    pressure_max, pressure_min = 1.5e6, 0
+    opening_gain = np.arctanh(
+        (area_min - (area_max - area_min) / 2)
+        * 2 / (area_max - area_min)
+    ) / (pressure_min - (pressure_max + pressure_min) / 2)
+    return RectifyingCheckValve(
+        .61, area_max, area_min, pressure_max, pressure_min,
+        850, 200, opening_gain,
+    )
 
 
 def test_hydraulic_source_wave_and_component_traces():
@@ -92,16 +107,7 @@ def test_hydraulic_rectifying_valve_port_flows():
     high = _load("high_accumulator")
     low = _load("low_accumulator")
     pto = _load("RM3_cHydraulic_PTO_pto1")
-    area_max, area_min = .002, 1e-8
-    pressure_max, pressure_min = 1.5e6, 0
-    opening_gain = np.arctanh(
-        (area_min - (area_max - area_min) / 2)
-        * 2 / (area_max - area_min)
-    ) / (pressure_min - (pressure_max + pressure_min) / 2)
-    model = RectifyingCheckValve(
-        .61, area_max, area_min, pressure_max, pressure_min,
-        850, 200, opening_gain,
-    )
+    model = _published_valve()
     flows = np.column_stack(model.flows(
         cylinder[:, 1], cylinder[:, 3], high[:, 1], low[:, 1],
     ))
@@ -117,3 +123,31 @@ def test_hydraulic_rectifying_valve_port_flows():
                            (cylinder[:, 3], rate_b)):
         assert np.max(np.abs(pressure[:-1] + dt * rate[:-1]
                              - pressure[1:])) < 3e-6
+
+
+@pytest.mark.parametrize(
+    ("name", "precharge"),
+    (("high_accumulator", 2784.7 * 6894.75),
+     ("low_accumulator", 1392.4 * 6894.75)),
+)
+def test_hydraulic_accumulator_pressure_from_port_flow(name, precharge):
+    trace = _load(name)
+    cylinder = _load("cylinder")
+    high = _load("high_accumulator")
+    low = _load("low_accumulator")
+    motor = _load("motor")
+    flows = _published_valve().flows(
+        cylinder[:, 1], cylinder[:, 3], high[:, 1], low[:, 1],
+    )
+    if name == "high_accumulator":
+        inlet_flow = flows[2] - motor[:, 4]
+    else:
+        inlet_flow = flows[3] + motor[:, 4]
+    model = GasChargedAccumulator(8.5, precharge)
+    accepted_volume = np.r_[
+        0, np.cumsum(np.diff(trace[:, 0]) * inlet_flow[:-1]),
+    ]
+    reconstructed = model.pressure(accepted_volume)
+    assert np.max(np.abs(trace[:, 2])) > .01
+    assert np.max(np.abs(inlet_flow - trace[:, 2])) < 1e-12
+    assert np.max(np.abs(reconstructed - trace[:, 1])) < 1e-6
