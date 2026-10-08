@@ -10,6 +10,10 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 
 from wecsim.waveClass import WaveClass  # noqa: E402
+from wecsim.irregularWave import (  # noqa: E402
+    jonswap_equal_energy_components, pm_equal_energy_components,
+    synthesize_irregular_response,
+)
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_REFERENCE_DIR")
 pytestmark = pytest.mark.skipif(not REFERENCE, reason="MATLAB reference output not provided")
@@ -53,7 +57,9 @@ def test_finite_depth_against_executed_matlab():
 
 
 @pytest.mark.parametrize("spectrum,height", [("PM", 2.5), ("JS", 4.0)])
-@pytest.mark.parametrize("discretization", ["Traditional", "EqualEnergy"])
+@pytest.mark.parametrize(
+    "discretization", ["Traditional", "EqualEnergy", "NarrowEqualEnergy"],
+)
 def test_current_irregular_spectrum_against_executed_matlab(
     spectrum, height, discretization,
 ):
@@ -61,7 +67,8 @@ def test_current_irregular_spectrum_against_executed_matlab(
     wave.T = 8
     wave.H = height
     wave.spectrumType = spectrum
-    wave.freqDisc = discretization
+    wave.freqDisc = ("EqualEnergy" if discretization == "NarrowEqualEnergy"
+                     else discretization)
     wave.numFreq = 64
     wave.phaseSeed = 1
     if spectrum == "PM":
@@ -71,12 +78,16 @@ def test_current_irregular_spectrum_against_executed_matlab(
     wave.wavegauge2loc = [10, 0]
     wave.wavegauge3loc = [0, -10]
     reference = Path(REFERENCE)
-    label = spectrum.lower() + ("_equal" if discretization == "EqualEnergy" else "")
+    suffix = {"Traditional": "", "EqualEnergy": "_equal",
+              "NarrowEqualEnergy": "_narrow"}[discretization]
+    label = spectrum.lower() + suffix
+    if discretization == "NarrowEqualEnergy":
+        wave.freqRange = [0.5, 1.5]
     wave.phaseData = np.loadtxt(reference / f"{label}_phase.csv",
                                 delimiter=",")
     wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 
-    if discretization == "EqualEnergy":
+    if discretization != "Traditional":
         expected = np.loadtxt(reference / f"{label}_bins.csv", delimiter=",")
         actual = np.column_stack((wave.w, wave.dw, wave.S))
     else:
@@ -94,6 +105,28 @@ def test_current_irregular_spectrum_against_executed_matlab(
         reference / f"{label}_elevation.csv", delimiter=",")
     np.testing.assert_allclose(np.asarray(wave.waveAmpTime).T,
                                source_elevation, rtol=0, atol=2e-12)
+    if discretization == "NarrowEqualEnergy":
+        # The public WEC runner uses these component builders, while the
+        # class above preserves Sungjun Won's original wave interface.
+        hydro = ROOT / "tests/test_objects/test_bodyclass/testData/hydroData/oswec.h5"
+        builder = (jonswap_equal_energy_components if spectrum == "JS"
+                   else pm_equal_energy_components)
+        components = builder(
+            hydro, significant_height=height, peak_period=8,
+            directions=wave.waveDir, spreading=wave.waveSpread,
+            count=64, phase=wave.phaseData, frequency_range=(0.5, 1.5),
+        )
+        np.testing.assert_allclose(
+            np.column_stack((components.omega, components.d_omega,
+                             components.spectral_amplitude / 2)),
+            expected, rtol=2e-12, atol=1e-14,
+        )
+        incident = synthesize_irregular_response(
+            hydro, components, dt=0.1, end_time=2, ramp_time=1,
+        )
+        np.testing.assert_allclose(
+            incident.elevation, source_elevation[:, 1], rtol=0, atol=2e-12,
+        )
     source_markers = np.loadtxt(
         reference / f"{label}_markers.csv", delimiter=",")
     for index, attribute in enumerate(("waveAmpTime1", "waveAmpTime2",

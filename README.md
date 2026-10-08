@@ -248,6 +248,11 @@ seed=1, gamma=3.3)` selects a JONSWAP sea. Omitting `gamma` uses WEC-Sim's
 height/period-dependent value. The published Sphere MPC case uses 2.5 m and
 8 s, which infers `gamma=1`; its JONSWAP spectrum therefore equals the PM
 spectrum for those inputs. `phase_file` replays a saved MATLAB realization.
+For a hydrodynamic body, `PMWave` and `JONSWAPWave` also accept
+`frequency_range=(0.5, 1.5)` in rad/s to narrow the BEM frequency interval.
+Limits outside the HDF5 range are replaced by that range's endpoints, as in
+the pinned MATLAB wave class. A `water_depth` override is currently available
+only for fixed Morison bodies; hydrodynamic bodies use their HDF5 depth.
 The published Sphere MPC controller has a focused Python runner:
 
 ```python
@@ -297,6 +302,9 @@ The runner rejects unsupported layouts and settings. For PM or JONSWAP, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
 an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
 JONSWAP also accepts an optional positive `gamma`.
+For `linear_subspace`, `wave.frequency_range` optionally narrows the HDF5
+frequency interval in rad/s. A `wave.water_depth` override is supported only
+for fixed Morison bodies.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
 `radiation_memory` for radiation-memory cases. For an RM3 `regularCIC` floating
 joint, set `simulation.radiation_method` to `"fir"` to use the published

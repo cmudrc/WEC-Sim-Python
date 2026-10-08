@@ -1131,9 +1131,11 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave linear dynamics use constant radiation")
     elif wave["type"] in ("pm", "jonswap"):
+        if "water_depth" in wave:
+            raise ValueError("wave.water_depth override currently needs a fixed Morison body")
         if set(wave) - {"type", "height", "period", "directions", "spreading",
                          "seed", "phase_file", "frequency_count",
-                         "excitation_interpolation", "gamma"}:
+                         "excitation_interpolation", "gamma", "frequency_range"}:
             raise ValueError("irregular waves use height, period, directions, and phase settings")
         if wave["type"] == "pm" and "gamma" in wave:
             raise ValueError("gamma applies only to JONSWAP waves")
@@ -1161,6 +1163,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             directions=wave.get("directions", [0.0]),
             spreading=wave.get("spreading", [1.0]),
             count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+            frequency_range=wave.get("frequency_range"),
             **spectrum_options,
         )
     else:

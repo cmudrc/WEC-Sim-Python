@@ -177,6 +177,8 @@ class PMWave:
     period in seconds, and ``direction`` is the incident heading in degrees.
     A saved phase CSV replays a MATLAB realization. Without one, ``seed``
     selects a reproducible Python realization rather than MATLAB's RNG stream.
+    ``frequency_range`` narrows the BEM frequency interval in rad/s. A
+    ``water_depth`` override is currently used only for fixed Morison bodies.
     """
 
     height: float
@@ -195,8 +197,6 @@ class PMWave:
             raise ValueError("PMWave uses either seed or phase_file")
         if (self.directions is None) != (self.spreading is None):
             raise ValueError("PMWave directions and spreading must be supplied together")
-        if (self.frequency_range is None) != (self.water_depth is None):
-            raise ValueError("PMWave frequency_range and water_depth must be supplied together")
         wave = {"type": "pm", "height": self.height,
                 "period": self.period,
                 "directions": (list(self.directions) if self.directions is not None
@@ -206,6 +206,7 @@ class PMWave:
                 "frequency_count": self.frequency_count}
         if self.frequency_range is not None:
             wave["frequency_range"] = list(self.frequency_range)
+        if self.water_depth is not None:
             wave["water_depth"] = self.water_depth
         if self.seed is not None:
             wave["seed"] = self.seed

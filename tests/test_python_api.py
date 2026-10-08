@@ -8,7 +8,11 @@ import pytest
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import JONSWAPWave, LatchingControl, NoWave, RegularWave, WEC, WorldPoint
+from wecsim import (JONSWAPWave, LatchingControl, NoWave, PMWave,
+                    RegularWave, WEC, WorldPoint)
+from wecsim.irregularWave import (jonswap_equal_energy_components,
+                                  pm_equal_energy_components,
+                                  synthesize_irregular_response)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +69,56 @@ def test_python_builder_runs_jonswap_sea():
                      radiation_memory=.2)
     assert result.wave_elevation.shape == (3,)
     assert np.isfinite(result.bodies["float"].position).all()
+
+
+@pytest.mark.parametrize("wave_type,builder", [
+    (PMWave, pm_equal_energy_components),
+    (JONSWAPWave, jonswap_equal_energy_components),
+])
+def test_python_builder_uses_custom_irregular_frequency_range(wave_type, builder):
+    wec = WEC("Narrow-band float")
+    body = wec.body("float", HYDRO)
+    wec.coordinate("heave", body.move("heave"))
+    wave = wave_type(2.5, 8, seed=7, frequency_count=32,
+                     frequency_range=(0.5, 1.5))
+    case = wec.to_case(wave, dt=0.1, end_time=0.2, ramp_time=1)
+    assert case["wave"]["frequency_range"] == [0.5, 1.5]
+    assert "water_depth" not in case["wave"]
+    response = wec.run(wave, dt=0.1, end_time=0.2,
+                       ramp_time=1, radiation_memory=0.2)
+    components = builder(
+        HYDRO, significant_height=2.5, peak_period=8,
+        directions=[0], spreading=[1], count=32, seed=7,
+        frequency_range=(0.5, 1.5),
+    )
+    assert 0.5 <= components.omega.min() < components.omega.max() <= 1.5
+    expected = synthesize_irregular_response(
+        HYDRO, components, dt=0.1, end_time=0.2, ramp_time=1,
+    )
+    np.testing.assert_allclose(response.wave_elevation, expected.elevation,
+                               rtol=0, atol=1e-12)
+    assert np.isfinite(response.bodies["float"].position).all()
+
+
+def test_hydrodynamic_frequency_range_clamps_to_bem_limits():
+    settings = dict(significant_height=2.5, peak_period=8,
+                    directions=[0], spreading=[1], count=32, seed=7)
+    default = pm_equal_energy_components(HYDRO, **settings)
+    clamped = pm_equal_energy_components(
+        HYDRO, frequency_range=(0.001, 10), **settings,
+    )
+    np.testing.assert_array_equal(clamped.omega, default.omega)
+    np.testing.assert_array_equal(clamped.d_omega, default.d_omega)
+
+
+def test_hydrodynamic_wave_rejects_unimplemented_depth_override():
+    wec = WEC("Depth override")
+    body = wec.body("float", HYDRO)
+    wec.coordinate("heave", body.move("heave"))
+    with pytest.raises(ValueError, match="fixed Morison body"):
+        wec.run(PMWave(2.5, 8, seed=7, water_depth=25),
+                dt=0.1, end_time=0.2, ramp_time=1,
+                radiation_memory=0.2)
 
 
 def test_python_builder_rejects_foreign_body_attachment():

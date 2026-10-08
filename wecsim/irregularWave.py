@@ -203,6 +203,7 @@ def jonswap_equal_energy_components(
     seed: int | None = None,
     phase: np.ndarray | None = None,
     gamma: float | None = None,
+    frequency_range: Sequence[float] | None = None,
 ) -> IrregularComponents:
     """Build WEC-Sim's IEC JONSWAP equal-energy bins.
 
@@ -222,6 +223,7 @@ def jonswap_equal_energy_components(
         h5_file, significant_height=significant_height,
         peak_period=peak_period, directions=directions, spreading=spreading,
         count=count, seed=seed, phase=phase, gamma=gamma,
+        frequency_range=frequency_range,
     )
 
 
@@ -240,22 +242,33 @@ def _equal_energy_components(
     if phase is not None and seed is not None:
         raise ValueError("supply either phase or seed")
 
-    if frequency_range is None:
-        if h5_file is None:
-            raise ValueError("a BEM file or explicit frequency_range is required")
+    if h5_file is not None:
         body = BodyClass(str(h5_file))
         body.bodyNumber = 1
         body.readH5file()
         bem_omega = np.asarray(body.hydroData["simulation_parameters"]["w"]).ravel()
         if len(bem_omega) < 2 or not np.isfinite(bem_omega).all():
             raise ValueError("hydrodynamic frequency range is invalid")
-        omega_min, omega_max = float(bem_omega.min()), float(bem_omega.max())
+        bem_min, bem_max = float(bem_omega.min()), float(bem_omega.max())
+    elif frequency_range is None:
+        raise ValueError("a BEM file or explicit frequency_range is required")
+    if frequency_range is None:
+        omega_min, omega_max = bem_min, bem_max
     else:
         limits = np.asarray(frequency_range, dtype=float)
         if (limits.shape != (2,) or not np.isfinite(limits).all()
                 or limits[0] <= 0 or limits[1] <= limits[0]):
             raise ValueError("frequency_range needs two increasing positive rad/s values")
         omega_min, omega_max = map(float, limits)
+        if h5_file is not None:
+            # Current MATLAB waveClass replaces out-of-BEM endpoints with
+            # the corresponding BEM limit before building EqualEnergy bins.
+            if omega_min < bem_min or omega_min > bem_max:
+                omega_min = bem_min
+            if omega_max < bem_min or omega_max > bem_max:
+                omega_max = bem_max
+            if omega_max <= omega_min:
+                raise ValueError("frequency_range has no interval inside the BEM range")
     # Current MATLAB EqualEnergy uses 500,000 equal-width intervals before
     # locating the closest cumulative-energy boundary for each bin.
     dense_omega = np.linspace(omega_min, omega_max, 500_001)

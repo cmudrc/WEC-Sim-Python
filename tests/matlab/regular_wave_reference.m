@@ -27,7 +27,7 @@ writematrix([finite.wavenumber, finite.power], ...
 
 % Current IEC PM and JONSWAP spectra with replayable Threefry phases.
 for spectrum = ["PM", "JS"]
-    for discretization = ["Traditional", "EqualEnergy"]
+    for discretization = ["Traditional", "EqualEnergy", "NarrowEqualEnergy"]
         irregular = waveClass('irregular');
         irregular.period = 8;
         irregular.height = 2.5;
@@ -35,7 +35,12 @@ for spectrum = ["PM", "JS"]
             irregular.height = 4;
         end
         irregular.spectrumType = char(spectrum);
-        irregular.bem.option = char(discretization);
+        if discretization == "NarrowEqualEnergy"
+            irregular.bem.option = 'EqualEnergy';
+            irregular.bem.range = [0.5, 1.5];
+        else
+            irregular.bem.option = char(discretization);
+        end
         irregular.bem.count = 64;
         irregular.phaseSeed = 1;
         irregular.marker.location = [5 5; 10 0; 0 -10];
@@ -46,8 +51,12 @@ for spectrum = ["PM", "JS"]
         irregular.setup([0.4, 2.0], 'infinite', 1, 0.1, 20, ...
             (0:0.1:2)', 9.81, 1000);
         label = lower(char(spectrum));
-        if discretization == "EqualEnergy"
-            label = label + "_equal";
+        if discretization ~= "Traditional"
+            if discretization == "EqualEnergy"
+                label = label + "_equal";
+            else
+                label = label + "_narrow";
+            end
             writematrix([irregular.omega, irregular.dOmega, irregular.spectrum], ...
                 fullfile(outputDir, sprintf('%s_bins.csv', label)));
         else
