@@ -6,6 +6,8 @@ from unittest.mock import patch
 
 import numpy as np
 import pytest
+from scipy.interpolate import CubicSpline
+from scipy.signal import fftconvolve
 
 from wecsim import PMWave, WEC, WorldPoint
 from wecsim.bodyClass import BodyClass
@@ -111,7 +113,7 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path):
 
 
 def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
-    """Check the published 1-degree coefficient hold and native motion."""
+    """Check the published 1-degree hold, force balance, and native motion."""
     source = Path(REFERENCE)
     hydro = (Path(APPLICATIONS)
              / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
@@ -120,6 +122,8 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
                       delimiter=",")
     pto = np.loadtxt(source / f"{prefix}_PassiveYawRegression_pto1.csv",
                      delimiter=",")
+    forces = np.loadtxt(source / f"{prefix}_body1_forces.csv", delimiter=",")
+    mass = np.loadtxt(source / f"{prefix}_body1_mass.csv", delimiter=",")
     components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
     phases = tmp_path / "phases.csv"
     np.savetxt(phases, components_csv[:, 3, None], delimiter=",")
@@ -131,6 +135,34 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
     body.bodyNumber = 1
     body.bodyTotal = 2
     body.readH5file()
+    assert forces.shape == flap.shape == (25001, 25)
+    assert mass.shape == (4,)
+    _max_error(forces[:, 0], flap[:, 0], 1e-10, "force sample time")
+    _max_error(mass, [12700, 1.85e6, 1.85e6, 1.85e6], 1e-9,
+               "published flap mass and inertia")
+    irf = body.hydroData["hydro_coeffs"]["radiation_damping"][
+        "impulse_response_fun"]
+    kernel = CubicSpline(
+        np.asarray(irf["t"]).ravel(),
+        np.asarray(irf["K"])[5, 5] * 1000,
+    )(np.arange(4001) * 0.01)
+    speed = flap[:, 12]
+    radiation = 0.01 * fftconvolve(speed, kernel)[:len(speed)]
+    radiation -= 0.005 * kernel[0] * speed
+    radiation[4000:] -= 0.005 * kernel[-1] * speed[:-4000]
+    _max_error(forces[:, 6], radiation, 1e-6,
+               "source yaw radiation from saved speed and HDF5 IRF")
+    added_mass = body.hydroData["hydro_coeffs"]["added_mass"][
+        "inf_freq"][5, 5] * 1000
+    _max_error(forces[:, 12], added_mass * forces[:, 24], 1e-6,
+               "source yaw added mass from saved acceleration")
+    _max_error(forces[:, 18], np.zeros(len(forces)), 1e-8,
+               "published yaw hydrostatic restoring")
+    _max_error(flap[:, 18], flap[:, 24] - forces[:, 6]
+               - forces[:, 12] - forces[:, 18], 1e-6,
+               "source yaw hydrodynamic force balance")
+    _max_error(flap[:, 18] + pto[:, 17], mass[3] * forces[:, 24],
+               1e-6, "source yaw rigid inertia balance")
     model = SampledPassiveYawExcitation.from_hydro_data(
         body.hydroData, components, dt=.01, end_time=250,
         ramp_time=100, rho=1000, g=9.81,
