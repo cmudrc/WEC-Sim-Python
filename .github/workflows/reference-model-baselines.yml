@@ -12,6 +12,8 @@ on:
       - 'tests/test_rm3_multidof_parity.py'
       - 'tests/test_rm3_b2b_parity.py'
       - 'tests/test_rm3_b2b_cic_parity.py'
+      - 'tests/test_rm3_radiation_diagnostic.py'
+      - 'tools/rm3_radiation_diagnostic.py'
       - 'tests/test_rm3_end_stops_parity.py'
       - 'tests/test_rm3_end_stops_step_diagnostic.py'
       - 'tests/test_rm3_end_stops_source_convergence.py'
@@ -268,6 +270,10 @@ jobs:
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_rm3_radiation_diagnostic.py::test_pinned_bemio_radiation_transfer_matches_diagnostic_fixture
+        if: matrix.model == 'RM3_B2B'
+        env:
+          WEC_SIM_RM3_H5: applications/_Common_Input_Files/RM3/hydroData/rm3.h5
       - run: python -m pytest -q tests/test_rm3_end_stops_parity.py
         if: matrix.model == 'RM3_END_STOPS'
         env:
