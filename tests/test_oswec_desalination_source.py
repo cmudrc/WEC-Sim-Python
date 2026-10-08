@@ -10,6 +10,7 @@ from wecsim import PitchRodLinkage
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
+from wecsim.morison import MorisonElement, irregular_morison_source_drag
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -79,11 +80,47 @@ def test_published_body_local_rod_motion():
 def test_published_hydraulic_measurements_are_active():
     mechanical = _source("simout")
     hydraulic = _source("simout1")
+    pto = _source("Desalination_pto1")
     assert mechanical.shape == (30_001, 4)
     assert hydraulic.shape == (30_001, 8)
+    assert pto.shape == (30_001, 49)
     np.testing.assert_allclose(mechanical[:, 3],
                                mechanical[:, 1] * mechanical[:, 2],
                                rtol=0, atol=1e-7)
+    # The source PTO actuation block delays the measured cylinder force
+    # by one discrete output interval to break its algebraic loop.
+    np.testing.assert_allclose(pto[1:, 39], mechanical[:-1, 2],
+                               rtol=0, atol=1e-8)
+    assert abs(pto[0, 39]) < 1e-12
     assert np.max(np.abs(mechanical[:, 2])) > 1e6
     assert np.max(hydraulic[:, 6]) > 5e6
     assert np.max(hydraulic[:, 2:6]) > .1
+
+
+def test_published_flap_morison_drag_on_saved_body_states():
+    body = _source("Desalination_body1")
+    source = _source("flap_forces")
+    wave = _source("components")
+    components = pm_equal_energy_components(
+        OSWEC_H5, significant_height=2.64, peak_period=9.86,
+        directions=(0,), spreading=(1,), count=250,
+        phase=wave[:, 3:4],
+    )
+    elements = [MorisonElement(
+        point=(0, 0, z), drag_coefficient=(1, 1, 1),
+        added_mass_coefficient=(0, 0, 0), area=(32.4, 0, 32.4),
+        volume=0,
+    ) for z in (-3, -1.2, .6, 2.4, 4.2)]
+    samples = np.unique(np.r_[
+        np.linspace(0, 30_000, 601, dtype=int),
+        np.argmax(np.abs(source[:, 1:7]), axis=0),
+    ])
+    actual = np.array([irregular_morison_source_drag(
+        elements, time=body[i, 0], position=body[i, 1:7],
+        velocity=body[i, 7:13], components=components,
+        water_depth=10.9, ramp_time=50,
+    ) for i in samples])
+    # WEC-Sim logs this body channel with the opposite sign of the source
+    # Morison function's applied force.
+    np.testing.assert_allclose(actual, -source[samples, 1:7],
+                               rtol=0, atol=1e-6)
