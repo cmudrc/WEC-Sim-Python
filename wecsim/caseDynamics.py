@@ -26,6 +26,7 @@ from .irregularWave import (
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
+from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import PassiveYawExcitation, SampledPassiveYawExcitation
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
@@ -92,7 +93,8 @@ def _hydro_file(body, base_dir):
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name", "mean_drift", "fixed",
-              "passive_yaw"})
+              "passive_yaw", "geometry_file", "nonlinear_hydro",
+              "drag_coefficient", "drag_area"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -784,6 +786,28 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 "passive yaw currently needs one pure-yaw body, stationary others, "
                 "regular or PM waves, and independent radiation"
             )
+    nonlinear_indices = [
+        index for index, spec in enumerate(bodies)
+        if spec.get("nonlinear_hydro") is not None
+    ]
+    if nonlinear_indices:
+        heave_map = np.zeros((6, 1))
+        heave_map[2, 0] = 1
+        if (len(bodies) != 1 or nonlinear_indices != [0] or n != 1
+                or not np.array_equal(maps[0], heave_map)
+                or wave["type"] != "regular" or direction != 0 or b2b
+                or bodies[0]["nonlinear_hydro"] != "instantaneous"
+                or bodies[0].get("mean_drift", "none") != "none"
+                or bodies[0].get("passive_yaw", False)):
+            raise ValueError(
+                "instantaneous nonlinear hydro currently needs one pure-heave "
+                "body and a zero-direction regular wave"
+            )
+    for spec in bodies:
+        if spec.get("nonlinear_hydro") is None and any(
+            key in spec for key in ("geometry_file", "drag_coefficient", "drag_area")
+        ):
+            raise ValueError("mesh geometry and drag settings require nonlinear_hydro")
     initial_q = initial_coordinate(
         constraint.get("initial_coordinate", [0] * n), coordinate_names,
         "constraint.initial_coordinate",
@@ -819,6 +843,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     connections = ()
 
     dynamic_bodies = []
+    nonlinear_models = []
     passive_model = None
     pm_elevation = None
     for index, (body_spec, body, mapping) in enumerate(
@@ -826,6 +851,34 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         mass_setting = body_spec.get("mass", "equilibrium")
         if mass_setting != "equilibrium":
             mass_setting = _number(mass_setting, "body.mass", positive=True)
+        mesh_model = None
+        if index - 1 in nonlinear_indices:
+            geometry_file = body_spec.get("geometry_file")
+            if not isinstance(geometry_file, str) or not geometry_file:
+                raise ValueError("instantaneous nonlinear hydro needs geometry_file")
+            geometry_path = (base_dir / geometry_file).expanduser().resolve(strict=True)
+            cd = _number(body_spec.get("drag_coefficient", 0),
+                         "body.drag_coefficient", nonnegative=True)
+            drag_area = _number(body_spec.get("drag_area", 0),
+                                "body.drag_area", nonnegative=True)
+            depth = np.asarray(
+                body.hydroData["simulation_parameters"]["water_depth"]
+            ).ravel()
+            if depth.size != 1 or not np.isfinite(depth[0]) or depth[0] <= 0:
+                raise ValueError("nonlinear hydro needs positive HDF5 water depth")
+            if not np.allclose(centers[index - 1][:2], 0, rtol=0, atol=1e-10):
+                raise ValueError("heave mesh hydro currently needs CG at x=y=0")
+            mesh_model = HeaveMeshHydro.from_stl(
+                geometry_path, center_z=centers[index - 1][2], rho=rho,
+                gravity=g, depth=float(depth[0]), period=period,
+                height=height, ramp_time=ramp_time,
+                mass=None if mass_setting == "equilibrium" else mass_setting,
+                drag_coefficient=cd, drag_area=drag_area,
+            )
+            if mass_setting == "equilibrium":
+                mass_setting = mesh_model.mass
+            auxiliary_files.append(geometry_path)
+        nonlinear_models.append(mesh_model)
         body.mass = mass_setting
         inertia = np.asarray(body_spec.get("inertia", [0, 0, 0]), dtype=float)
         if (inertia.shape != (3,) or not np.isfinite(inertia).all()
@@ -949,16 +1002,27 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             def state_excitation(at_time, coordinate, speed, *,
                                  model=passive_model):
                 return model.force(at_time, coordinate[0])
+        if mesh_model is not None:
+            def state_excitation(at_time, coordinate, speed, *,
+                                 model=mesh_model, linear=excitation):
+                buoyancy, fk, drag = model.forces(
+                    at_time, coordinate[0], speed[0]
+                )
+                result = linear(at_time).copy()
+                result[2] += buoyancy + fk + drag
+                return result
 
         dynamic_bodies.append(DynamicBody(
             rigid_mass=rigid_mass,
             added_mass=tuple(added_mass),
             damping=tuple(radiation_damping),
-            restoring=np.asarray(hydro_force["linearHydroRestCoef"]),
-            static_force=np.array([
-                0, 0, (rho * float(np.asarray(body.dispVol).item()) - physical_mass) * g,
-                0, 0, 0,
-            ]),
+            restoring=(np.zeros((6, 6)) if mesh_model is not None else
+                       np.asarray(hydro_force["linearHydroRestCoef"])),
+            static_force=(np.zeros(6) if mesh_model is not None else
+                          np.array([
+                              0, 0, (rho * float(np.asarray(body.dispVol).item())
+                                     - physical_mass) * g, 0, 0, 0,
+                          ])),
             reference_position=np.r_[center, np.zeros(3)],
             motion=motion,
             excitation=excitation,
@@ -1039,6 +1103,18 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 for t, angle in zip(response.time, response.coordinate[:, 0])
             ]),
         ),)
+    nonlinear_outputs = ()
+    if nonlinear_indices:
+        model = nonlinear_models[0]
+        components = np.array([
+            model.forces(t, q[0], v[0])
+            for t, q, v in zip(response.time, response.coordinate, response.speed)
+        ])
+        nonlinear_outputs = (
+            ("body1_buoyancy_minus_weight", components[:, 0]),
+            ("body1_nonlinear_fk_correction", components[:, 1]),
+            ("body1_quadratic_drag_force", components[:, 2]),
+        )
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
@@ -1047,5 +1123,5 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             generalized_pto if "pto" in case or "ptos" in case else None
         ),
         extra_outputs=(coordinate_outputs + pto_outputs + drift_outputs
-                       + passive_outputs),
+                       + passive_outputs + nonlinear_outputs),
     )

@@ -437,6 +437,40 @@ rotational moment arm.
 Force limits, hard stops, controllers other than the published declutching and
 reactive PI laws, and hydraulic PTO models are not implemented.
 
+### Instantaneous nonlinear hydrodynamics for heave
+
+The Python builder supports the published `Nonlinear_Hydro/ode4/Regular`
+ellipsoid through a heave-only mesh mode. Supply the BEM HDF5 file and an STL
+whose triangle coordinates are relative to the body's center of gravity:
+
+```python
+import numpy as np
+from wecsim import RegularWave, WEC, WorldPoint
+
+wec = WEC("ellipsoid")
+body = wec.body(
+    "ellipsoid", "hydroData/ellipsoid.h5",
+    geometry_file="geometry/elipsoid.stl",
+    nonlinear_hydro="instantaneous", mass="equilibrium",
+    inertia=(1_375_264, 1_375_264, 1_341_721),
+    drag_coefficient=1, drag_area=np.pi * 5**2,
+)
+wec.coordinate("heave", body.move("heave"))
+wec.pto("PTO1", WorldPoint(0, 0, -12.5), body.at(0, 0, 0),
+        damping=1_200_000)
+result = wec.run(RegularWave(height=4, period=6), dt=0.05,
+                 end_time=150, ramp_time=50, rho=1025)
+```
+
+The mode integrates mesh buoyancy, instantaneous free-surface
+Froude–Krylov correction, heave quadratic drag, BEM diffraction/radiation,
+and the configured PTO. The STL determines equilibrium mass when
+`mass="equilibrium"`; this can differ from the HDF5 displaced volume.
+Current validation covers one pure-heave body with its center of gravity at
+horizontal origin in zero-direction regular waves.
+Other motions and sea states raise an error until their mesh force and dynamics
+checks are paired with MATLAB.
+
 The published Sphere free-decay cases can also be calculated with the focused solver:
 
 ```python

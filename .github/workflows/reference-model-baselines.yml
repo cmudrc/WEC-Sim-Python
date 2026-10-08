@@ -29,6 +29,7 @@ on:
       - 'tests/test_sphere_declutching_parity.py'
       - 'tests/test_sphere_latching_parity.py'
       - 'tests/test_case_dynamics_parity.py'
+      - 'tests/test_ellipsoid_nonlinear_hydro_parity.py'
       - 'tests/test_oswec_hinge_dynamics_parity.py'
       - 'tests/test_oswec_nonhydro_parity.py'
       - 'tests/test_oswec_irregular_wave_parity.py'
@@ -51,6 +52,7 @@ on:
       - 'wecsim/controls.py'
       - 'wecsim/ptoConnections.py'
       - 'wecsim/passiveYaw.py'
+      - 'wecsim/nonlinearHydro.py'
       - 'wecsim/api.py'
       - 'wecsim/__init__.py'
       - 'wecsim/cli.py'
@@ -60,7 +62,7 @@ on:
       model:
         description: Run all models or a selected RM3 application
         type: choice
-        options: [all, OSWEC_PASSIVE_YAW_IRR_CONT, OSWEC_PASSIVE_YAW_IRR, OSWEC_PASSIVE_YAW, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
+        options: [all, ELLIPSOID_NLH_REG, OSWEC_PASSIVE_YAW_IRR_CONT, OSWEC_PASSIVE_YAW_IRR, OSWEC_PASSIVE_YAW, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
         default: all
 
 jobs:
@@ -70,7 +72,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'OSWEC_PASSIVE_YAW_IRR_CONT' && '["OSWEC_PASSIVE_YAW_IRR_CONT"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR' && '["OSWEC_PASSIVE_YAW_IRR"]' || inputs.model == 'OSWEC_PASSIVE_YAW' && '["OSWEC_PASSIVE_YAW"]' || inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "OSWEC_PASSIVE_YAW", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
+        model: ${{ fromJSON(inputs.model == 'ELLIPSOID_NLH_REG' && '["ELLIPSOID_NLH_REG"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR_CONT' && '["OSWEC_PASSIVE_YAW_IRR_CONT"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR' && '["OSWEC_PASSIVE_YAW_IRR"]' || inputs.model == 'OSWEC_PASSIVE_YAW' && '["OSWEC_PASSIVE_YAW"]' || inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "OSWEC_PASSIVE_YAW", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -84,7 +86,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR' || matrix.model == 'OSWEC_PASSIVE_YAW' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR_CONT'
+        if: matrix.model == 'ELLIPSOID_NLH_REG' || matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR' || matrix.model == 'OSWEC_PASSIVE_YAW' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR_CONT'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -119,6 +121,7 @@ jobs:
             Multiple_Condition_Runs/RM3_MCROPT3_SeaState
             Mooring/MooringMatrix
             Mean_Drift
+            Nonlinear_Hydro
       - uses: matlab-actions/setup-matlab@v3
         with:
           release: R2025b
@@ -137,6 +140,11 @@ jobs:
           WEC_SIM_MATLAB_CORE_DIR: matlab-ref
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_SPHERE_H5: applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_ellipsoid_nonlinear_hydro_parity.py
+        if: matrix.model == 'ELLIPSOID_NLH_REG'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_live_current_h5.py
         if: matrix.model == 'RM3' || matrix.model == 'OSWEC'
@@ -323,6 +331,8 @@ jobs:
             applications/_Common_Input_Files/RM3/hydroData/rm3.h5
             applications/_Common_Input_Files/OSWEC/hydroData/oswec.h5
             applications/Mean_Drift/hydroData/sphere.h5
+            applications/Nonlinear_Hydro/hydroData/ellipsoid.h5
+            applications/Nonlinear_Hydro/geometry/elipsoid.stl
 
   compare-end-stops-full:
     if: inputs.model == 'RM3_END_STOPS_FULL_PAIR'
