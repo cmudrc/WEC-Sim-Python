@@ -5,10 +5,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.io import loadmat
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import (ImportedSpectrumWave, JONSWAPWave, LatchingControl, NoWave, PMWave,
+from wecsim import (ImportedElevationWave, ImportedSpectrumWave, JONSWAPWave, LatchingControl, NoWave, PMWave,
                     RegularWave, WEC, WorldPoint)
 from wecsim.irregularWave import (imported_spectrum_components,
                                   jonswap_equal_energy_components,
@@ -141,6 +142,26 @@ def test_python_builder_runs_imported_spectrum_with_relative_mat_path():
     assert np.isfinite(response.bodies["float"].position).all()
     assert np.isfinite(response.bodies["spar"].position).all()
     assert np.isfinite(response.ptos["main"].force).all()
+
+
+def test_python_builder_runs_imported_elevation_with_relative_mat_path():
+    source = ("tests/test_objects/test_waveclass/testData/"
+              "etaImport_1_test/etaData.mat")
+    wec = build_wec()
+    response = wec.run(
+        ImportedElevationWave(source), dt=0.1, end_time=0.2,
+        ramp_time=1, radiation_memory=0.2, base_dir=ROOT,
+    )
+    raw = loadmat(ROOT / source)["etaData"]
+    expected = np.interp(response.time, raw[:, 0], raw[:, 1])
+    ramp = (1 - np.cos(np.pi * response.time)) / 2
+    np.testing.assert_allclose(response.wave_elevation, expected * ramp,
+                               rtol=0, atol=1e-12)
+    assert response.raw.auxiliary_files == ((ROOT / source).resolve(),)
+    assert np.isfinite(response.bodies["float"].position).all()
+    assert np.isfinite(response.bodies["spar"].position).all()
+    assert np.isfinite(response.ptos["main"].force).all()
+    assert dict(response.raw.extra_outputs)["body1_excitation_force"].shape == (3, 6)
 
 
 def test_python_builder_rejects_foreign_body_attachment():

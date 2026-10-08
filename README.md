@@ -134,7 +134,7 @@ Supported combinations are:
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
-| `linear_subspace` | `regular`, `regularCIC`, `pm`, `jonswap`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular`, `regularCIC`, `pm`, `jonswap`, `spectrumImport`, `elevationImport`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
 
 The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
 PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at
@@ -326,6 +326,20 @@ result = wec.run(ImportedSpectrumWave("spectrumData1.mat"),
 The file path resolves from `base_dir`. This selects an incident sea for the
 configured Python WEC; the specialized RM3 floating-joint MCR runner remains
 the paired solver for the published four-coordinate RM3 sea-state motion.
+For a sampled time/elevation MAT record, use the same builder with
+`ImportedElevationWave`:
+
+```python
+from wecsim import ImportedElevationWave
+
+result = wec.run(ImportedElevationWave("etaData.mat"),
+                 dt=0.01, end_time=40, ramp_time=10,
+                 radiation_memory=15, base_dir="path/to/inputs")
+```
+
+The named MAT variable defaults to `etaData` and must contain increasing time
+and elevation columns. `reapply_force_ramp=True` explicitly reproduces the
+second force ramp used by the pinned MATLAB body block in paired comparisons.
 The inherited `WaveClass` now uses the pinned MATLAB PM and JONSWAP spectrum
 definitions, including height-dependent PM energy and JONSWAP's inferred
 `gamma` when it is unspecified. Its seeded phases use a local NumPy generator;
