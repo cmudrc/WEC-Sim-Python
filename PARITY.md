@@ -111,6 +111,18 @@ diagnostic transfer calculation reduces the negative zero-frequency values
 to −3.01 and −3.45 kN s/m, but does not make the fits passive. This is a
 low-frequency fit problem consistent with the drift, not proof that the
 full nonlinear trajectory has only one cause.
+The diagnostic also projects the BEM and fitted radiation matrices onto
+the RM3 joint's four moving coordinates: common surge, float heave, spar
+heave, and shared pitch. Pitch is expressed as travel at a 20 m lever for
+an energy-conjugate matrix with consistent units. The fitted matrix's
+least-damped direction is −14.3 kN s/m at zero frequency with cross-body
+radiation off and −17.6 kN s/m with it on. The source BEM matrix has small
+negative eigenvalues too (minimum −0.422 kN s/m across its sampled
+frequencies), so these data do not establish global BEM passivity. At the
+sampled frequency nearest the 8 s wave, the coupled source minimum is
+−0.030 kN s/m while the fit is −5.87 kN s/m. These are properties of the
+linearized radiation data in the active joint subspace, not proof that every
+negative mode is excited in Cases 5 and 6.
 Diagnostic PR #6 was closed without merging its state-space solver. The
 convolution results for Cases 3 and 4 were identical, sample for sample,
 between the original branch point and that diagnostic branch.
