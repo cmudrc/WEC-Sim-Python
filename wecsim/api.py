@@ -17,6 +17,7 @@ import numpy as np
 from .caseDynamics import CaseResponse, run_case
 from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
+from .morison import MorisonElement
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class WorldPoint:
 
 @dataclass(frozen=True)
 class BodyPoint:
-    """A point in a body's reference frame, relative to its HDF5 center of gravity."""
+    """A point in a body's reference frame, relative to its center of gravity."""
 
     body: Body
     x: float
@@ -72,7 +73,7 @@ class VariableHydro:
 @dataclass(frozen=True)
 class Body:
     name: str
-    hydro_file: str | Path
+    hydro_file: str | Path | None
     mass: str | float = "equilibrium"
     inertia: tuple[float, float, float] = (0, 0, 0)
     hydro_body: int | None = None
@@ -84,6 +85,9 @@ class Body:
     drag_area: float = 0.0
     variable_hydro: VariableHydro | None = None
     passive_yaw_threshold: float = 0.0
+    fixed: bool = False
+    center_gravity: tuple[float, float, float] | None = None
+    volume: float = 0.0
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -167,7 +171,7 @@ class RegularCICWave:
 
 @dataclass(frozen=True)
 class PMWave:
-    """Pierson–Moskowitz sea with convolution radiation.
+    """Pierson–Moskowitz sea for supported hydrodynamic or Morison bodies.
 
     ``height`` is significant wave height in metres, ``period`` is peak
     period in seconds, and ``direction`` is the incident heading in degrees.
@@ -181,13 +185,28 @@ class PMWave:
     seed: int | None = None
     phase_file: str | Path | None = None
     frequency_count: int = 500
+    directions: tuple[float, ...] | None = None
+    spreading: tuple[float, ...] | None = None
+    frequency_range: tuple[float, float] | None = None
+    water_depth: float | None = None
 
     def as_case(self) -> dict:
         if self.seed is not None and self.phase_file is not None:
             raise ValueError("PMWave uses either seed or phase_file")
+        if (self.directions is None) != (self.spreading is None):
+            raise ValueError("PMWave directions and spreading must be supplied together")
+        if (self.frequency_range is None) != (self.water_depth is None):
+            raise ValueError("PMWave frequency_range and water_depth must be supplied together")
         wave = {"type": "pm", "height": self.height,
-                "period": self.period, "directions": [self.direction],
-                "spreading": [1.0], "frequency_count": self.frequency_count}
+                "period": self.period,
+                "directions": (list(self.directions) if self.directions is not None
+                               else [self.direction]),
+                "spreading": (list(self.spreading) if self.spreading is not None
+                              else [1.0]),
+                "frequency_count": self.frequency_count}
+        if self.frequency_range is not None:
+            wave["frequency_range"] = list(self.frequency_range)
+            wave["water_depth"] = self.water_depth
         if self.seed is not None:
             wave["seed"] = self.seed
         if self.phase_file is not None:
@@ -275,10 +294,11 @@ class WECResult:
     case: dict
     raw: CaseResponse
     flexible_modes: dict[str, FlexibleModeHistory] = field(default_factory=dict)
+    body_forces: dict[str, np.ndarray] = field(default_factory=dict)
 
 
 class WEC:
-    """Build and run a WEC with named linearized motions and PTO connections.
+    """Build supported WEC motion/PTO layouts or fixed Morison bodies.
 
     Rotations and PTO stroke are linearized about the reference pose. The
     PTO axis stays fixed in world coordinates during a run. Hydrodynamic body
@@ -297,6 +317,7 @@ class WEC:
         self.ptos: list[LinearPTO] = []
         self.rotational_ptos: list[RotationalPTO] = []
         self._floating_gbm_body: Body | None = None
+        self._morison_elements: list[tuple[Body, MorisonElement]] = []
 
     def body(self, name: str, hydro_file: str | Path, *,
              mass: str | float = "equilibrium",
@@ -342,6 +363,38 @@ class WEC:
                     variable_hydro=VariableHydro(ordered, tuple(switch_times)))
         self.bodies.append(body)
         return body
+
+    def fixed_body(self, name: str, *, center_gravity: Sequence[float],
+                   mass: str | float = "equilibrium",
+                   inertia: Sequence[float] = (0, 0, 0),
+                   volume: float = 0.0) -> Body:
+        """Add a stationary body without HDF5 hydrodynamics."""
+        if any(existing.name == name for existing in self.bodies):
+            raise ValueError(f"body name already exists: {name}")
+        center = tuple(center_gravity)
+        if len(center) != 3 or not np.isfinite(center).all():
+            raise ValueError("center_gravity needs three finite coordinates")
+        body = Body(name, None, mass, tuple(inertia), fixed=True,
+                    center_gravity=center, volume=volume)
+        self.bodies.append(body)
+        return body
+
+    def morison_element(self, body: Body, *, point: BodyPoint,
+                        drag_coefficient: Sequence[float],
+                        added_mass_coefficient: Sequence[float],
+                        area: Sequence[float], volume: float,
+                        phase_mode: str = "directional") -> MorisonElement:
+        """Attach a Cartesian Morison element at a body-local point."""
+        if not any(body is item for item in self.bodies) or not body.fixed:
+            raise ValueError("this Morison element needs a fixed body in the WEC")
+        if not isinstance(point, BodyPoint) or point.body is not body:
+            raise ValueError("Morison point must belong to its body")
+        element = MorisonElement(
+            tuple(point.coordinates()), tuple(drag_coefficient),
+            tuple(added_mass_coefficient), tuple(area), volume, phase_mode,
+        )
+        self._morison_elements.append((body, element))
+        return element
 
     def floating_gbm(self, body: Body) -> None:
         """Select a floating surge/heave/pitch joint with HDF5 flexible modes.
@@ -453,6 +506,24 @@ class WEC:
                 simulation[key] = value
         bodies = []
         for index, body in enumerate(self.bodies, start=1):
+            if body.fixed:
+                body_case = {
+                    "name": body.name, "nonhydro": True, "fixed": True,
+                    "center_gravity": list(body.center_gravity),
+                    "mass": body.mass, "inertia": list(body.inertia),
+                    "volume": body.volume,
+                    "morison_elements": [
+                        {"point": list(element.point),
+                         "drag_coefficient": list(element.drag_coefficient),
+                         "added_mass_coefficient": list(element.added_mass_coefficient),
+                         "area": list(element.area), "volume": element.volume,
+                         "phase_mode": element.phase_mode}
+                        for attached_body, element in self._morison_elements
+                        if attached_body is body
+                    ],
+                }
+                bodies.append(body_case)
+                continue
             body_case = {
                 "name": body.name,
                 "hydro_file": str(body.hydro_file),
@@ -485,6 +556,13 @@ class WEC:
                 }
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
+        if any(body.fixed for body in self.bodies):
+            if (not all(body.fixed for body in self.bodies)
+                    or self.coordinates or self.ptos or self.rotational_ptos
+                    or self.body_to_body or radiation_memory is not None
+                    or initial_coordinate is not None or initial_speed is not None):
+                raise ValueError("fixed Morison bodies need no moving coordinates, PTOs, or radiation")
+            constraint = {"kind": "fixed_morison"}
         if self._floating_gbm_body is not None:
             if (len(self.bodies) != 1 or self.bodies[0] is not self._floating_gbm_body
                     or self.coordinates or self.ptos or self.rotational_ptos
@@ -591,8 +669,13 @@ class WEC:
                 extras["flex_acceleration"],
             )
         } if self._floating_gbm_body is not None else {})
+        body_forces = {
+            body.name: extras[f"morison_force_{body.name}"]
+            for body in self.bodies if body.fixed
+        }
         return WECResult(response.time, bodies, coordinates, ptos,
-                         response.wave_elevation, case, response, flexible_modes)
+                         response.wave_elevation, case, response,
+                         flexible_modes, body_forces)
 
     @staticmethod
     def _pto_case(pto: LinearPTO) -> dict:
