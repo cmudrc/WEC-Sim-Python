@@ -120,3 +120,32 @@ class GasChargedAccumulator:
             raise ValueError("accumulator gas volume must remain positive")
         return (self.precharge_pressure
                 * (self.initial_gas_volume / gas_volume) ** self.exponent)
+
+
+@dataclass(frozen=True)
+class ConstantEfficiencyHydraulicMotor:
+    """PTO-Sim hydraulic motor with constant volumetric/mechanical efficiency."""
+
+    displacement_m3_per_rev: float
+    volumetric_efficiency: float
+    mechanical_efficiency: float
+
+    def __post_init__(self):
+        values = np.asarray((self.displacement_m3_per_rev,
+                             self.volumetric_efficiency,
+                             self.mechanical_efficiency), dtype=float)
+        if not np.isfinite(values).all() or (values <= 0).any():
+            raise ValueError("motor displacement and efficiencies must be positive")
+        if self.volumetric_efficiency > 1 or self.mechanical_efficiency > 1:
+            raise ValueError("motor efficiencies cannot exceed one")
+
+    def torque(self, pressure_drop):
+        """Shaft torque in N m from high-minus-low pressure, in Pa."""
+        return (self.mechanical_efficiency * self.displacement_m3_per_rev
+                * np.asarray(pressure_drop, dtype=float) / (2 * np.pi))
+
+    def flow(self, angular_speed):
+        """Hydraulic inlet flow in m³/s for shaft speed in rad/s."""
+        return (self.displacement_m3_per_rev
+                * np.asarray(angular_speed, dtype=float)
+                / (2 * np.pi * self.volumetric_efficiency))

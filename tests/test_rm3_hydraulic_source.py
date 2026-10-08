@@ -10,8 +10,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from wecsim.electricGenerator import EquivalentCircuitGenerator
 from wecsim.hydraulic import (
-    CompressibleCylinder, GasChargedAccumulator, RectifyingCheckValve,
+    CompressibleCylinder, ConstantEfficiencyHydraulicMotor,
+    GasChargedAccumulator, RectifyingCheckValve,
 )
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
@@ -151,3 +153,33 @@ def test_hydraulic_accumulator_pressure_from_port_flow(name, precharge):
     assert np.max(np.abs(trace[:, 2])) > .01
     assert np.max(np.abs(inlet_flow - trace[:, 2])) < 1e-12
     assert np.max(np.abs(reconstructed - trace[:, 1])) < 1e-6
+
+
+def test_hydraulic_motor_and_generator_drive_states():
+    high = _load("high_accumulator")
+    low = _load("low_accumulator")
+    motor_output = _load("motor")
+    generator_output = _load("generator")
+    motor = ConstantEfficiencyHydraulicMotor(120e-6, .9, .85)
+    generator = EquivalentCircuitGenerator(.8, .8, .8, .8, .8)
+
+    pressure_drop = motor_output[:, 3]
+    speed = generator_output[:, 2] * (2 * np.pi / 60)
+    drive_torque = motor.torque(pressure_drop)
+    motor_flow = motor.flow(speed)
+    assert np.max(np.abs(high[:, 1] - low[:, 1] - pressure_drop)) < 2e-7
+    assert np.max(np.abs(speed - motor_output[:, 1] * (2 * np.pi / 60))) < 1e-12
+    assert np.max(np.abs(drive_torque - motor_output[:, 2])) < 1e-10
+    assert np.max(np.abs(motor_flow - motor_output[:, 4])) < 1e-14
+
+    current = generator_output[:, 3]
+    voltage = generator_output[:, 4]
+    torque_em = generator.electromagnetic_torque(current)
+    assert np.max(np.abs(torque_em - generator_output[:, 1])) < 1e-10
+    current_rate = generator.current_rate(speed, current, voltage)
+    speed_rate = generator.speed_rate(speed, current, drive_torque)
+    dt = np.diff(generator_output[:, 0])
+    assert np.max(np.abs(current[:-1] + dt * current_rate[:-1]
+                         - current[1:])) < 1e-10
+    assert np.max(np.abs(speed[:-1] + dt * speed_rate[:-1]
+                         - speed[1:])) < 1e-10
