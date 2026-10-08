@@ -126,6 +126,7 @@ def solve_floating_gbm_pm_orifice(
     hydro_file: str | Path, *, dt: float, end_time: float,
     components: IrregularComponents, pitch_inertia: float,
     orifice: OrificePTO, mass: str | float = "equilibrium",
+    orifice_force_path: str = "coupled",
     ramp_time: float = 10, memory_time: float = 15,
     heave_linear_damping: float = 0, mode_linear_damping: float = 0,
     heave_drag_cd: float = 0, heave_drag_area: float = 0,
@@ -134,14 +135,21 @@ def solve_floating_gbm_pm_orifice(
 ) -> FloatingGBMResponse:
     """Couple one OWC flexible mode and its orifice to a floating body.
 
-    The rigid joint permits surge, heave, and pitch. The orifice acts on the
-    flexible mode and applies the opposite force to rigid heave, as in the
-    published WEC-Sim OWC model. Rigid pitch restoring uses the Euler pitch
-    reported by that model, which changes branch after 90 degrees. The air
-    law remains incompressible when its Mach flag is raised.
+    The rigid joint permits surge, heave, and pitch. The default applies equal
+    and opposite piston forces to the flexible state and rigid heave.
+    ``published_owc`` reproduces the pinned Simulink signal route, where the
+    piston affects reported flexible acceleration and rigid added-mass
+    feedback but is absent from the flexible state-space input. It is for
+    source comparisons, not physical predictions. Rigid pitch restoring uses
+    the source's Euler pitch branch after 90 degrees. Returned flexible
+    acceleration is always the derivative of the simulated state; the pinned
+    source reports a separate piston-inclusive acceleration signal.
     """
     if not isinstance(orifice, OrificePTO):
         raise TypeError("orifice must be an OrificePTO")
+    if (not isinstance(orifice_force_path, str)
+            or orifice_force_path not in ("coupled", "published_owc")):
+        raise ValueError("orifice_force_path must be coupled or published_owc")
     if (not np.isfinite([dt, end_time, ramp_time, memory_time,
                          pitch_inertia, rho, g,
                          heave_linear_damping, mode_linear_damping,
@@ -194,6 +202,13 @@ def solve_floating_gbm_pm_orifice(
     matrix = added_mass.copy()
     matrix[:3, :3] += np.diag([physical_mass, physical_mass, pitch_inertia])
     matrix[3, 3] = float(np.asarray(force["gbm"]["mass_ff"])[0, 0])
+    if matrix[3, 3] <= 0:
+        raise ValueError("floating OWC flexible effective mass must be positive")
+    piston_distribution = (
+        np.array([0, -(1 + matrix[1, 3] / matrix[3, 3]), 0, 0])
+        if orifice_force_path == "published_owc"
+        else np.array([0, -1, 0, 1])
+    )
     stiffness = np.asarray(force["linearHydroRestCoef"])[np.ix_(active, active)].copy()
     stiffness[3, 3] += float(np.asarray(force["gbm"]["stiffness"])[0, 0])
     damping = np.asarray(force["linearDamping"])[np.ix_(active, active)].copy()
@@ -226,7 +241,7 @@ def solve_floating_gbm_pm_orifice(
         for _ in range(12):
             position = previous_q + dt / 2 * (previous_v + trial)
             reaction = float(orifice.evaluate(trial[3]).force)
-            applied = np.array([0, -reaction, 0, reaction])
+            applied = piston_distribution * reaction
             restoring = stiffness @ position
             restoring[2] = stiffness[2, 2] * np.arcsin(np.sin(position[2]))
             current = (excitation[step] - radiation
@@ -239,7 +254,7 @@ def solve_floating_gbm_pm_orifice(
                         + damping + np.diag(2 * drag * np.abs(trial)))
             jacobian[2, 2] += (dt / 2 * stiffness[2, 2]
                                * (np.sign(np.cos(position[2])) - 1))
-            jacobian[:, 3] -= np.array([0, 1, 0, -1]) * (
+            jacobian[:, 3] += piston_distribution * (
                 2 * pto_coefficient * abs(trial[3])
             )
             correction = np.linalg.solve(jacobian, residual)

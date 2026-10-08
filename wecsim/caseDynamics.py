@@ -291,7 +291,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates",
-                           "orifice", "heave_linear_damping",
+                           "orifice", "orifice_force_path", "heave_linear_damping",
                            "mode_linear_damping", "heave_drag_cd",
                            "heave_drag_area", "pitch_drag_cd",
                            "pitch_drag_area"})
@@ -390,6 +390,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                                     "spreading", "seed", "phase_file",
                                     "frequency_count"}
                     or set(constraint) - {"kind", "location", "orifice",
+                                          "orifice_force_path",
                                           "heave_linear_damping",
                                           "mode_linear_damping", "heave_drag_cd",
                                           "heave_drag_area", "pitch_drag_cd",
@@ -435,6 +436,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 hydro[0], dt=dt, end_time=end_time,
                 components=components, pitch_inertia=float(inertia[1]),
                 orifice=orifice, mass=body_mass, ramp_time=ramp_time,
+                orifice_force_path=constraint.get("orifice_force_path", "coupled"),
                 memory_time=_number(sim.get("radiation_memory", 15),
                                     "simulation.radiation_memory", positive=True),
                 heave_linear_damping=_number(constraint.get("heave_linear_damping", 0),

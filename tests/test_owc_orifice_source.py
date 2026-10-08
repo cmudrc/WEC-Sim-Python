@@ -264,6 +264,7 @@ def test_owc_coupled_motion_before_source_air_flag(tmp_path):
         PMWave(height=1, period=4, phase_file=phase_file),
         dt=0.005, end_time=130, ramp_time=10, radiation_memory=15,
     )
+    assert result.case["constraint"]["orifice_force_path"] == "coupled"
     _max_error(result.time, source[:, 0], 1e-10, "OWC time")
     _max_error(result.wave_elevation, _load("wave")[:, 1], 1e-11,
                "OWC incident elevation")
@@ -299,3 +300,47 @@ def test_owc_coupled_motion_before_source_air_flag(tmp_path):
     )
     assert np.isfinite(result.bodies["OWC"].position).all()
     assert np.isfinite(result.flexible_modes["OWC"].position).all()
+
+
+@pytest.mark.skipif(not APPLICATIONS,
+                    reason="BEMIO-generated OWC HDF5 absent")
+def test_owc_published_force_path_motion(tmp_path):
+    """Source-compatible force routing is opt-in and paired through 130 s."""
+    hydro = (Path(APPLICATIONS)
+             / "OWC/OrificeModel/hydroData/test17a_clean.h5")
+    source = _load("OrificeModel_body1")
+    flexible = loadmat(
+        Path(REFERENCE) / "OWC_ORIFICE_Flex_out.mat",
+        simplify_cells=True,
+    )["Flex_out"]["signals"]["values"]
+    phase_file = tmp_path / "owc_phase.csv"
+    np.savetxt(phase_file, _load("components")[:, 3], delimiter=",")
+    model = WEC("OWC source force path")
+    body = model.body("OWC", hydro, inertia=(99.28, 11.04, 99.2))
+    model.floating_gbm(
+        body, orifice=OrificePTO(*_load("parameters").ravel()),
+        orifice_force_path="published_owc",
+        heave_linear_damping=100, mode_linear_damping=100,
+        heave_drag_cd=1.2, heave_drag_area=8,
+        pitch_drag_cd=1.2, pitch_drag_area=8,
+    )
+    result = model.run(
+        PMWave(height=1, period=4, phase_file=phase_file),
+        dt=0.005, end_time=130, ramp_time=10, radiation_memory=15,
+    )
+    assert result.case["constraint"]["orifice_force_path"] == "published_owc"
+    _max_error(result.bodies["OWC"].position[:, 0],
+               source[:, 1], 0.175, "source-path rigid surge")
+    _max_error(result.bodies["OWC"].position[:, 2],
+               source[:, 3], 0.038, "source-path rigid heave")
+    _max_error(result.flexible_modes["OWC"].position[:, 0],
+               flexible[:, 0], 0.006, "source-path flexible displacement")
+    _max_error(result.bodies["OWC"].velocity[:, 2],
+               source[:, 9], 0.080, "source-path rigid heave speed")
+    _max_error(result.flexible_modes["OWC"].velocity[:, 0],
+               flexible[:, 1], 0.051, "source-path flexible speed")
+    first_ten = result.time <= 10
+    _max_error(result.bodies["OWC"].position[first_ten, 2],
+               source[first_ten, 3], 0.002, "source-path first-ten heave")
+    _max_error(result.flexible_modes["OWC"].position[first_ten, 0],
+               flexible[first_ten, 0], 0.0005, "source-path first-ten flex")

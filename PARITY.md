@@ -77,12 +77,14 @@ flexible velocity agrees with hydrodynamic force divided by effective mass to
 `0.00196` m/s² RMS; it differs from the reported acceleration that includes
 the piston by `0.257` m/s² RMS. At 2 s these three values are `-0.00317`,
 `-0.00299`, and `-0.15217` m/s², respectively. The rigid-heave added-mass path
-still receives the reported flexible acceleration. A diagnostic Python run
-using those published signal routes reduces the 130 s heave and flexible
+still receives the reported flexible acceleration. The opt-in
+`orifice_force_path="published_owc"` uses those published signal routes and
+reduces the 130 s heave and flexible
 position differences from `1.94` m and `0.280` m to `0.0366` m and `0.00533` m.
 This identifies the primary cause of their divergence. Python keeps the piston
-reaction in the flexible state equation by default; reproducing the source
-wiring would require a separately labeled compatibility setting.
+reaction in the flexible state equation by default. The source-compatible
+setting is for trajectory comparison; it does not restore the omitted piston
+force or establish physical validity above the source's Mach threshold.
 
 The targeted [RM3 sea-state matrix export](https://github.com/cmudrc/wec-sim-python/actions/runs/37682612044)
 confirms that MATLAB's applied added-mass matrix and adjusted rigid mass sum

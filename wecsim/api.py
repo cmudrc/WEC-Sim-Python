@@ -483,6 +483,7 @@ class WEC:
     def floating_gbm(
         self, body: Body, *, orifice: OrificePTO | None = None,
         pto_name: str = "orifice",
+        orifice_force_path: str = "coupled",
         heave_linear_damping: float = 0,
         mode_linear_damping: float = 0,
         heave_drag_cd: float = 0, heave_drag_area: float = 0,
@@ -492,8 +493,10 @@ class WEC:
 
         The joint and body center of gravity must coincide at the origin.
         Without an orifice, support is a regular-wave body without a PTO.
-        With an orifice, the published one-mode OWC layout supports a PM sea;
-        its piston reacts on rigid heave and the flexible mode.
+        With an orifice, the one-mode OWC layout supports a PM sea. The default
+        couples the piston to rigid heave and the flexible state. The optional
+        ``published_owc`` path reproduces the source's omitted flexible-state
+        piston force for paired comparisons.
         """
         if not any(body is item for item in self.bodies):
             raise ValueError("floating GBM body must belong to this WEC")
@@ -501,6 +504,11 @@ class WEC:
             raise ValueError("a floating GBM body is already selected")
         if orifice is not None and not isinstance(orifice, OrificePTO):
             raise TypeError("orifice must be an OrificePTO")
+        if not isinstance(orifice_force_path, str) or orifice_force_path not in (
+                "coupled", "published_owc"):
+            raise ValueError("orifice_force_path must be coupled or published_owc")
+        if orifice is None and orifice_force_path != "coupled":
+            raise ValueError("published_owc force path needs an orifice")
         settings = dict(
             heave_linear_damping=heave_linear_damping,
             mode_linear_damping=mode_linear_damping,
@@ -521,6 +529,7 @@ class WEC:
         self._floating_gbm_body = body
         if orifice is not None:
             self._floating_gbm_orifice = {"orifice": orifice, "name": pto_name,
+                                          "orifice_force_path": orifice_force_path,
                                           **settings}
 
     def floating_joint(self, float_body: Body, spar_body: Body, *,
