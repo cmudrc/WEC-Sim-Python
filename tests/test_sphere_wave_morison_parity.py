@@ -40,7 +40,7 @@ def test_wave_driven_sphere_morison_force_and_motion():
     )
     assert source.shape == (4001, 37)
     assert wave.shape == (4001, 2)
-    assert source_force.shape == (4001, 2)
+    assert source_force.shape == (4001, 3)
     assert (np.isfinite(source).all() and np.isfinite(wave).all()
             and np.isfinite(source_force).all())
     element = MorisonElement(
@@ -59,13 +59,15 @@ def test_wave_driven_sphere_morison_force_and_motion():
     reconstructed = source_terms[:, 0] - source_terms[:, 1] * source[:, 33]
     _max_error(source_force[:, 0], source[:, 0], 1e-12,
                "source force replay time")
-    _max_error(reconstructed, source_force[:, 1], 1e-6,
-               "Morison force law at MATLAB's saved states")
-    # Simulink's force channel uses acceleration feedback that differs from
-    # the saved output acceleration. Bound this integration-level difference
-    # separately from the pointwise force-law comparison.
-    _max_error(source_force[50:, 1], source_physical[50:], 1000,
-               "source force channel after startup")
+    # The source sphere's floating joint permits surge and pitch. Project
+    # its saved state onto the supported heave coordinate for a strict
+    # source-function comparison, then check the full Simulink force channel
+    # against the replay made with its actual six-DOF state.
+    _max_error(reconstructed, source_force[:, 2], 1e-6,
+               "Morison force law at projected heave states")
+    _max_error(source_force[50:, 1], source_physical[50:], 20,
+               "full-state source force channel after startup")
+    assert np.max(np.abs(source[:, 1])) > 1, "source surge was not exercised"
 
     wec = WEC("Sphere with wave-driven axial Morison element")
     sphere = wec.body("sphere", Path(SPHERE_H5).resolve())
