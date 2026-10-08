@@ -84,7 +84,9 @@ position differences from `1.94` m and `0.280` m to `0.0366` m and `0.00533` m.
 This identifies the primary cause of their divergence. Python keeps the piston
 reaction in the flexible state equation by default. The source-compatible
 setting is for trajectory comparison; it does not restore the omitted piston
-force or establish physical validity above the source's Mach threshold.
+force or establish physical validity above the source's Mach threshold. Surge
+and unwrapped pitch still differ by up to `0.174` m and `0.0107` rad, so exact
+full-trajectory numerical parity remains unestablished.
 
 The targeted [RM3 sea-state matrix export](https://github.com/cmudrc/wec-sim-python/actions/runs/37682612044)
 confirms that MATLAB's applied added-mass matrix and adjusted rigid mass sum

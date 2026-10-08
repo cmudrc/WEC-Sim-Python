@@ -204,6 +204,9 @@ def solve_floating_gbm_pm_orifice(
     matrix[3, 3] = float(np.asarray(force["gbm"]["mass_ff"])[0, 0])
     if matrix[3, 3] <= 0:
         raise ValueError("floating OWC flexible effective mass must be positive")
+    # In the source model, heave added mass sees the reported flexible
+    # acceleration (state acceleration + piston force / flexible mass), even
+    # though the flexible state itself receives no piston force.
     piston_distribution = (
         np.array([0, -(1 + matrix[1, 3] / matrix[3, 3]), 0, 0])
         if orifice_force_path == "published_owc"

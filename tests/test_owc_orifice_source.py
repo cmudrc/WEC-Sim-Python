@@ -331,6 +331,11 @@ def test_owc_published_force_path_motion(tmp_path):
     assert result.case["constraint"]["orifice_force_path"] == "published_owc"
     _max_error(result.bodies["OWC"].position[:, 0],
                source[:, 1], 0.175, "source-path rigid surge")
+    unwrapped_pitch = np.r_[
+        0, np.cumsum((source[1:, 11] + source[:-1, 11]) * 0.005 / 2),
+    ]
+    _max_error(result.coordinates["pitch_unwrapped"].position,
+               unwrapped_pitch, 0.012, "source-path physical pitch")
     _max_error(result.bodies["OWC"].position[:, 2],
                source[:, 3], 0.038, "source-path rigid heave")
     _max_error(result.flexible_modes["OWC"].position[:, 0],
