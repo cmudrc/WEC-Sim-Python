@@ -57,6 +57,7 @@ class Body:
     mass: str | float = "equilibrium"
     inertia: tuple[float, float, float] = (0, 0, 0)
     hydro_body: int | None = None
+    mean_drift: str = "none"
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -95,6 +96,19 @@ class RegularWave:
 
     def as_case(self) -> dict:
         return {"type": "regular", "height": self.height,
+                "period": self.period, "direction": self.direction}
+
+
+@dataclass(frozen=True)
+class RegularCICWave:
+    """Regular incident waves with convolution-integral radiation."""
+
+    height: float
+    period: float
+    direction: float = 0.0
+
+    def as_case(self) -> dict:
+        return {"type": "regularCIC", "height": self.height,
                 "period": self.period, "direction": self.direction}
 
 
@@ -151,10 +165,12 @@ class WEC:
     def body(self, name: str, hydro_file: str | Path, *,
              mass: str | float = "equilibrium",
              inertia: Sequence[float] = (0, 0, 0),
-             hydro_body: int | None = None) -> Body:
+             hydro_body: int | None = None,
+             mean_drift: str = "none") -> Body:
         if any(existing.name == name for existing in self.bodies):
             raise ValueError(f"body name already exists: {name}")
-        body = Body(name, hydro_file, mass, tuple(inertia), hydro_body)
+        body = Body(name, hydro_file, mass, tuple(inertia), hydro_body,
+                    mean_drift)
         self.bodies.append(body)
         return body
 
@@ -200,7 +216,8 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | NoWave, *, dt: float, end_time: float,
+        self, wave: RegularWave | RegularCICWave | NoWave, *,
+        dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
         rho: float | None = None, g: float | None = None,
@@ -208,8 +225,8 @@ class WEC:
         initial_speed: Mapping[str, float] | Sequence[float] | None = None,
     ) -> dict:
         """Return the case mapping used by the validated dynamics runner."""
-        if not isinstance(wave, (RegularWave, NoWave)):
-            raise TypeError("wave must be RegularWave or NoWave")
+        if not isinstance(wave, (RegularWave, RegularCICWave, NoWave)):
+            raise TypeError("wave must be RegularWave, RegularCICWave, or NoWave")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -219,13 +236,16 @@ class WEC:
                 simulation[key] = value
         bodies = []
         for index, body in enumerate(self.bodies, start=1):
-            bodies.append({
+            body_case = {
                 "name": body.name,
                 "hydro_file": str(body.hydro_file),
                 "hydro_body": body.hydro_body if body.hydro_body is not None else index,
                 "mass": body.mass,
                 "inertia": list(body.inertia),
-            })
+            }
+            if body.mean_drift != "none":
+                body_case["mean_drift"] = body.mean_drift
+            bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
         for coordinate in self.coordinates:
             motions = []
@@ -261,7 +281,8 @@ class WEC:
         return case
 
     def run(
-        self, wave: RegularWave | NoWave, *, dt: float, end_time: float,
+        self, wave: RegularWave | RegularCICWave | NoWave, *,
+        dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
         rho: float | None = None, g: float | None = None,

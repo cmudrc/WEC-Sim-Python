@@ -40,6 +40,14 @@ switch string(model)
         end
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
+    case "SPHERE_MEAN_DRIFT"
+        hydroDir = fullfile(repoRoot, 'applications', 'Mean_Drift', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "Mean_Drift";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Mean_Drift'));
     case "RM3_B2B"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', 'RM3', 'hydroData');
         cd(hydroDir);
@@ -334,6 +342,24 @@ for iCase = 1:numel(cases)
         writematrix(stiffness, fullfile(outDir, ...
             'RM3_MOORING_MATRIX_stiffness.csv'));
     end
+    if string(model) == "SPHERE_MEAN_DRIFT"
+        assert(simu.dt == 0.01 && simu.endTime == 100 && ...
+            simu.rampTime == 20 && strcmp(waves.type, 'regularCIC') && ...
+            waves.height == 0.1 && waves.period == 2 && ...
+            body(1).meanDrift == 1, ...
+            'The pinned Sphere mean-drift settings changed');
+        assert(isfield(body(1).hydroForce.hf1.fExt, 'md') && ...
+            any(body(1).hydroForce.hf1.fExt.md ~= 0), ...
+            'The source mean-drift excitation is absent');
+        writematrix([body(1).hydroForce.hf1.fExt.re(:), ...
+            body(1).hydroForce.hf1.fExt.im(:), ...
+            body(1).hydroForce.hf1.fExt.md(:)], ...
+            fullfile(outDir, 'SPHERE_MEAN_DRIFT_excitation_coefficients.csv'));
+        writematrix([output.wave.time(:), output.wave.elevation(:)], ...
+            fullfile(outDir, 'SPHERE_MEAN_DRIFT_wave.csv'));
+        writematrix([body(1).mass, body(1).inertia], ...
+            fullfile(outDir, 'SPHERE_MEAN_DRIFT_mass_properties.csv'));
+    end
     for iBody = 1:numel(output.bodies)
         response = output.bodies(iBody);
         values = [response.time(:), response.position, response.velocity, ...
@@ -367,6 +393,10 @@ for iCase = 1:numel(cases)
         if string(model) == "RM3_Radiation_Options"
             values = [values, response.forceRadiationDamping, ...
                 response.forceAddedMass];
+        end
+        if string(model) == "SPHERE_MEAN_DRIFT"
+            values = [values, response.forceRadiationDamping, ...
+                response.forceAddedMass, response.forceRestoring];
         end
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
