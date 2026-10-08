@@ -86,6 +86,7 @@ class Body:
     drag_area: float = 0.0
     variable_hydro: VariableHydro | None = None
     passive_yaw_threshold: float = 0.0
+    yaw_heading_bank: tuple[float, ...] | None = None
     fixed: bool = False
     center_gravity: tuple[float, float, float] | None = None
     volume: float = 0.0
@@ -376,6 +377,7 @@ class WEC:
              mean_drift: str = "none",
              passive_yaw: bool = False,
              passive_yaw_threshold: float = 0.0,
+             yaw_heading_bank: Sequence[float] | None = None,
              geometry_file: str | Path | None = None,
              nonlinear_hydro: str | None = None,
              drag_coefficient: float = 0.0,
@@ -388,10 +390,20 @@ class WEC:
                 or passive_yaw_threshold < 0
                 or (passive_yaw_threshold > 0 and passive_yaw is not True)):
             raise ValueError("passive_yaw_threshold needs a nonnegative degree value and passive_yaw=True")
+        if yaw_heading_bank is not None:
+            headings = np.asarray(yaw_heading_bank, dtype=float)
+            if (not passive_yaw or passive_yaw_threshold
+                    or headings.ndim != 1 or len(headings) < 2
+                    or not np.isfinite(headings).all()
+                    or not np.all(np.diff(headings) > 0)
+                    or headings[0] < -180 or headings[-1] > 180):
+                raise ValueError("yaw_heading_bank needs passive_yaw, no threshold, and ordered directions in [-180, 180]")
+            yaw_heading_bank = tuple(float(value) for value in headings)
         body = Body(name, hydro_file, mass, tuple(inertia), hydro_body,
                     mean_drift, passive_yaw, geometry_file, nonlinear_hydro,
                     drag_coefficient, drag_area,
-                    passive_yaw_threshold=passive_yaw_threshold)
+                    passive_yaw_threshold=passive_yaw_threshold,
+                    yaw_heading_bank=yaw_heading_bank)
         self.bodies.append(body)
         return body
 
@@ -633,6 +645,8 @@ class WEC:
                 body_case["passive_yaw"] = True
             if body.passive_yaw_threshold:
                 body_case["passive_yaw_threshold"] = body.passive_yaw_threshold
+            if body.yaw_heading_bank is not None:
+                body_case["yaw_heading_bank"] = list(body.yaw_heading_bank)
             if body.geometry_file is not None:
                 body_case["geometry_file"] = str(body.geometry_file)
             if body.nonlinear_hydro is not None:
@@ -736,7 +750,8 @@ class WEC:
                     or body.mean_drift != "none" or body.passive_yaw
                     or body.geometry_file is not None or body.nonlinear_hydro is not None
                     or body.variable_hydro is not None or body.drag_coefficient
-                    or body.drag_area or body.passive_yaw_threshold):
+                    or body.drag_area or body.passive_yaw_threshold
+                    or body.yaw_heading_bank is not None):
                 raise ValueError("floating_joint needs equilibrium-mass hydrodynamic bodies without extra force models")
             inertia = np.asarray(body.inertia, dtype=float)
             if inertia.shape != (3,) or not np.isfinite(inertia).all() or inertia[1] <= 0:
