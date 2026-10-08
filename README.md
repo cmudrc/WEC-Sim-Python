@@ -149,9 +149,12 @@ published OWC input file. `seed=128` makes a reproducible **Python** sea;
 replaying the MATLAB sea requires `phase_file` with its 500 saved phases.
 `compressibility_flag` marks speeds beyond the chosen Mach threshold without
 changing the incompressible law. Paired motion is gated only through 6 s;
-the Python and MATLAB heave and flexible trajectories diverge later. The
-published MATLAB air model first exceeds its Mach threshold at 10.13 s, so
-its later trajectory is not a physical-accuracy target.
+the Python and MATLAB heave and flexible trajectories diverge later. In the
+pinned OWC Simulink model, the piston reaction enters the reported flexible
+acceleration but does not enter the flexible state-space integrator. Python
+applies that reaction to the flexible motion. The published MATLAB air model
+also first exceeds its Mach threshold at 10.13 s, so its later trajectory is
+not a physical-accuracy target.
 
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`

@@ -2,6 +2,8 @@
 
 import os
 from pathlib import Path
+from xml.etree import ElementTree
+from zipfile import ZipFile
 
 import numpy as np
 import pytest
@@ -17,6 +19,7 @@ from wecsim.irregularWave import (
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+APPLICATION_SOURCE = os.environ.get("WEC_SIM_APPLICATIONS_SOURCE_DIR", APPLICATIONS)
 pytestmark = pytest.mark.skipif(
     not REFERENCE, reason="fresh MATLAB OWC orifice output absent",
 )
@@ -67,6 +70,46 @@ def test_published_orifice_force_on_matlab_piston_motion():
                "orifice power")
     _max_error(result.absorbed_power, -result.force * piston_speed,
                1e-8, "passive orifice energy")
+
+
+@pytest.mark.skipif(not APPLICATION_SOURCE,
+                    reason="published OWC Simulink model absent")
+def test_owc_source_piston_omitted_from_flexible_state_integration():
+    model = (Path(APPLICATION_SOURCE) / "OWC/OrificeModel/OWC_GBM.slx")
+    with ZipFile(model) as archive:
+        system = ElementTree.fromstring(archive.read(
+            "simulink/systems/system_831_5393.xml",
+        ))
+    edges = set()
+    for line in system.findall(".//Line"):
+        ports = [(item.get("Name"), item.text)
+                 for item in line.iter("P")]
+        source = next(value for name, value in ports if name == "Src")
+        edges.update((source, value) for name, value in ports
+                     if name == "Dst")
+    # The state-space input is mass^-1 times hydrodynamic force. The piston
+    # force joins the separate reported-acceleration path instead.
+    assert ("831:5394#out:1", "831:5408#in:2") in edges
+    assert ("831:5408#out:1", "831:5404#in:2") in edges
+    assert ("831:5404#out:1", "831:5401#in:1") in edges
+    assert ("831:5402#out:1", "831:5395#in:4") in edges
+    assert ("831:5395#out:1", "831:5411#in:2") in edges
+
+    flexible = loadmat(
+        Path(REFERENCE) / "OWC_ORIFICE_Flex_out.mat",
+        simplify_cells=True,
+    )["Flex_out"]
+    time = np.asarray(flexible["time"]).ravel()
+    values = np.asarray(flexible["signals"]["values"])
+    mass = _load("flexible_effective_mass").item()
+    velocity_derivative = np.gradient(values[:, 1], time)
+    early = (time > 0) & (time < 6)
+    hydro_only_error = velocity_derivative[early] - values[early, 3] / mass
+    reported_error = velocity_derivative[early] - values[early, 2]
+    assert np.sqrt(np.mean(hydro_only_error**2)) < 0.0021
+    assert np.max(np.abs(hydro_only_error)) < 0.021
+    assert np.sqrt(np.mean(reported_error**2)) > 0.25
+    assert np.max(np.abs(reported_error)) > 0.7
 
 
 @pytest.mark.skipif(not APPLICATIONS,
