@@ -50,13 +50,13 @@ def test_public_sphere_imported_elevation_motion_and_force():
     )
     assert source.shape == (4001, 25)
     _max_error(result.time, source[:, 0], 1e-10, "time")
-    _max_error(result.wave_elevation, source_wave[:, 1], 1e-10,
+    _max_error(result.wave_elevation, source_wave[:, 1], 1e-12,
                "wave elevation")
     force = dict(result.raw.extra_outputs)["body1_excitation_force"]
-    _max_error(force, source[:, 19:25], 1e-3, "six excitation forces")
-    _max_error(result.bodies["sphere"].position[:, 2], source[:, 3], 0.01,
+    _max_error(force, source[:, 19:25], 1e-6, "six excitation forces")
+    _max_error(result.bodies["sphere"].position[:, 2], source[:, 3], 1e-4,
                "heave position")
-    _max_error(result.bodies["sphere"].velocity[:, 2], source[:, 9], 0.01,
+    _max_error(result.bodies["sphere"].velocity[:, 2], source[:, 9], 1e-4,
                "heave velocity")
     assert result.raw.auxiliary_files == (
         (root / "Free_Decay/0m/etaData.mat").resolve(),
