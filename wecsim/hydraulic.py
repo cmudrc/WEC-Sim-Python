@@ -51,6 +51,34 @@ class CompressibleCylinder:
 
 
 @dataclass(frozen=True)
+class IdealDoubleActingCylinder:
+    """Incompressible two-chamber cylinder away from its travel stops.
+
+    Rod speed is positive when chamber A expands. Port B flow is reported in
+    the source block's outflow convention. Network pressures are inputs; this
+    component does not solve the connected hydraulic circuit.
+    """
+
+    area_a: float
+    area_b: float
+
+    def __post_init__(self):
+        areas = np.asarray((self.area_a, self.area_b), dtype=float)
+        if not np.isfinite(areas).all() or np.any(areas <= 0):
+            raise ValueError("cylinder piston areas must be finite and positive")
+
+    def force(self, pressure_a, pressure_b):
+        """Force exerted by the cylinder rod, in newtons."""
+        return (self.area_a * np.asarray(pressure_a, dtype=float)
+                - self.area_b * np.asarray(pressure_b, dtype=float))
+
+    def port_flows(self, rod_speed):
+        """A-port inflow and B-port outflow, in m³/s."""
+        speed = np.asarray(rod_speed, dtype=float)
+        return self.area_a * speed, self.area_b * speed
+
+
+@dataclass(frozen=True)
 class RectifyingCheckValve:
     """Four-port PTO-Sim valve with smooth pressure-dependent check openings."""
 

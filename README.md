@@ -1004,6 +1004,10 @@ volume, and hard-stop settings for the published Desalination accumulator.
 Given its measured inlet flow and startup pressure, the Python component
 integrates liquid volume and reproduces the source pressure trace. The
 network must still predict that flow to run independently.
+`IdealDoubleActingCylinder(area_a=.26, area_b=.26)` computes the published
+incompressible cylinder's rod force and A-in/B-out port flows from chamber
+pressures and rod speed. The source force sensor reverses the rod-force sign.
+The Python network does not yet predict those chamber pressures.
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
