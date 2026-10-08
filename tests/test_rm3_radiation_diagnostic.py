@@ -6,7 +6,8 @@ import numpy as np
 import pytest
 
 from tools.rm3_radiation_diagnostic import (
-    common_surge_curves, common_surge_feedthrough,
+    active_mode_minimum_damping, common_surge_curves,
+    common_surge_feedthrough,
 )
 from wecsim.rm3Regular import solve_rm3_regular
 
@@ -27,6 +28,21 @@ def test_fitted_common_surge_has_opposite_low_frequency_sign():
     assert np.all(feedthrough > 0)
     assert np.all(fitted[:, 0] + feedthrough < -2_000)
     assert np.all(fitted[:, np.argmin(abs(fitted_frequency - 2 * np.pi / 8))] > 0)
+
+
+def test_fitted_radiation_has_large_negative_active_joint_modes():
+    """Compare physical RM3 joint motions, not unconstrained six-DOF bodies."""
+    frequency, source, fitted_frequency, fitted = active_mode_minimum_damping(RM3)
+    np.testing.assert_array_equal(fitted_frequency[1:], frequency)
+    # Source BEM itself has small negative eigenvalues, so this does not
+    # certify global BEM passivity. The fitted negative directions are much
+    # larger, even in the four-dimensional moving-joint subspace.
+    assert np.all(source.min(axis=1) > -500)
+    assert fitted[0, 0] < -14_000
+    assert fitted[1, 0] < -17_000
+    wave_index = np.argmin(abs(frequency - 2 * np.pi / 8))
+    assert -50 < source[1, wave_index] < 0
+    assert fitted[1, wave_index + 1] < -5_000
 
 
 @pytest.mark.parametrize("body_to_body", [False, True])

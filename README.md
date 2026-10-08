@@ -1,9 +1,9 @@
 # wec-sim-python
 
 > **cmudrc fork status:** This is an active parity effort, not yet a complete
-> wave energy converter simulator. A case-driven dynamics runner now covers
-> Sphere heave free decay, RM3 regular-wave coupled motion, and OSWEC
-> hinged pitch. Other mechanical layouts and force models remain unsupported.
+> wave energy converter simulator. Selected Sphere, RM3, OSWEC, and barge
+> cases have paired MATLAB trajectory checks; general WEC-Sim dynamics and
+> several published applications remain unsupported.
 > See [PARITY.md](PARITY.md) for verified behavior, current
 > MATLAB reference revision, and the remaining work.
 
