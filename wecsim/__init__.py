@@ -7,7 +7,7 @@ from .api import (
 )
 from .controls import DeclutchingControl, LatchingControl
 from .crank import AdjustableRodCrank, FixedRodCrank, PitchRodLinkage
-from .cable import WecSimCableTension
+from .cable import PlanarCableAttachment, WecSimCableTension
 from .desalination import (
     DynamicPressureReliefValve, FourValveRectifiedCylinder,
     ReverseOsmosisHydraulicNetwork,
@@ -64,6 +64,6 @@ __all__ = [
     "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",
     "OSWECHydraulicResponse", "run_oswec_rectified_hydraulic",
     "OSWECDesalinationResponse", "run_oswec_desalination",
-    "WecSimCableTension",
+    "PlanarCableAttachment", "WecSimCableTension",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]

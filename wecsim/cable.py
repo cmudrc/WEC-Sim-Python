@@ -42,3 +42,65 @@ class WecSimCableTension:
             0.,
         )
         return float(force) if np.ndim(force) == 0 else force
+
+
+@dataclass(frozen=True)
+class PlanarCableAttachment:
+    """Cable endpoints fixed to two body centers in the x/z pitch plane.
+
+    Offsets are body-local ``(x, z)`` coordinates from each body's center of
+    gravity. Poses and rates use ``(x, z, pitch)`` and ``(vx, vz, pitch_rate)``.
+    The returned displacement is endpoint distance minus ``initial_length``.
+    """
+
+    base_offset: tuple[float, float]
+    follower_offset: tuple[float, float]
+    initial_length: float
+
+    def __post_init__(self):
+        for label in ("base_offset", "follower_offset"):
+            value = np.asarray(getattr(self, label), dtype=float)
+            if value.shape != (2,) or not np.isfinite(value).all():
+                raise ValueError(f"{label} must be a finite x/z point")
+        if not np.isfinite(self.initial_length) or self.initial_length <= 0:
+            raise ValueError("initial cable length must be positive")
+
+    def motion(self, base_pose, base_rate, follower_pose, follower_rate):
+        arrays = [np.asarray(value, dtype=float) for value in (
+            base_pose, base_rate, follower_pose, follower_rate,
+        )]
+        if (arrays[0].shape != (3,) and
+                (arrays[0].ndim != 2 or arrays[0].shape[1] != 3)):
+            raise ValueError("cable poses and rates must have three x/z/pitch columns")
+        if any(value.shape != arrays[0].shape or not np.isfinite(value).all()
+               for value in arrays):
+            raise ValueError("cable poses and rates must be finite and aligned")
+
+        def endpoint(pose, rate, offset):
+            local_x, local_z = offset
+            sine, cosine = np.sin(pose[..., 2]), np.cos(pose[..., 2])
+            point = np.stack((
+                pose[..., 0] + local_x * cosine + local_z * sine,
+                pose[..., 1] - local_x * sine + local_z * cosine,
+            ), axis=-1)
+            speed = np.stack((
+                rate[..., 0] + (-local_x * sine + local_z * cosine)
+                * rate[..., 2],
+                rate[..., 1] + (-local_x * cosine - local_z * sine)
+                * rate[..., 2],
+            ), axis=-1)
+            return point, speed
+
+        base_point, base_speed = endpoint(arrays[0], arrays[1],
+                                          self.base_offset)
+        follower_point, follower_speed = endpoint(arrays[2], arrays[3],
+                                                  self.follower_offset)
+        vector = follower_point - base_point
+        length = np.linalg.norm(vector, axis=-1)
+        if np.any(length <= 0):
+            raise ValueError("cable endpoints must not coincide")
+        speed = np.sum(vector * (follower_speed - base_speed), axis=-1) / length
+        displacement = length - self.initial_length
+        if np.ndim(displacement) == 0:
+            return float(displacement), float(speed)
+        return displacement, speed
