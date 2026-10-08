@@ -1,0 +1,32 @@
+"""Reject passive-yaw configurations whose directional physics are absent."""
+
+from pathlib import Path
+
+import pytest
+
+from wecsim import RegularWave, WEC
+
+
+HYDRO = (Path(__file__).parent / "test_objects/test_bodyclass/testData"
+         / "hydroData/oswec.h5")
+
+
+def test_passive_yaw_rejects_non_yaw_motion():
+    wec = WEC("Unsupported passive yaw")
+    flap = wec.body("flap", HYDRO, mass=12700,
+                    inertia=(1.85e6,) * 3, passive_yaw=True)
+    wec.coordinate("heave", flap.move("heave"))
+    with pytest.raises(ValueError, match="one pure-yaw body"):
+        wec.run(RegularWave(2.5, 8, 10), dt=0.1,
+                end_time=0.1, ramp_time=100)
+
+
+def test_passive_yaw_rejects_incomplete_bem_heading_range():
+    # This historical OSWEC fixture contains headings only from 0 to 90°.
+    wec = WEC("Incomplete passive yaw")
+    flap = wec.body("flap", HYDRO, mass=12700,
+                    inertia=(1.85e6,) * 3, passive_yaw=True)
+    wec.coordinate("yaw", flap.move("yaw"))
+    with pytest.raises(ValueError, match="full-circle BEM headings"):
+        wec.run(RegularWave(2.5, 8, 10), dt=0.1,
+                end_time=0.1, ramp_time=100)

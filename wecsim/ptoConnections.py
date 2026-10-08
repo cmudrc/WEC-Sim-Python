@@ -110,7 +110,7 @@ def _endpoint(spec, name, maps, centers, names):
     return centers[index] + offset, point_jacobian
 
 
-def build_linear_ptos(specs, maps, centers, names):
+def build_linear_ptos(specs, maps, centers, names, coordinate_names=None):
     """Return connections and their total linear generalized force law.
 
     ``K``, ``C``, and ``bias`` satisfy ``F = -K q - C q_dot + bias``.
@@ -126,10 +126,10 @@ def build_linear_ptos(specs, maps, centers, names):
     connections = []
     seen = set()
     for position, raw in enumerate(specs, start=1):
-        spec = _object(raw, f"ptos[{position}]", {"name", "kind", "from", "to"},
+        spec = _object(raw, f"ptos[{position}]", {"name", "kind"},
                        {"name", "kind", "from", "to", "axis", "damping",
                         "stiffness", "equilibrium_position", "pretension",
-                        "control"})
+                        "control", "coordinate"})
         name = spec["name"]
         if (not isinstance(name, str)
                 or re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) is None
@@ -137,21 +137,35 @@ def build_linear_ptos(specs, maps, centers, names):
                 or name in seen):
             raise ValueError("PTO names must be unique identifiers")
         seen.add(name)
-        if spec["kind"] != "linear_actuator":
-            raise ValueError("ptos currently support linear_actuator only")
-        first, first_j = _endpoint(spec["from"], f"ptos[{position}].from",
-                                   maps, centers, names)
-        second, second_j = _endpoint(spec["to"], f"ptos[{position}].to",
-                                     maps, centers, names)
-        direction = (_vector(spec["axis"], f"ptos[{position}].axis")
-                     if "axis" in spec else second - first)
-        norm = np.linalg.norm(direction)
-        if norm == 0 or not np.isfinite(norm):
-            raise ValueError("PTO axis needs noncoincident endpoints or an explicit axis")
-        direction = direction / norm
-        jacobian = direction @ (second_j - first_j)
-        if not np.any(jacobian):
-            raise ValueError("PTO attachment has no motion in its force axis")
+        if spec["kind"] == "linear_actuator":
+            if {"from", "to"} - spec.keys() or "coordinate" in spec:
+                raise ValueError("linear actuator needs from and to endpoints")
+            first, first_j = _endpoint(spec["from"], f"ptos[{position}].from",
+                                       maps, centers, names)
+            second, second_j = _endpoint(spec["to"], f"ptos[{position}].to",
+                                         maps, centers, names)
+            direction = (_vector(spec["axis"], f"ptos[{position}].axis")
+                         if "axis" in spec else second - first)
+            norm = np.linalg.norm(direction)
+            if norm == 0 or not np.isfinite(norm):
+                raise ValueError("PTO axis needs noncoincident endpoints or an explicit axis")
+            direction = direction / norm
+            jacobian = direction @ (second_j - first_j)
+            if not np.any(jacobian):
+                raise ValueError("PTO attachment has no motion in its force axis")
+        elif spec["kind"] == "coordinate_torque":
+            if (set(spec) - {"name", "kind", "coordinate", "damping",
+                             "stiffness", "equilibrium_position", "pretension"}
+                    or coordinate_names is None
+                    or spec.get("coordinate") not in coordinate_names):
+                raise ValueError("coordinate torque needs one named rotation coordinate")
+            jacobian = np.zeros(n)
+            coordinate_index = coordinate_names.index(spec["coordinate"])
+            if not any(np.any(mapping[3:, coordinate_index]) for mapping in maps):
+                raise ValueError("coordinate torque requires rotational motion")
+            jacobian[coordinate_index] = 1
+        else:
+            raise ValueError("PTO kind must be linear_actuator or coordinate_torque")
         coefficient = _number(spec.get("damping", 0),
                               f"ptos[{position}].damping", nonnegative=True)
         spring = _number(spec.get("stiffness", 0),

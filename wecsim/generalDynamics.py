@@ -34,6 +34,7 @@ class DynamicBody:
     motion: Callable[[np.ndarray, np.ndarray], BodyMotion]
     excitation: Callable[[float], np.ndarray]
     radiation_kernel: np.ndarray | None = None  # (lag, 6, 6 * body_count)
+    state_excitation: Callable[[float, np.ndarray, np.ndarray], np.ndarray] | None = None
 
 
 @dataclass(frozen=True)
@@ -119,6 +120,8 @@ class GeneralizedDynamics:
                 or not np.isfinite(self.pto_bias).all()):
             raise ValueError("PTO matrices and force vectors must match the coordinate count")
         for body in self.bodies:
+            if body.state_excitation is not None and not callable(body.state_excitation):
+                raise TypeError("state_excitation must be callable")
             if (len(body.added_mass) != len(bodies)
                     or len(body.damping) != len(bodies)):
                 raise ValueError("each body needs one hydrodynamic block per body")
@@ -201,7 +204,13 @@ class GeneralizedDynamics:
             j = motion.jacobian
             rigid_mass = (body.rigid_mass if self.added_mass_delay is None
                           else self.adjusted_rigid_mass[i])
-            body_force = (body.static_force + body.excitation(at_time)
+            excitation = (body.excitation(at_time)
+                          if body.state_excitation is None else
+                          np.asarray(body.state_excitation(
+                              at_time, coordinate, speed), dtype=float))
+            if excitation.shape != (6,) or not np.isfinite(excitation).all():
+                raise ValueError("body excitation must be a finite six-vector")
+            body_force = (body.static_force + excitation
                           - body.restoring @ motion.displacement
                           - rigid_mass @ motion.bias_acceleration)
             mass += j.T @ rigid_mass @ j

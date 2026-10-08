@@ -112,7 +112,33 @@ Supported combinations are:
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
-| `linear_subspace` | `regular`, `regularCIC`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular`, `regularCIC`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+
+The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
+PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at
+the wave heading relative to its current yaw angle:
+
+```python
+from wecsim import RegularWave, WEC, WorldPoint
+
+wec = WEC("Passive-yaw OSWEC")
+flap = wec.body("flap", "oswec.h5", mass=12_700,
+                inertia=(1.85e6,) * 3, passive_yaw=True)
+wec.body("base", "oswec.h5", mass=999, inertia=(999,) * 3)
+yaw = wec.coordinate("yaw", flap.move("yaw", pivot=WorldPoint(0, 0, -8.9)))
+wec.rotational_pto("hinge", yaw, damping=120_000)
+result = wec.run(RegularWave(2.5, 8, direction=10),
+                 dt=0.01, end_time=600, ramp_time=100)
+angle = result.bodies["flap"].position[:, 5]
+absorbed_power = result.ptos["hinge"].absorbed_power
+```
+
+The rotational PTO reports angle in radians as `stroke`, angular speed in
+rad/s as `velocity`, and torque in N m as `force`. Passive yaw currently
+supports one pure-yaw hydrodynamic body, stationary additional bodies,
+regular waves, and independent radiation with full-circle BEM headings.
+The Python excitation interpolates continuously; the pinned MATLAB case
+holds its heading coefficients until the angle changes by 0.01 degree.
 
 For the published Sphere `Mean_Drift` application, select the control-surface
 coefficient in the generated HDF5 file and use convolution radiation:

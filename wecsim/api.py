@@ -58,6 +58,7 @@ class Body:
     inertia: tuple[float, float, float] = (0, 0, 0)
     hydro_body: int | None = None
     mean_drift: str = "none"
+    passive_yaw: bool = False
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -86,6 +87,17 @@ class LinearPTO:
     equilibrium_position: float | None = None
     pretension: float | None = None
     control: DeclutchingControl | LatchingControl | None = None
+
+
+@dataclass(frozen=True)
+class RotationalPTO:
+    """A torsional spring and damper acting on a rotation coordinate."""
+
+    name: str
+    coordinate: Coordinate
+    damping: float = 0.0
+    stiffness: float = 0.0
+    equilibrium_angle: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -126,6 +138,8 @@ class MotionHistory:
 
 @dataclass(frozen=True)
 class PTOHistory:
+    """PTO stroke in metres, or angle in radians for a rotational PTO."""
+
     stroke: np.ndarray
     velocity: np.ndarray
     force: np.ndarray
@@ -161,16 +175,18 @@ class WEC:
         self.bodies: list[Body] = []
         self.coordinates: list[Coordinate] = []
         self.ptos: list[LinearPTO] = []
+        self.rotational_ptos: list[RotationalPTO] = []
 
     def body(self, name: str, hydro_file: str | Path, *,
              mass: str | float = "equilibrium",
              inertia: Sequence[float] = (0, 0, 0),
              hydro_body: int | None = None,
-             mean_drift: str = "none") -> Body:
+             mean_drift: str = "none",
+             passive_yaw: bool = False) -> Body:
         if any(existing.name == name for existing in self.bodies):
             raise ValueError(f"body name already exists: {name}")
         body = Body(name, hydro_file, mass, tuple(inertia), hydro_body,
-                    mean_drift)
+                    mean_drift, passive_yaw)
         self.bodies.append(body)
         return body
 
@@ -194,7 +210,8 @@ class WEC:
             equilibrium_position: float | None = None,
             pretension: float | None = None,
             control: DeclutchingControl | LatchingControl | None = None) -> LinearPTO:
-        if any(existing.name == name for existing in self.ptos):
+        if any(existing.name == name for existing in
+               (*self.ptos, *self.rotational_ptos)):
             raise ValueError(f"PTO name already exists: {name}")
         for point in (from_point, to_point):
             if not isinstance(point, (BodyPoint, WorldPoint)):
@@ -213,6 +230,24 @@ class WEC:
             damping, stiffness, equilibrium_position, pretension, control,
         )
         self.ptos.append(pto)
+        return pto
+
+    def rotational_pto(self, name: str, coordinate: Coordinate, *,
+                       damping: float = 0.0, stiffness: float = 0.0,
+                       equilibrium_angle: float = 0.0) -> RotationalPTO:
+        """Attach a torsional PTO to a named rotation coordinate.
+
+        Damping is in N m s/rad, stiffness in N m/rad, and equilibrium angle
+        in radians. The returned PTO history reports angle as ``stroke``.
+        """
+        if not any(coordinate is item for item in self.coordinates):
+            raise ValueError("rotational PTO coordinate must belong to this WEC")
+        if any(existing.name == name for existing in
+               (*self.ptos, *self.rotational_ptos)):
+            raise ValueError(f"PTO name already exists: {name}")
+        pto = RotationalPTO(name, coordinate, damping, stiffness,
+                            equilibrium_angle)
+        self.rotational_ptos.append(pto)
         return pto
 
     def to_case(
@@ -245,6 +280,8 @@ class WEC:
             }
             if body.mean_drift != "none":
                 body_case["mean_drift"] = body.mean_drift
+            if body.passive_yaw:
+                body_case["passive_yaw"] = True
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
         for coordinate in self.coordinates:
@@ -276,8 +313,10 @@ class WEC:
         }
         if self.body_to_body:
             case["body_to_body"] = True
-        if self.ptos:
-            case["ptos"] = [self._pto_case(pto) for pto in self.ptos]
+        if self.ptos or self.rotational_ptos:
+            case["ptos"] = ([self._pto_case(pto) for pto in self.ptos]
+                            + [self._rotational_pto_case(pto)
+                               for pto in self.rotational_ptos])
         return case
 
     def run(
@@ -319,7 +358,7 @@ class WEC:
                 extras[f"pto_{pto.name}_force"],
                 extras[f"pto_{pto.name}_absorbed_power"],
             )
-            for pto in self.ptos
+            for pto in (*self.ptos, *self.rotational_ptos)
         }
         return WECResult(response.time, bodies, coordinates, ptos,
                          response.wave_elevation, case, response)
@@ -361,6 +400,17 @@ class WEC:
         if pto.pretension is not None:
             item["pretension"] = pto.pretension
         return item
+
+    @staticmethod
+    def _rotational_pto_case(pto: RotationalPTO) -> dict:
+        return {
+            "name": pto.name,
+            "kind": "coordinate_torque",
+            "coordinate": pto.coordinate.name,
+            "damping": pto.damping,
+            "stiffness": pto.stiffness,
+            "equilibrium_position": pto.equilibrium_angle,
+        }
 
 
 def _state(value: Mapping[str, float] | Sequence[float]) -> dict | list:
