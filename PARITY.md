@@ -206,7 +206,7 @@ file paths, plus 17 other or dynamic cases. Generate the CSV with
 `python tools/build_reference_case_inventory.py CORE_CHECKOUT APPLICATIONS_CHECKOUT`.
 This is a source inventory, not a claim that every case runs in Python.
 
-The [latest full reference-model sweep](https://github.com/cmudrc/wec-sim-python/actions/runs/37819599431)
+The [latest full reference-model sweep](https://github.com/cmudrc/wec-sim-python/actions/runs/37840433084)
 completed 34 MATLAB/Python jobs successfully, with one optional comparison
 skipped. That sweep covers the cases selected by its matrix, not all 63
 inventory entries. The [separate current-profile run](https://github.com/cmudrc/wec-sim-python/actions/runs/37820035413)
