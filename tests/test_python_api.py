@@ -8,7 +8,7 @@ import pytest
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import LatchingControl, NoWave, RegularWave, WEC, WorldPoint
+from wecsim import JONSWAPWave, LatchingControl, NoWave, RegularWave, WEC, WorldPoint
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +52,18 @@ def test_python_builder_supports_ground_anchor_and_named_initial_state():
     )
     np.testing.assert_allclose(result.ptos["spring"].stroke[0], -1)
     np.testing.assert_allclose(result.ptos["spring"].force[0], 1000)
+    assert np.isfinite(result.bodies["float"].position).all()
+
+
+def test_python_builder_runs_jonswap_sea():
+    wec = WEC("JONSWAP float")
+    body = wec.body("float", HYDRO)
+    wec.coordinate("heave", body.move("heave"))
+    wave = JONSWAPWave(2.5, 8, seed=1, gamma=3.3)
+    assert wec.to_case(wave, dt=.1, end_time=.2)["wave"]["gamma"] == 3.3
+    result = wec.run(wave, dt=.1, end_time=.2, ramp_time=1,
+                     radiation_memory=.2)
+    assert result.wave_elevation.shape == (3,)
     assert np.isfinite(result.bodies["float"].position).all()
 
 

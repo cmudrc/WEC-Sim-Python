@@ -182,6 +182,51 @@ def pm_equal_energy_components(
     is not MATLAB Threefry's. Exactly matching a MATLAB run requires its
     saved phase matrix.
     """
+    return _equal_energy_components(
+        h5_file, significant_height=significant_height,
+        peak_period=peak_period, directions=directions, spreading=spreading,
+        count=count, seed=seed, phase=phase, gamma=None,
+    )
+
+
+def jonswap_equal_energy_components(
+    h5_file: str | Path,
+    *,
+    significant_height: float,
+    peak_period: float,
+    directions: np.ndarray,
+    spreading: np.ndarray,
+    count: int = 500,
+    seed: int | None = None,
+    phase: np.ndarray | None = None,
+    gamma: float | None = None,
+) -> IrregularComponents:
+    """Build WEC-Sim's IEC JONSWAP equal-energy bins.
+
+    ``gamma=None`` uses WEC-Sim's height/period-dependent peak factor.
+    Supplied phases replay a MATLAB sea realization.
+    """
+    if (not np.isfinite([significant_height, peak_period]).all()
+            or significant_height <= 0 or peak_period <= 0):
+        raise ValueError("significant_height and peak_period must be positive and finite")
+    if gamma is None:
+        ratio = peak_period / np.sqrt(significant_height)
+        gamma = (5.0 if ratio <= 3.6 else 1.0 if ratio > 5.0
+                 else np.exp(5.75 - 1.15 * ratio))
+    if not np.isfinite(gamma) or gamma <= 0:
+        raise ValueError("JONSWAP gamma must be positive and finite")
+    return _equal_energy_components(
+        h5_file, significant_height=significant_height,
+        peak_period=peak_period, directions=directions, spreading=spreading,
+        count=count, seed=seed, phase=phase, gamma=gamma,
+    )
+
+
+def _equal_energy_components(
+    h5_file: str | Path, *, significant_height: float, peak_period: float,
+    directions: np.ndarray, spreading: np.ndarray, count: int,
+    seed: int | None, phase: np.ndarray | None, gamma: float | None,
+) -> IrregularComponents:
     if (not np.isfinite([significant_height, peak_period]).all()
             or significant_height <= 0 or peak_period <= 0):
         raise ValueError("significant_height and peak_period must be positive and finite")
@@ -204,6 +249,14 @@ def pm_equal_energy_components(
     b_pm = 1.25 * (1 / peak_period)**4
     a_pm = b_pm * (significant_height / 2)**2
     spectrum_hz = a_pm * frequency**-5 * np.exp(-b_pm * frequency**-4)
+    if gamma is not None:
+        peak_frequency = 1 / peak_period
+        sigma = np.where(frequency <= peak_frequency, .07, .09)
+        peak = gamma**np.exp(
+            -(frequency - peak_frequency)**2
+            / (2 * sigma**2 * peak_frequency**2)
+        )
+        spectrum_hz *= (1 - .287 * np.log(gamma)) * peak
     df = frequency[1] - frequency[0]
     integrated = np.empty(len(frequency))
     integrated[0] = 0.0

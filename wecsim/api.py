@@ -194,6 +194,20 @@ class PMWave:
 
 
 @dataclass(frozen=True)
+class JONSWAPWave(PMWave):
+    """JONSWAP sea using WEC-Sim's default or an explicit peak factor."""
+
+    gamma: float | None = None
+
+    def as_case(self) -> dict:
+        wave = super().as_case()
+        wave["type"] = "jonswap"
+        if self.gamma is not None:
+            wave["gamma"] = self.gamma
+        return wave
+
+
+@dataclass(frozen=True)
 class NoWave:
     def as_case(self) -> dict:
         return {"type": "none"}
@@ -397,7 +411,7 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | RegularCICWave | PMWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
@@ -406,8 +420,8 @@ class WEC:
         initial_speed: Mapping[str, float] | Sequence[float] | None = None,
     ) -> dict:
         """Return the case mapping used by the validated dynamics runner."""
-        if not isinstance(wave, (RegularWave, RegularCICWave, PMWave, NoWave)):
-            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, or NoWave")
+        if not isinstance(wave, (RegularWave, RegularCICWave, PMWave, JONSWAPWave, NoWave)):
+            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, or NoWave")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -493,7 +507,7 @@ class WEC:
         return case
 
     def run(
-        self, wave: RegularWave | RegularCICWave | PMWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,

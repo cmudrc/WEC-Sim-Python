@@ -22,7 +22,8 @@ from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
 )
 from .irregularWave import (
-    imported_full_directional_components, pm_equal_energy_components,
+    imported_full_directional_components, jonswap_equal_energy_components,
+    pm_equal_energy_components,
     synthesize_full_directional_response, synthesize_irregular_response,
     synthesize_multiple_irregular_response,
 )
@@ -240,7 +241,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     wave = _section(case["wave"], "wave", {"type"},
                     {"type", "height", "period", "direction", "directions",
                      "spreading", "seed", "phase_file", "frequency_count",
-                     "file", "variable", "reapply_force_ramp", "seas",
+                     "gamma", "file", "variable", "reapply_force_ramp", "seas",
                      "excitation_interpolation", "force_quadrature"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
@@ -997,15 +998,15 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     if set(constraint) - {"kind", "initial_coordinate", "initial_speed",
                            "coordinates"}:
         raise ValueError("linear_subspace uses coordinate maps, not joint locations")
-    if wave["type"] not in ("regular", "regularCIC", "pm", "none"):
-        raise ValueError("linear_subspace supports regular, regularCIC, PM, or no waves")
+    if wave["type"] not in ("regular", "regularCIC", "pm", "jonswap", "none"):
+        raise ValueError("linear_subspace supports regular, regularCIC, PM, JONSWAP, or no waves")
     if b2b and len(set(hydro)) != 1:
         raise ValueError("body-to-body hydrodynamics need one shared HDF5 file")
     if wave["type"] == "none" and set(wave) != {"type"}:
         raise ValueError("no-wave cases have no wave height or period")
-    if (wave["type"] == "pm"
+    if (wave["type"] in ("pm", "jonswap")
             and any(body.get("mean_drift", "none") != "none" for body in bodies)):
-        raise ValueError("PM linear-subspace mean-drift forcing is not supported")
+        raise ValueError("irregular linear-subspace mean-drift forcing is not supported")
     components = None
     auxiliary_files = []
     if wave["type"] in ("regular", "regularCIC"):
@@ -1017,11 +1018,13 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         frequency = 2 * np.pi / period
         if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave linear dynamics use constant radiation")
-    elif wave["type"] == "pm":
+    elif wave["type"] in ("pm", "jonswap"):
         if set(wave) - {"type", "height", "period", "directions", "spreading",
                          "seed", "phase_file", "frequency_count",
-                         "excitation_interpolation"}:
-            raise ValueError("PM waves use height, period, directions, and phase settings")
+                         "excitation_interpolation", "gamma"}:
+            raise ValueError("irregular waves use height, period, directions, and phase settings")
+        if wave["type"] == "pm" and "gamma" in wave:
+            raise ValueError("gamma applies only to JONSWAP waves")
         height = _number(wave.get("height"), "wave.height", positive=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
         if "seed" in wave and "phase_file" in wave:
@@ -1038,11 +1041,15 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             seed = wave.get("seed", 7)
             if not isinstance(seed, int) or isinstance(seed, bool):
                 raise ValueError("wave.seed must be an integer")
-        components = pm_equal_energy_components(
+        component_builder = (jonswap_equal_energy_components
+                             if wave["type"] == "jonswap" else pm_equal_energy_components)
+        spectrum_options = ({"gamma": wave["gamma"]} if "gamma" in wave else {})
+        components = component_builder(
             hydro[0], significant_height=height, peak_period=period,
             directions=wave.get("directions", [0.0]),
             spreading=wave.get("spreading", [1.0]),
             count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+            **spectrum_options,
         )
     else:
         if "ramp_time" in sim:
@@ -1249,7 +1256,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             if memory_time > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             regular_memory = wave["type"] == "regularCIC"
-            irregular = wave["type"] == "pm"
+            irregular = wave["type"] in ("pm", "jonswap")
             body.hydroForcePre(
                 (frequency if regular_memory else
                  components.omega if irregular else []),
@@ -1308,7 +1315,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     real * np.cos(frequency * at_time)
                     - imaginary * np.sin(frequency * at_time)
                 ) + (height / 2)**2 * ramp * drift)
-        elif wave["type"] == "pm":
+        elif wave["type"] in ("pm", "jonswap"):
             if body_spec.get("passive_yaw", False):
                 def excitation(at_time):
                     return np.zeros(6)

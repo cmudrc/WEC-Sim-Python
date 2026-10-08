@@ -1,7 +1,7 @@
 """Public Python interface for supported WEC-Sim device dynamics."""
 
 from .api import (
-    Body, BodyPoint, Coordinate, DirectDriveHistory, FlexibleModeHistory, HydroState, LinearPTO, Motion, MotionHistory, NoWave, PMWave,
+    Body, BodyPoint, Coordinate, DirectDriveHistory, FlexibleModeHistory, HydroState, JONSWAPWave, LinearPTO, Motion, MotionHistory, NoWave, PMWave,
     RotationalPTO,
     PTOHistory, RegularCICWave, RegularWave, SimpleDirectDrive, VariableHydro, WEC, WECResult, WorldPoint,
 )
@@ -21,7 +21,7 @@ from .rm3Regular import solve_rm3_regular
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "DeclutchingControl", "DirectDriveHistory", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
-    "MotionHistory", "FlexibleModeHistory", "NoWave", "PMWave", "PTOHistory", "RotationalPTO", "RegularCICWave",
+    "MotionHistory", "FlexibleModeHistory", "JONSWAPWave", "NoWave", "PMWave", "PTOHistory", "RotationalPTO", "RegularCICWave",
     "RegularWave", "SimpleDirectDrive", "VariableHydro", "HydroState", "WEC",
     "WECResult", "WorldPoint",
     "MCRCondition", "MCRPowerMatrix", "MCRResult", "MCRSeaStateResult",
