@@ -248,7 +248,7 @@ def test_public_python_wec_replays_published_imported_seas():
     """
     root = Path(APPLICATIONS)
     reference = Path(REFERENCE)
-    hydro = root / "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    hydro = "_Common_Input_Files/RM3/hydroData/rm3.h5"
     inputs = root / "Multiple_Condition_Runs/RM3_MCROPT3_SeaState"
     for index in (1, 2, 3):
         wec = WEC(f"Imported RM3 sea {index}")
