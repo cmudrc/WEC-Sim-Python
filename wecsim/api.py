@@ -109,6 +109,21 @@ class LinearPTO:
     equilibrium_position: float | None = None
     pretension: float | None = None
     control: DeclutchingControl | LatchingControl | None = None
+    direct_drive: SimpleDirectDrive | None = None
+
+
+@dataclass(frozen=True)
+class SimpleDirectDrive:
+    """Reactive PI control and simple generator/drivetrain parameters."""
+
+    kp: float
+    ki: float
+    torque_constant: float
+    gear_ratio: float
+    drivetrain_inertia: float
+    drivetrain_friction: float
+    winding_resistance: float
+    winding_inductance: float
 
 
 @dataclass(frozen=True)
@@ -189,6 +204,20 @@ class MotionHistory:
 
 
 @dataclass(frozen=True)
+class DirectDriveHistory:
+    shaft_velocity: np.ndarray
+    shaft_torque: np.ndarray
+    inertia_torque: np.ndarray
+    friction_torque: np.ndarray
+    generator_torque: np.ndarray
+    current: np.ndarray
+    voltage: np.ndarray
+    resistance_loss: np.ndarray
+    electrical_power: np.ndarray
+    mechanical_power: np.ndarray
+
+
+@dataclass(frozen=True)
 class PTOHistory:
     """PTO stroke in metres, or angle in radians for a rotational PTO."""
 
@@ -196,6 +225,7 @@ class PTOHistory:
     velocity: np.ndarray
     force: np.ndarray
     absorbed_power: np.ndarray
+    direct_drive: DirectDriveHistory | None = None
 
 
 @dataclass(frozen=True)
@@ -285,7 +315,8 @@ class WEC:
             damping: float = 0.0, stiffness: float = 0.0,
             equilibrium_position: float | None = None,
             pretension: float | None = None,
-            control: DeclutchingControl | LatchingControl | None = None) -> LinearPTO:
+            control: DeclutchingControl | LatchingControl | None = None,
+            direct_drive: SimpleDirectDrive | None = None) -> LinearPTO:
         if any(existing.name == name for existing in
                (*self.ptos, *self.rotational_ptos)):
             raise ValueError(f"PTO name already exists: {name}")
@@ -300,10 +331,17 @@ class WEC:
                 raise TypeError("PTO control must be a supported control law")
             if damping or stiffness or equilibrium_position is not None or pretension is not None:
                 raise ValueError("sampled PTO control sets its own gain and has no spring")
+        if direct_drive is not None:
+            if not isinstance(direct_drive, SimpleDirectDrive):
+                raise TypeError("direct_drive must be SimpleDirectDrive")
+            if (control is not None or damping or stiffness
+                    or equilibrium_position is not None or pretension is not None):
+                raise ValueError("direct drive supplies its own PTO force")
         pto = LinearPTO(
             name, from_point, to_point,
             tuple(axis) if axis is not None else None,
             damping, stiffness, equilibrium_position, pretension, control,
+            direct_drive,
         )
         self.ptos.append(pto)
         return pto
@@ -450,6 +488,15 @@ class WEC:
                 extras[f"pto_{pto.name}_velocity"],
                 extras[f"pto_{pto.name}_force"],
                 extras[f"pto_{pto.name}_absorbed_power"],
+                (DirectDriveHistory(*(
+                    extras[f"pto_{pto.name}_drive_{field}"] for field in (
+                        "shaft_velocity", "shaft_torque", "inertia_torque",
+                        "friction_torque", "generator_torque", "current",
+                        "voltage", "resistance_loss", "electrical_power",
+                        "mechanical_power",
+                    )
+                )) if isinstance(pto, LinearPTO) and pto.direct_drive is not None
+                 else None),
             )
             for pto in (*self.ptos, *self.rotational_ptos)
         }
@@ -492,6 +539,8 @@ class WEC:
             item["equilibrium_position"] = pto.equilibrium_position
         if pto.pretension is not None:
             item["pretension"] = pto.pretension
+        if pto.direct_drive is not None:
+            item["direct_drive"] = vars(pto.direct_drive).copy()
         return item
 
     @staticmethod

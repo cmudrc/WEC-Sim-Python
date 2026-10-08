@@ -434,8 +434,42 @@ analytical checks. A paired MATLAB Sphere case covers nonzero stiffness,
 extra damping while specifying a body-local attachment shifted 1 m in x.
 Its heave-only motion cannot validate attachment-location dynamics or a
 rotational moment arm.
-Force limits, hard stops, controllers other than the published declutching and
-reactive PI laws, and hydraulic PTO models are not implemented.
+Force limits, general controller networks, and hydraulic PTO models are not
+implemented.
+
+### Reactive direct-drive PTO
+
+The published `Controls/ReactiveWithPTO` Sphere case couples PI control to a
+simple direct-drive generator. Its winding inductance and resistance set the
+generator torque response time; gear ratio reflects drivetrain inertia and
+friction into the heave equation. Configure those properties on a PTO:
+
+```python
+from wecsim import RegularWave, SimpleDirectDrive, WEC, WorldPoint
+
+wec = WEC("reactive sphere with direct drive")
+sphere = wec.body("sphere", "sphere.h5", mass="equilibrium")
+wec.coordinate("heave", sphere.move("heave"))
+wec.pto(
+    "PTO1", WorldPoint(0, 0, -2), sphere.at(0, 0, 0), axis=(0, 0, 1),
+    direct_drive=SimpleDirectDrive(
+        kp=380_000, ki=-152_000, torque_constant=7.186,
+        gear_ratio=100, drivetrain_inertia=2, drivetrain_friction=1,
+        winding_resistance=.483, winding_inductance=5.223e-3,
+    ),
+)
+result = wec.run(RegularWave(height=2.5, period=9.6664),
+                 dt=.01, end_time=200, ramp_time=50)
+drive = result.ptos["PTO1"].direct_drive
+# drive.current, drive.voltage, drive.resistance_loss,
+# drive.electrical_power, drive.shaft_torque, drive.mechanical_power
+```
+
+`electrical_power` follows the pinned Simulink block's signed `voltage *
+current + resistance_loss` output. `result.ptos["PTO1"].absorbed_power` is
+positive when mechanical power enters the PTO. Current validation covers one
+pure-heave body, zero-heading regular waves, and one vertical direct-drive
+connection. The model does not impose voltage, current, or stroke limits.
 
 ### Instantaneous nonlinear hydrodynamics for heave
 
