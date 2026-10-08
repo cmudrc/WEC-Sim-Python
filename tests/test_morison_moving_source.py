@@ -33,6 +33,6 @@ def test_moving_regular_source_force():
         ) for row in rows
     ])
     error = np.max(np.abs(actual - rows[:, 19:25]))
-    assert error < 1e-7, f"moving Morison source force differs by {error:.6g}"
+    assert error < 1e-9, f"moving Morison source force differs by {error:.6g}"
     assert np.max(np.abs(actual[:-2])) > 1
     np.testing.assert_array_equal(actual[-2], 0)

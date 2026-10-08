@@ -1,8 +1,9 @@
-"""Fixed-body Morison forcing in a directional irregular sea.
+"""Morison force laws paired to pinned WEC-Sim source behavior.
 
-This implements WEC-Sim's Cartesian (option 1) Morison equation for fixed
-elements. Each incident heading contributes its own nonlinear drag before
-the heading forces are summed, as in ``irregWaveMorison.m``.
+The public WEC runner uses Cartesian option 1 for fixed elements in a
+directional irregular sea. Each incident heading contributes its own
+nonlinear drag before the forces are summed, as in ``irregWaveMorison.m``.
+The regular-wave moving-state function is a source diagnostic only.
 """
 
 from dataclasses import dataclass
@@ -56,8 +57,9 @@ def regular_morison_source_force(
     """Evaluate pinned ``regWaveMorison.m`` option 1 at a moving-body state.
 
     The six state components are surge, sway, heave, roll, pitch, and yaw.
-    This is a source-law diagnostic, not a coupled WEC trajectory solver. It
-    retains the source's rotation and local-point angular kinematics so that
+    The current speed is zero. This source-law diagnostic does not solve a
+    coupled WEC trajectory. It retains the source's rotation and local-point
+    angular kinematics so that
     a comparison can expose, rather than conceal, source-specific behavior.
     """
     state = [np.asarray(value, dtype=float) for value in
