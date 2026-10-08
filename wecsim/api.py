@@ -7,7 +7,7 @@ waves directly in Python and receive NumPy arrays without writing JSON or CSV.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from numbers import Real
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -206,6 +206,13 @@ class MotionHistory:
 
 
 @dataclass(frozen=True)
+class FlexibleModeHistory:
+    position: np.ndarray
+    velocity: np.ndarray
+    acceleration: np.ndarray
+
+
+@dataclass(frozen=True)
 class DirectDriveHistory:
     shaft_velocity: np.ndarray
     shaft_torque: np.ndarray
@@ -239,6 +246,7 @@ class WECResult:
     wave_elevation: np.ndarray | None
     case: dict
     raw: CaseResponse
+    flexible_modes: dict[str, FlexibleModeHistory] = field(default_factory=dict)
 
 
 class WEC:
@@ -260,6 +268,7 @@ class WEC:
         self.coordinates: list[Coordinate] = []
         self.ptos: list[LinearPTO] = []
         self.rotational_ptos: list[RotationalPTO] = []
+        self._floating_gbm_body: Body | None = None
 
     def body(self, name: str, hydro_file: str | Path, *,
              mass: str | float = "equilibrium",
@@ -305,6 +314,19 @@ class WEC:
                     variable_hydro=VariableHydro(ordered, tuple(switch_times)))
         self.bodies.append(body)
         return body
+
+    def floating_gbm(self, body: Body) -> None:
+        """Select a floating surge/heave/pitch joint with HDF5 flexible modes.
+
+        The joint and body center of gravity must coincide at the origin.
+        Current support is one body in zero-heading regular waves, without a
+        PTO or mooring.
+        """
+        if not any(body is item for item in self.bodies):
+            raise ValueError("floating GBM body must belong to this WEC")
+        if self._floating_gbm_body is not None:
+            raise ValueError("a floating GBM body is already selected")
+        self._floating_gbm_body = body
 
     def coordinate(self, name: str, *motions: Motion) -> Coordinate:
         if any(existing.name == name for existing in self.coordinates):
@@ -427,6 +449,14 @@ class WEC:
                 }
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
+        if self._floating_gbm_body is not None:
+            if (len(self.bodies) != 1 or self.bodies[0] is not self._floating_gbm_body
+                    or self.coordinates or self.ptos or self.rotational_ptos
+                    or self.body_to_body or not isinstance(wave, RegularWave)
+                    or initial_coordinate is not None or initial_speed is not None
+                    or radiation_memory is not None):
+                raise ValueError("floating GBM needs one body, regular waves, and no PTO or custom coordinates")
+            constraint = {"kind": "floating_gbm", "location": [0, 0, 0]}
         for coordinate in self.coordinates:
             motions = []
             for motion in coordinate.motions:
@@ -512,8 +542,14 @@ class WEC:
             )
             for pto in (*self.ptos, *self.rotational_ptos)
         }
+        flexible_modes = ({
+            self._floating_gbm_body.name: FlexibleModeHistory(
+                extras["flex_position"], extras["flex_velocity"],
+                extras["flex_acceleration"],
+            )
+        } if self._floating_gbm_body is not None else {})
         return WECResult(response.time, bodies, coordinates, ptos,
-                         response.wave_elevation, case, response)
+                         response.wave_elevation, case, response, flexible_modes)
 
     @staticmethod
     def _pto_case(pto: LinearPTO) -> dict:
