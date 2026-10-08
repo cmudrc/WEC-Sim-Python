@@ -107,6 +107,7 @@ Supported combinations are:
 | --- | --- | --- | --- |
 | `heave` | `none` | One equilibrium-mass body, initial heave displacement, no PTO | Radiation convolution |
 | `fixed_hinge` | `pm` or `pm_multi` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Directional PM excitation and radiation convolution; `pm_multi` sums independently phased seas |
+| `fixed_hinge` | `spectrumImportFullDir` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Imported frequency-dependent directional spectrum and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
@@ -467,6 +468,34 @@ equal-energy bins, directional excitation, and pitch are checked against
 current MATLAB WEC-Sim using the same saved random phase matrix. A Python
 integer seed creates a reproducible Python realization, with a different
 random sequence from MATLAB.
+
+For an imported full-directional spectrum, configure the Python case with
+`wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
+`wave.phase_file` CSV or an integer `wave.seed`. The default includes each
+heading-bin width in both elevation and force, preserving the spectrum's
+integrated energy. The published MATLAB `Full_Directional_Waves` force block
+omits that width even though its elevation includes it. To reproduce that
+specific source trajectory, set `wave.force_quadrature` to
+`"matlab_omitted"` and `wave.excitation_interpolation` to
+`"spline_frequency"`; `simulation.added_mass_scheme = "simulink_delay"`
+is a separate opt-in Simulink numerical comparison. The ordinary defaults
+remain integrated forcing and implicit added mass.
+
+The same wave calculation is available directly in Python:
+
+```python
+from wecsim import (imported_full_directional_components,
+                    synthesize_full_directional_response)
+
+components = imported_full_directional_components(
+    "path/to/oswec.h5", "path/to/fullDirSpectrum.mat", seed=7,
+)
+incident = synthesize_full_directional_response(
+    "path/to/oswec.h5", components,
+    dt=0.05, end_time=400, ramp_time=100,
+)
+# incident.elevation and incident.excitation_force are NumPy arrays.
+```
 
 To run a supported case without writing Python code:
 

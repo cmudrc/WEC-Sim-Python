@@ -20,7 +20,8 @@ from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
 )
 from .irregularWave import (
-    pm_equal_energy_components, synthesize_irregular_response,
+    imported_full_directional_components, pm_equal_energy_components,
+    synthesize_full_directional_response, synthesize_irregular_response,
     synthesize_multiple_irregular_response,
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
@@ -231,7 +232,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     {"type", "height", "period", "direction", "directions",
                      "spreading", "seed", "phase_file", "frequency_count",
                      "file", "variable", "reapply_force_ramp", "seas",
-                     "excitation_interpolation"})
+                     "excitation_interpolation", "force_quadrature"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates"})
@@ -305,7 +306,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
 
     if kind == "fixed_hinge":
         if (len(bodies) not in (1, 2)
-                or wave["type"] not in ("pm", "pm_multi", "regular")
+                or wave["type"] not in ("pm", "pm_multi", "regular",
+                                        "spectrumImportFullDir")
                 or b2b):
             raise ValueError("fixed-hinge pitch needs one flap, optional fixed base, and PM or regular waves")
         if len(bodies) == 2 and hydro[1] is not None:
@@ -371,7 +373,39 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 pto_force=solved.pto_torque, pto_label="pto_pitch_torque",
                 wave_elevation=elevation,
             )
-        if wave["type"] == "pm_multi":
+        if wave["type"] == "spectrumImportFullDir":
+            if (set(wave) - {"type", "file", "phase_file", "seed",
+                             "excitation_interpolation", "force_quadrature"}
+                    or "file" not in wave):
+                raise ValueError("spectrumImportFullDir needs a MAT spectrum file")
+            if "phase_file" in wave and "seed" in wave:
+                raise ValueError("supply either wave.phase_file or wave.seed")
+            if not isinstance(wave["file"], str) or not wave["file"]:
+                raise ValueError("wave.file must be a MAT file path")
+            spectrum_path = (base / wave["file"]).resolve(strict=True)
+            auxiliary_files = [spectrum_path]
+            if "phase_file" in wave:
+                if not isinstance(wave["phase_file"], str) or not wave["phase_file"]:
+                    raise ValueError("wave.phase_file must be a file path")
+                phase_path = (base / wave["phase_file"]).resolve(strict=True)
+                phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+                auxiliary_files.append(phase_path)
+                seed = None
+            else:
+                phase = None
+                seed = wave.get("seed", 7)
+                if not isinstance(seed, int) or isinstance(seed, bool):
+                    raise ValueError("wave.seed must be an integer")
+            components = imported_full_directional_components(
+                hydro[0], spectrum_path, phase=phase, seed=seed,
+            )
+            incident = synthesize_full_directional_response(
+                hydro[0], components, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, rho=rho, g=g,
+                excitation_interpolation=wave.get("excitation_interpolation", "linear"),
+                force_quadrature=wave.get("force_quadrature", "integrated"),
+            )
+        elif wave["type"] == "pm_multi":
             if set(wave) - {"type", "seas", "excitation_interpolation"} or "seas" not in wave:
                 raise ValueError("pm_multi waves use a seas list")
             seas = wave["seas"]
@@ -424,6 +458,10 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 excitation_interpolation=wave.get("excitation_interpolation", "linear"),
             )
         else:
+            if set(wave) - {"type", "height", "period", "directions",
+                             "spreading", "seed", "phase_file",
+                             "frequency_count", "excitation_interpolation"}:
+                raise ValueError("PM waves use height, period, directions, and phase settings")
             height = _number(wave.get("height"), "wave.height", positive=True)
             period = _number(wave.get("period"), "wave.period", positive=True)
             if "direction" in wave:
