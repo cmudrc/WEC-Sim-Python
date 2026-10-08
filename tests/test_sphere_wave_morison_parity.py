@@ -7,7 +7,10 @@ import numpy as np
 import pytest
 
 from wecsim import RegularWave, WEC
-from wecsim.morison import MorisonElement, regular_wave_heave_morison_terms
+from wecsim.morison import (
+    MorisonElement, regular_wave_axial_morison_terms,
+    regular_wave_heave_morison_terms,
+)
 
 
 SPHERE_H5 = os.environ.get("WEC_SIM_SPHERE_H5")
@@ -92,3 +95,66 @@ def test_wave_driven_sphere_morison_force_and_motion():
     physical = result.body_forces["sphere"][:, 2]
     _max_error(physical[100:], source_physical[100:], 1000,
                "wave-driven moving Morison force after startup")
+
+
+def test_wave_driven_sphere_three_dof_morison_trajectory():
+    source = np.loadtxt(
+        Path(REFERENCE) / "SPHERE_MOVING_MORISON_WAVE_1m-ME_body1.csv",
+        delimiter=",",
+    )
+    element = MorisonElement(
+        point=(0, 0, -2), drag_coefficient=(0, 0, 1),
+        added_mass_coefficient=(0, 0, 1), area=(0, 0, 100), volume=20,
+    )
+    source_force = -source[:, 25:31]
+    # Check the physical proper-rotation force law on MATLAB's saved state
+    # separately from the independently integrated trajectory. The pinned
+    # source function uses a nonorthogonal general rotation matrix.
+    on_source_state = np.stack([
+        applied - added @ row[31:37]
+        for row in source
+        for applied, added in [regular_wave_axial_morison_terms(
+            [element], position=row[1:7], velocity=row[7:13],
+            time=row[0], wave_height=1, wave_period=8, ramp_time=10,
+            water_depth=np.inf, rho=1000,
+        )]
+    ])
+    for axis, limit, label in ((0, 500, "surge force"),
+                               (2, 120, "heave force"),
+                               (4, 220, "pitch moment")):
+        _max_error(on_source_state[100:, axis], source_force[100:, axis],
+                   limit, f"physical {label} on MATLAB state")
+
+    wec = WEC("Sphere with three-DOF axial Morison element")
+    sphere = wec.body(
+        "sphere", Path(SPHERE_H5).resolve(),
+        inertia=(20907301, 21306090.66, 37085481.11),
+    )
+    for axis in ("surge", "heave", "pitch"):
+        wec.coordinate(axis, sphere.move(axis))
+    wec.morison_element(
+        sphere, point=sphere.at(0, 0, -2),
+        drag_coefficient=(0, 0, 1),
+        added_mass_coefficient=(0, 0, 1),
+        area=(0, 0, 100), volume=20,
+    )
+    result = wec.run(
+        RegularWave(1, 8), dt=.01, end_time=40, ramp_time=10,
+        initial_coordinate={"heave": 1},
+    )
+    assert result.time.shape == (4001,)
+    for axis, name, position_limit, velocity_limit in (
+        (0, "surge", .015, .002),
+        (2, "heave", .0015, .002),
+        (4, "pitch", .00015, .00006),
+    ):
+        _max_error(result.bodies["sphere"].position[:, axis],
+                   source[:, 1 + axis], position_limit, f"{name} position")
+        _max_error(result.bodies["sphere"].velocity[:, axis],
+                   source[:, 7 + axis], velocity_limit, f"{name} velocity")
+    for axis, limit, label in ((0, 500, "surge force"),
+                               (2, 200, "heave force"),
+                               (4, 250, "pitch moment")):
+        _max_error(result.body_forces["sphere"][100:, axis],
+                   source_force[100:, axis], limit,
+                   f"integrated {label} after startup")

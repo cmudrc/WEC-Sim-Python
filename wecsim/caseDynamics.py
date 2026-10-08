@@ -32,7 +32,8 @@ from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
 from .morison import (
     MorisonElement, no_wave_heave_morison_terms,
-    regular_wave_heave_morison_terms, solve_fixed_morison_irregular,
+    regular_wave_axial_morison_terms, regular_wave_heave_morison_terms,
+    solve_fixed_morison_irregular,
 )
 from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import (
@@ -1230,22 +1231,29 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     if moving_morison:
         heave_map = np.zeros((6, 1))
         heave_map[2, 0] = 1
-        if (len(bodies) != 1 or moving_morison != (0,) or n != 1
-                or not np.array_equal(maps[0], heave_map)
+        three_dof_map = np.zeros((6, 3))
+        three_dof_map[0, 0] = 1
+        three_dof_map[2, 1] = 1
+        three_dof_map[4, 2] = 1
+        heave_only = n == 1 and np.array_equal(maps[0], heave_map)
+        surge_heave_pitch = (n == 3 and np.array_equal(maps[0], three_dof_map)
+                             and wave["type"] == "regular")
+        if (len(bodies) != 1 or moving_morison != (0,)
+                or not (heave_only or surge_heave_pitch)
                 or wave["type"] not in ("none", "regular") or b2b
                 or any(key in case for key in ("pto", "ptos"))
                 or bodies[0].get("nonlinear_hydro") is not None
                 or bodies[0].get("passive_yaw", False)
                 or bodies[0].get("mean_drift", "none") != "none"):
             raise ValueError(
-                "moving Morison currently needs one pure-heave hydrodynamic "
-                "body in still water or zero-heading regular waves without a PTO"
+                "moving Morison needs one hydrodynamic body in pure heave "
+                "or regular-wave surge/heave/pitch without a PTO"
             )
         if wave["type"] == "regular" and direction != 0:
-            raise ValueError("moving Morison heave needs zero-heading regular waves")
+            raise ValueError("moving Morison needs zero-heading regular waves")
         if (wave["type"] == "regular"
                 and not np.allclose(centers[0][:2], 0, rtol=0, atol=1e-10)):
-            raise ValueError("moving Morison heave needs a body centered at x=y=0")
+            raise ValueError("moving Morison needs a body centered at x=y=0")
         moving_elements = _morison_elements(bodies[0]["morison_elements"])
         if wave["type"] == "regular":
             raw_depth = loaded_bodies[0].hydroData[
@@ -1253,20 +1261,40 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             depth = (np.inf if str(raw_depth).lower() == "infinite"
                      else float(raw_depth))
 
-            def moving_terms(at_time, coordinate, speed):
-                return regular_wave_heave_morison_terms(
-                    moving_elements, center_z=centers[0][2],
-                    heave=coordinate[0], speed=speed[0], time=at_time,
-                    wave_height=height, wave_period=period,
-                    ramp_time=ramp_time, water_depth=depth, rho=rho, g=g,
-                )
+            if surge_heave_pitch:
+                def moving_terms(at_time, coordinate, speed):
+                    pose = np.r_[centers[0], np.zeros(3)] + maps[0] @ coordinate
+                    velocity = maps[0] @ speed
+                    return regular_wave_axial_morison_terms(
+                        moving_elements, position=pose, velocity=velocity,
+                        time=at_time, wave_height=height, wave_period=period,
+                        ramp_time=ramp_time, water_depth=depth, rho=rho, g=g,
+                    )
+            else:
+                def moving_terms(at_time, coordinate, speed):
+                    applied, added = regular_wave_heave_morison_terms(
+                        moving_elements, center_z=centers[0][2],
+                        heave=coordinate[0], speed=speed[0], time=at_time,
+                        wave_height=height, wave_period=period,
+                        ramp_time=ramp_time, water_depth=depth, rho=rho, g=g,
+                    )
+                    force = np.zeros(6)
+                    force[2] = applied
+                    matrix = np.zeros((6, 6))
+                    matrix[2, 2] = added
+                    return force, matrix
         else:
             def moving_terms(at_time, coordinate, speed):
-                return no_wave_heave_morison_terms(
+                applied, added = no_wave_heave_morison_terms(
                     moving_elements, center_z=centers[0][2],
                     heave=coordinate[0], speed=speed[0], rho=rho,
                 )
-        moving_terms(0, np.zeros(1), np.zeros(1))
+                force = np.zeros(6)
+                force[2] = applied
+                matrix = np.zeros((6, 6))
+                matrix[2, 2] = added
+                return force, matrix
+        moving_terms(0, np.zeros(n), np.zeros(n))
     passive_indices = [
         index for index, spec in enumerate(bodies)
         if spec.get("passive_yaw", False) is True
@@ -1533,12 +1561,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         state_inertia = None
         if moving_elements:
             def state_inertia(at_time, coordinate, speed, *, terms=moving_terms):
-                applied, added = terms(at_time, coordinate, speed)
-                force = np.zeros(6)
-                force[2] = applied
-                matrix = np.zeros((6, 6))
-                matrix[2, 2] = added
-                return force, matrix
+                return terms(at_time, coordinate, speed)
 
         dynamic_bodies.append(DynamicBody(
             rigid_mass=rigid_mass,
@@ -1708,12 +1731,15 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         )
     morison_outputs = ()
     if moving_elements:
-        terms = np.array([
-            moving_terms(t, q, v)
-            for t, q, v in zip(response.time, response.coordinate, response.speed)
+        force = np.stack([
+            applied - added @ (maps[0] @ a)
+            for (applied, added), a in zip(
+                (moving_terms(t, q, v)
+                 for t, q, v in zip(response.time, response.coordinate,
+                                    response.speed)),
+                response.acceleration,
+            )
         ])
-        force = np.zeros((len(response.time), 6))
-        force[:, 2] = terms[:, 0] - terms[:, 1] * response.acceleration[:, 0]
         morison_outputs = ((f"morison_force_{body_names[0]}", force),)
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
