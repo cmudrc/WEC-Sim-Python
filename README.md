@@ -995,6 +995,10 @@ body_center=(0, -3.9), body_point=(0.9, -3.1))` specifies its fixed world
 anchor and flap-local endpoint in the x/z plane. Its stroke and speed pair
 with the 300 s MATLAB source trace; the reverse-osmosis fluid network and
 coupled response are still being validated (see [PARITY.md](PARITY.md)).
+`ReverseOsmosisMembrane` also exposes the published osmotic valve and linear
+hydraulic-resistance settings as a Python object. Given an inlet pressure,
+`permeate_flow(pressure)` solves their series pressure drop. It does not
+predict that pressure or the coupled flap motion.
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
