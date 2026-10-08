@@ -1,0 +1,38 @@
+"""Pinned MATLAB regWaveMorison option-1 force at prescribed moving states."""
+
+import os
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from wecsim.morison import MorisonElement, regular_morison_source_force
+
+
+REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+
+
+@pytest.mark.skipif(not REFERENCE, reason="paired MATLAB Morison states absent")
+def test_moving_regular_source_force():
+    rows = np.loadtxt(Path(REFERENCE) / "MORISON_MOVING_REGULAR_states.csv",
+                      delimiter=",")
+    assert rows.shape == (8, 25)
+    assert np.isfinite(rows).all()
+    element = MorisonElement(
+        point=(.8, -.5, 1.2),
+        drag_coefficient=(1.1, .7, 1.3),
+        added_mass_coefficient=(.8, 1.2, .6),
+        area=(2, 3, 1.5), volume=1.7,
+    )
+    actual = np.stack([
+        regular_morison_source_force(
+            [element], time=row[0], position=row[1:7],
+            velocity=row[7:13], acceleration=row[13:19],
+            wave_height=2.5, wave_period=8, direction=25,
+            water_depth=30, ramp_time=10, rho=1025,
+        ) for row in rows
+    ])
+    error = np.max(np.abs(actual - rows[:, 19:25]))
+    assert error < 1e-7, f"moving Morison source force differs by {error:.6g}"
+    assert np.max(np.abs(actual[:-2])) > 1
+    np.testing.assert_array_equal(actual[-2], 0)

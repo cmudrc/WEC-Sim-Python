@@ -46,6 +46,106 @@ def finite_depth_wavenumber(
     return k
 
 
+def regular_morison_source_force(
+    elements: Sequence[MorisonElement], *, time: float,
+    position: Sequence[float], velocity: Sequence[float],
+    acceleration: Sequence[float], wave_height: float, wave_period: float,
+    direction: float, water_depth: float, ramp_time: float,
+    rho: float = 1025.0, g: float = 9.81,
+) -> np.ndarray:
+    """Evaluate pinned ``regWaveMorison.m`` option 1 at a moving-body state.
+
+    The six state components are surge, sway, heave, roll, pitch, and yaw.
+    This is a source-law diagnostic, not a coupled WEC trajectory solver. It
+    retains the source's rotation and local-point angular kinematics so that
+    a comparison can expose, rather than conceal, source-specific behavior.
+    """
+    state = [np.asarray(value, dtype=float) for value in
+             (position, velocity, acceleration)]
+    if any(value.shape != (6,) or not np.isfinite(value).all()
+           for value in state):
+        raise ValueError("Morison position, velocity, and acceleration need finite six-vectors")
+    if (not np.isfinite([time, wave_height, wave_period, direction,
+                         water_depth, ramp_time, rho, g]).all()
+            or time < 0 or wave_height < 0 or wave_period <= 0
+            or water_depth <= 0 or ramp_time < 0 or rho <= 0 or g <= 0):
+        raise ValueError("regular Morison wave and fluid settings are invalid")
+    if not elements:
+        raise ValueError("regular Morison force needs at least one element")
+
+    pose, speed, accel = state
+    roll, pitch, yaw = pose[3:]
+    c4, s4 = np.cos(roll), np.sin(roll)
+    c5, s5 = np.cos(pitch), np.sin(pitch)
+    c6, s6 = np.cos(yaw), np.sin(yaw)
+    # Keep the pinned MATLAB source's matrix, including its first-row term.
+    rotation = np.array([
+        [c5 * c6, c4 * s6 + s4 * s5 * c6, s4 * s6 - c4 * s5 * s6],
+        [-c5 * s6, c4 * c6 - s4 * s5 * s6, s4 * c6 + c4 * s5 * s6],
+        [s5, -s4 * c5, c4 * c5],
+    ])
+    omega = 2 * np.pi / wave_period
+    k = finite_depth_wavenumber(
+        np.array([omega]), water_depth=water_depth, gravity=g,
+    )[0]
+    heading = np.deg2rad(direction)
+    wave_axis = np.array([np.cos(heading), np.sin(heading)])
+    amplitude = wave_height / 2
+    if ramp_time and time < ramp_time:
+        amplitude *= (1 - np.cos(np.pi * time / ramp_time)) / 2
+    result = np.zeros(6)
+    for element in elements:
+        if not isinstance(element, MorisonElement):
+            raise TypeError("elements must be MorisonElement values")
+        point, cd, ca, area = (
+            np.asarray(value, dtype=float) for value in (
+                element.point, element.drag_coefficient,
+                element.added_mass_coefficient, element.area,
+            )
+        )
+        if (any(value.shape != (3,) or not np.isfinite(value).all()
+                for value in (point, cd, ca, area))
+                or np.any(cd < 0) or np.any(ca < 0) or np.any(area < 0)
+                or not np.isfinite(element.volume) or element.volume <= 0):
+            raise ValueError("Morison element coefficients and geometry are invalid")
+        rotated_point = rotation @ point
+        world = pose[:3] + rotated_point
+        if world[2] > 0:
+            continue
+        angular_cross_point = np.cross(speed[3:], point)
+        body_velocity = speed[:3] + angular_cross_point
+        body_acceleration = (accel[:3] + np.cross(accel[3:], point)
+                             + np.cross(speed[3:], angular_cross_point))
+        kh, kz = k * water_depth, k * world[2]
+        if kh > np.pi:
+            horizontal = vertical = np.exp(kz)
+        else:
+            horizontal = np.cosh(kz + kh) / np.cosh(kh)
+            vertical = np.sinh(kz + kh) / np.cosh(kh)
+        phase = omega * time - k * (world[:2] @ wave_axis)
+        horizontal_velocity = amplitude * horizontal * np.cos(phase) * g * k / omega
+        vertical_velocity = -amplitude * vertical * np.sin(phase) * g * k / omega
+        horizontal_acceleration = -amplitude * horizontal * np.sin(phase) * g * k
+        vertical_acceleration = -amplitude * vertical * np.cos(phase) * g * k
+        fluid_velocity = np.r_[horizontal_velocity * wave_axis, vertical_velocity]
+        fluid_acceleration = np.r_[horizontal_acceleration * wave_axis,
+                                   vertical_acceleration]
+        relative_velocity = fluid_velocity - body_velocity
+        # These row-vector coefficient transforms are the source block's
+        # option-1 convention; they are not a rotated drag tensor.
+        area_rot = np.abs(area @ rotation)
+        cd_rot = np.abs(cd) @ rotation
+        ca_rot = np.abs(ca @ rotation)
+        force = (0.5 * rho * cd_rot * area_rot * relative_velocity
+                 * np.abs(relative_velocity)
+                 + rho * element.volume * (
+                     fluid_acceleration
+                     + ca_rot * (fluid_acceleration - body_acceleration)))
+        result[:3] += force
+        result[3:] += np.cross(rotated_point, force)
+    return result
+
+
 def solve_fixed_morison_irregular(
     components: IrregularComponents,
     elements: Sequence[MorisonElement],
