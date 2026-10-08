@@ -48,15 +48,14 @@ def _check(actual, expected, tolerance, label):
 
 
 @pytest.mark.skipif(not REFERENCE, reason="paired MATLAB current output not provided")
-def test_fixed_monopile_power_law_current_against_matlab(tmp_path):
+@pytest.mark.parametrize("profile", ["uniform", "power", "linear"])
+def test_fixed_monopile_current_profiles_against_matlab(tmp_path, profile):
     source = Path(REFERENCE)
-    components = np.loadtxt(source / "MORISON_FIXED_CURRENT_components.csv",
-                            delimiter=",")
-    wave = np.loadtxt(source / "MORISON_FIXED_CURRENT_wave.csv", delimiter=",")
-    force = np.loadtxt(source / "MORISON_FIXED_CURRENT_morison_force.csv",
-                       delimiter=",")
-    monopile = np.loadtxt(source / "MORISON_FIXED_CURRENT_morisonElement_body1.csv",
-                          delimiter=",")
+    prefix = f"MORISON_FIXED_CURRENT_{profile}"
+    components = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
+    wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
+    force = np.loadtxt(source / f"{prefix}_morison_force.csv", delimiter=",")
+    monopile = np.loadtxt(source / f"{prefix}_body1.csv", delimiter=",")
     assert components.shape == (500, 5)
     assert wave.shape == (2001, 2)
     assert force.shape == (2001, 7)
@@ -64,7 +63,7 @@ def test_fixed_monopile_power_law_current_against_matlab(tmp_path):
     _check(monopile[:, 13:19], -force[:, 1:7], 1e-8,
            "MATLAB total and Morison force sign")
 
-    phases = tmp_path / "phases.csv"
+    phases = tmp_path / f"{profile}_phases.csv"
     np.savetxt(phases, components[:, 4:5], delimiter=",")
     sea = pm_equal_energy_components(
         None, significant_height=2, peak_period=5,
@@ -97,13 +96,13 @@ def test_fixed_monopile_power_law_current_against_matlab(tmp_path):
     result = wec.run(
         PMWave(2, 5, phase_file=phases, directions=(30,), spreading=(1,),
                frequency_range=(.001, 10), water_depth=30,
-               current=Current(.8, 45, "power", 30)),
+               current=Current(.8, 45, profile, 30)),
         dt=.01, end_time=20, ramp_time=10, rho=1025,
     )
     _check(result.time, wave[:, 0], 1e-12, "time")
     _check(result.wave_elevation, wave[:, 1], 1e-10, "wave elevation")
     _check(result.body_forces["monopile"], -force[:, 1:7], 1e-3,
-           "six-component current Morison force")
+           f"six-component {profile} current Morison force")
     _check(result.body_forces["tower"], np.zeros((2001, 6)), 1e-12,
            "tower force")
     _check(result.bodies["monopile"].position, monopile[:, 1:7], 1e-12,
