@@ -99,7 +99,8 @@ feedback setting explicitly. `floating_joint` also accepts a joint surge
 spring, PTO stiffness and equilibrium, hard stops, and convolution/FIR
 radiation where the underlying paired solver supports them. The returned
 `absorbed_power` counts the linear damper; spring energy exchange can be
-computed from `-force * velocity`.
+computed from `-force * velocity`. The returned stroke is float heave minus
+spar heave, so an initial body offset appears in the first stroke sample.
 
 For the published generalized-body-mode barge, generate its HDF5 with the
 Applications `Generalized_Body_Modes/hydroData/bemio.m`, then run:
