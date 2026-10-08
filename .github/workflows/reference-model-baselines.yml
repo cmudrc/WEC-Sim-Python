@@ -48,11 +48,13 @@ on:
       - 'tests/test_oswec_full_directional_parity.py'
       - 'tests/test_oswec_passive_yaw_parity.py'
       - 'tests/test_oswec_passive_yaw_irregular_parity.py'
+      - 'tests/test_morison_fixed_parity.py'
       - 'tests/test_passive_yaw_configuration.py'
       - 'tests/test_sphere_dynamics_parity.py'
       - 'wecsim/linearHeave.py'
       - 'wecsim/hingePitch.py'
       - 'wecsim/irregularWave.py'
+      - 'wecsim/morison.py'
       - 'wecsim/rm3Regular.py'
       - 'wecsim/hardStops.py'
       - 'wecsim/mcr.py'
@@ -154,6 +156,10 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests/test_morison_fixed_parity.py
+        if: matrix.model == 'MORISON_FIXED'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_case_dynamics_parity.py
         env:
           WEC_SIM_REFERENCE_MODEL: ${{ matrix.model }}

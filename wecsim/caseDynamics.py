@@ -30,6 +30,7 @@ from .irregularWave import (
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
+from .morison import MorisonElement, solve_fixed_morison_irregular
 from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import (
     HeldPassiveYawExcitation, PassiveYawExcitation, SampledPassiveYawExcitation,
@@ -84,14 +85,16 @@ def _hydro_file(body, base_dir):
     if isinstance(body, Mapping) and body.get("nonhydro", False):
         _section(body, "fixed nonhydrodynamic body",
                  {"nonhydro", "fixed", "center_gravity"},
-                 {"nonhydro", "fixed", "center_gravity", "name", "mass", "inertia"})
+                 {"nonhydro", "fixed", "center_gravity", "name", "mass", "inertia",
+                  "volume", "morison_elements"})
         if body["nonhydro"] is not True or body["fixed"] is not True:
             raise ValueError("nonhydrodynamic body must be fixed in this layout")
         center = np.asarray(body["center_gravity"], dtype=float)
         if center.shape != (3,) or not np.isfinite(center).all():
             raise ValueError("fixed body center_gravity must be three finite coordinates")
         if "mass" in body:
-            _number(body["mass"], "fixed body mass", positive=True)
+            if body["mass"] != "equilibrium":
+                _number(body["mass"], "fixed body mass", positive=True)
         if "inertia" in body:
             inertia = np.asarray(body["inertia"], dtype=float)
             if inertia.shape != (3,) or not np.isfinite(inertia).all() or np.any(inertia <= 0):
@@ -243,7 +246,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     {"type", "height", "period", "direction", "directions",
                      "spreading", "seed", "phase_file", "frequency_count",
                      "gamma", "file", "variable", "reapply_force_ramp", "seas",
-                     "excitation_interpolation", "force_quadrature"})
+                     "excitation_interpolation", "force_quadrature",
+                     "frequency_range", "water_depth"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates"})
@@ -257,16 +261,20 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
     for index, body in enumerate(bodies):
-        if "fixed" in body and not (kind == "fixed_hinge" and len(bodies) == 2
-                                     and index == 1 and body["fixed"] is True):
+        if "fixed" in body and not (
+            kind == "fixed_morison" or
+            (kind == "fixed_hinge" and len(bodies) == 2
+             and index == 1 and body["fixed"] is True)
+        ):
             raise ValueError("a fixed hydrodynamic body currently requires a two-body fixed_hinge")
     if "radiation_method" in sim and kind != "floating_joint":
         raise ValueError("radiation_method currently applies to floating_joint")
     if "added_mass_scheme" in sim and kind not in ("floating_joint", "fixed_hinge"):
         raise ValueError("added_mass_scheme currently applies to floating_joint or fixed_hinge")
     if any(path is None for path in hydro) and not (
-        kind == "fixed_hinge" and len(bodies) == 2
-        and hydro[0] is not None and hydro[1] is None
+        (kind == "fixed_hinge" and len(bodies) == 2
+         and hydro[0] is not None and hydro[1] is None)
+        or (kind == "fixed_morison" and all(path is None for path in hydro))
     ):
         raise ValueError("a fixed nonhydrodynamic body requires a two-body fixed_hinge")
     if "ptos" in case and kind != "linear_subspace":
@@ -275,6 +283,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("body.mean_drift currently requires linear_subspace")
     if "mooring" in case and kind != "floating_joint":
         raise ValueError("the joint surge mooring requires a floating_joint")
+
+    if kind == "fixed_morison":
+        return _run_fixed_morison(
+            case, sim, wave, constraint, bodies, hydro, b2b,
+            dt, end_time, ramp_time, rho, g, base,
+        )
 
     if "ptos" in case and any(
             isinstance(pto, Mapping) and "direct_drive" in pto
@@ -990,6 +1004,97 @@ def _run_variable_heave(case, sim, wave, constraint, bodies, hydro,
         wave_elevation=elevation, auxiliary_files=tuple(paths[1:]),
         pto_generalized_force=response.pto_force[:, None],
         extra_outputs=extras,
+    )
+
+
+def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
+                       b2b, dt, end_time, ramp_time, rho, g, base_dir):
+    """Evaluate the published type of stationary, no-HDF5 Morison device."""
+    if (b2b or any(key in case for key in ("pto", "ptos", "mooring"))
+            or set(constraint) != {"kind"}
+            or set(sim) - {"dt", "end_time", "ramp_time", "rho", "g"}):
+        raise ValueError("fixed Morison bodies use no joints, PTOs, or radiation")
+    if (wave["type"] != "pm"
+            or set(wave) - {"type", "height", "period", "directions",
+                            "spreading", "seed", "phase_file", "frequency_count",
+                            "frequency_range", "water_depth"}
+            or "frequency_range" not in wave or "water_depth" not in wave):
+        raise ValueError("fixed Morison bodies need a PM sea, frequency range, and water depth")
+    if "phase_file" in wave and "seed" in wave:
+        raise ValueError("supply either wave.seed or wave.phase_file")
+    auxiliary = ()
+    if "phase_file" in wave:
+        raw = wave["phase_file"]
+        if not isinstance(raw, str) or not raw:
+            raise ValueError("wave.phase_file must be a file path")
+        phase_path = (base_dir / raw).resolve(strict=True)
+        phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+        seed = None
+        auxiliary = (phase_path,)
+    else:
+        phase = None
+        seed = wave.get("seed", 7)
+        if not isinstance(seed, int) or isinstance(seed, bool):
+            raise ValueError("wave.seed must be an integer")
+    depth = _number(wave["water_depth"], "wave.water_depth", positive=True)
+    components = pm_equal_energy_components(
+        None,
+        significant_height=_number(wave.get("height"), "wave.height", positive=True),
+        peak_period=_number(wave.get("period"), "wave.period", positive=True),
+        directions=wave.get("directions", [0.0]),
+        spreading=wave.get("spreading", [1.0]),
+        count=wave.get("frequency_count", 500),
+        seed=seed, phase=phase, frequency_range=wave["frequency_range"],
+    )
+    time = np.arange(round(end_time / dt) + 1) * dt
+    position = np.zeros((len(time), len(bodies), 6))
+    velocity = np.zeros_like(position)
+    force_outputs = []
+    elevation = None
+    if any(path is not None for path in hydro):
+        raise ValueError("fixed Morison bodies cannot use HDF5 hydrodynamics")
+    for index, body in enumerate(bodies):
+        if body.get("nonhydro") is not True or body.get("fixed") is not True:
+            raise ValueError("fixed Morison bodies must be nonhydrodynamic and fixed")
+        center = np.asarray(body["center_gravity"], dtype=float)
+        position[:, index, :3] = center
+        name = body.get("name", f"body{index + 1}")
+        if not isinstance(name, str) or not name or any(
+                entry[0] == f"morison_force_{name}" for entry in force_outputs):
+            raise ValueError("fixed Morison body names must be nonempty and unique")
+        specs = body.get("morison_elements", [])
+        if not isinstance(specs, list):
+            raise ValueError("morison_elements must be a list")
+        elements = []
+        for spec in specs:
+            spec = _section(
+                spec, "morison element",
+                {"point", "drag_coefficient", "added_mass_coefficient",
+                 "area", "volume"},
+                {"point", "drag_coefficient", "added_mass_coefficient",
+                 "area", "volume", "phase_mode"},
+            )
+            elements.append(MorisonElement(
+                tuple(spec["point"]), tuple(spec["drag_coefficient"]),
+                tuple(spec["added_mass_coefficient"]), tuple(spec["area"]),
+                spec["volume"], spec.get("phase_mode", "directional"),
+            ))
+        if elements:
+            solved = solve_fixed_morison_irregular(
+                components, elements, center_gravity=center,
+                water_depth=depth, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, rho=rho, g=g,
+            )
+            elevation = solved.wave_elevation
+            force = solved.force
+        else:
+            force = np.zeros((len(time), 6))
+        force_outputs.append((f"morison_force_{name}", force))
+    if elevation is None:
+        raise ValueError("fixed Morison device needs at least one element")
+    return CaseResponse(
+        time, position, velocity, hydro, wave_elevation=elevation,
+        auxiliary_files=auxiliary, extra_outputs=tuple(force_outputs),
     )
 
 

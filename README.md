@@ -129,6 +129,7 @@ Supported combinations are:
 | `fixed_hinge` | `pm` or `pm_multi` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Directional PM excitation and radiation convolution; `pm_multi` sums independently phased seas |
 | `fixed_hinge` | `spectrumImportFullDir` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Imported frequency-dependent directional spectrum and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
+| `fixed_morison` | `pm` | Stationary bodies without HDF5; body-local Cartesian Morison elements; no PTO | Directional irregular-wave velocity, acceleration, and six-component Morison force |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
@@ -178,6 +179,41 @@ coefficient hold and snap to a nearby tabulated BEM heading. A zero threshold
 keeps continuous interpolation. The sampled setting is available for PM waves
 with one incident direction; small trajectory differences can change its
 update sample and accumulate over long runs.
+
+The published `Morison_Element/morisonElement` application has a fixed
+monopile and tower without HDF5 hydrodynamic bodies. Its nonlinear drag and
+fluid-inertia force can be configured with a body-local point:
+
+```python
+import numpy as np
+from wecsim import PMWave, WEC
+
+wec = WEC("fixed monopile")
+monopile = wec.fixed_body("monopile", center_gravity=(0, 0, -15),
+                          volume=np.pi * 10**2 * 30,
+                          inertia=(1.25e9, 1.25e9, .15e9))
+wec.fixed_body("tower", center_gravity=(0, 0, 25),
+               mass=1_031_930, inertia=(9.66e8, 9.66e8, .132e8))
+wec.morison_element(monopile, point=monopile.at(0, 0, 10),
+                    drag_coefficient=(1, 1, 1),
+                    added_mass_coefficient=(1, 1, 1),
+                    area=(300, 300, np.pi * 10**2 / 4),
+                    volume=np.pi * 10**2 * 30,
+                    phase_mode="matlab_shared")
+sea = PMWave(2, 5, seed=5, directions=(0, 30, 90),
+             spreading=(.1, .2, .7), frequency_range=(.001, 10),
+             water_depth=30)
+result = wec.run(sea, dt=.01, end_time=400, ramp_time=100, rho=1025)
+force_and_moment = result.body_forces["monopile"]  # time × 6, N and N m
+```
+
+The pinned MATLAB function uses the first phase column for Morison force at
+every heading, while wave elevation uses each heading's own phase.
+`phase_mode="matlab_shared"` selects that source behavior; the default
+`"directional"` uses each heading's own phase for force. Supply a saved
+three-column phase CSV to reproduce a MATLAB realization exactly.
+Moving Morison bodies, current profiles, and the function's alternative
+normal/tangential coefficient mode are not yet supported.
 
 For a heave or other `linear_subspace` device, `JONSWAPWave(2.5, 8,
 seed=1, gamma=3.3)` selects a JONSWAP sea. Omitting `gamma` uses WEC-Sim's

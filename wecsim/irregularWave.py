@@ -165,7 +165,7 @@ def imported_spectrum_components(
 
 
 def pm_equal_energy_components(
-    h5_file: str | Path,
+    h5_file: str | Path | None,
     *,
     significant_height: float,
     peak_period: float,
@@ -174,18 +174,21 @@ def pm_equal_energy_components(
     count: int = 500,
     seed: int | None = None,
     phase: np.ndarray | None = None,
+    frequency_range: Sequence[float] | None = None,
 ) -> IrregularComponents:
-    """Build current WEC-Sim PM equal-energy bins from the BEM frequency range.
+    """Build current WEC-Sim PM equal-energy bins from a frequency range.
 
     ``phase`` overrides random generation for replay. With ``seed``, NumPy's
     generator makes a reproducible *Python* realization; its random sequence
     is not MATLAB Threefry's. Exactly matching a MATLAB run requires its
-    saved phase matrix.
+    saved phase matrix. ``frequency_range`` supplies the WEC-Sim ``bem.range``
+    used when a Morison-only body has no HDF5 file.
     """
     return _equal_energy_components(
         h5_file, significant_height=significant_height,
         peak_period=peak_period, directions=directions, spreading=spreading,
         count=count, seed=seed, phase=phase, gamma=None,
+        frequency_range=frequency_range,
     )
 
 
@@ -223,9 +226,10 @@ def jonswap_equal_energy_components(
 
 
 def _equal_energy_components(
-    h5_file: str | Path, *, significant_height: float, peak_period: float,
+    h5_file: str | Path | None, *, significant_height: float, peak_period: float,
     directions: np.ndarray, spreading: np.ndarray, count: int,
     seed: int | None, phase: np.ndarray | None, gamma: float | None,
+    frequency_range: Sequence[float] | None = None,
 ) -> IrregularComponents:
     if (not np.isfinite([significant_height, peak_period]).all()
             or significant_height <= 0 or peak_period <= 0):
@@ -236,15 +240,25 @@ def _equal_energy_components(
     if phase is not None and seed is not None:
         raise ValueError("supply either phase or seed")
 
-    body = BodyClass(str(h5_file))
-    body.bodyNumber = 1
-    body.readH5file()
-    bem_omega = np.asarray(body.hydroData["simulation_parameters"]["w"]).ravel()
-    if len(bem_omega) < 2 or not np.isfinite(bem_omega).all():
-        raise ValueError("hydrodynamic frequency range is invalid")
+    if frequency_range is None:
+        if h5_file is None:
+            raise ValueError("a BEM file or explicit frequency_range is required")
+        body = BodyClass(str(h5_file))
+        body.bodyNumber = 1
+        body.readH5file()
+        bem_omega = np.asarray(body.hydroData["simulation_parameters"]["w"]).ravel()
+        if len(bem_omega) < 2 or not np.isfinite(bem_omega).all():
+            raise ValueError("hydrodynamic frequency range is invalid")
+        omega_min, omega_max = float(bem_omega.min()), float(bem_omega.max())
+    else:
+        limits = np.asarray(frequency_range, dtype=float)
+        if (limits.shape != (2,) or not np.isfinite(limits).all()
+                or limits[0] <= 0 or limits[1] <= limits[0]):
+            raise ValueError("frequency_range needs two increasing positive rad/s values")
+        omega_min, omega_max = map(float, limits)
     # Current MATLAB EqualEnergy uses 500,000 equal-width intervals before
     # locating the closest cumulative-energy boundary for each bin.
-    dense_omega = np.linspace(bem_omega.min(), bem_omega.max(), 500_001)
+    dense_omega = np.linspace(omega_min, omega_max, 500_001)
     frequency = dense_omega / (2 * np.pi)
     b_pm = 1.25 * (1 / peak_period)**4
     a_pm = b_pm * (significant_height / 2)**2
