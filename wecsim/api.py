@@ -59,6 +59,10 @@ class Body:
     hydro_body: int | None = None
     mean_drift: str = "none"
     passive_yaw: bool = False
+    geometry_file: str | Path | None = None
+    nonlinear_hydro: str | None = None
+    drag_coefficient: float = 0.0
+    drag_area: float = 0.0
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -212,11 +216,16 @@ class WEC:
              inertia: Sequence[float] = (0, 0, 0),
              hydro_body: int | None = None,
              mean_drift: str = "none",
-             passive_yaw: bool = False) -> Body:
+             passive_yaw: bool = False,
+             geometry_file: str | Path | None = None,
+             nonlinear_hydro: str | None = None,
+             drag_coefficient: float = 0.0,
+             drag_area: float = 0.0) -> Body:
         if any(existing.name == name for existing in self.bodies):
             raise ValueError(f"body name already exists: {name}")
         body = Body(name, hydro_file, mass, tuple(inertia), hydro_body,
-                    mean_drift, passive_yaw)
+                    mean_drift, passive_yaw, geometry_file, nonlinear_hydro,
+                    drag_coefficient, drag_area)
         self.bodies.append(body)
         return body
 
@@ -312,6 +321,13 @@ class WEC:
                 body_case["mean_drift"] = body.mean_drift
             if body.passive_yaw:
                 body_case["passive_yaw"] = True
+            if body.geometry_file is not None:
+                body_case["geometry_file"] = str(body.geometry_file)
+            if body.nonlinear_hydro is not None:
+                body_case["nonlinear_hydro"] = body.nonlinear_hydro
+            if body.drag_coefficient or body.drag_area:
+                body_case["drag_coefficient"] = body.drag_coefficient
+                body_case["drag_area"] = body.drag_area
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
         for coordinate in self.coordinates:
