@@ -102,26 +102,58 @@ class RectifyingCheckValve:
 
 @dataclass(frozen=True)
 class GasChargedAccumulator:
-    """Polytropic gas pressure versus integrated liquid inflow."""
+    """Polytropic gas pressure versus liquid volume and inlet flow.
+
+    Optional atmospheric pressure and finite hard stops describe the legacy
+    Simscape Fluids accumulator. The defaults retain the PTO-Sim accumulator
+    law, which uses gauge pressure and no volume hard stops.
+    """
 
     initial_gas_volume: float
     precharge_pressure: float
     exponent: float = 1.4
+    atmospheric_pressure: float = 0.0
+    dead_gas_volume: float = 0.0
+    hard_stop_stiffness: float = 0.0
+    hard_stop_damping: float = 0.0
 
     def __post_init__(self):
         values = np.asarray((self.initial_gas_volume, self.precharge_pressure,
-                             self.exponent), dtype=float)
-        if not np.isfinite(values).all() or (values <= 0).any():
-            raise ValueError("accumulator volume, precharge, and exponent must be positive")
+                             self.exponent, self.atmospheric_pressure,
+                             self.dead_gas_volume, self.hard_stop_stiffness,
+                             self.hard_stop_damping), dtype=float)
+        if (not np.isfinite(values).all() or (values[:3] <= 0).any()
+                or (values[3:] < 0).any()
+                or self.dead_gas_volume >= self.initial_gas_volume):
+            raise ValueError(
+                "accumulator volume, precharge, and exponent must be positive; "
+                "atmospheric pressure and hard stops must be nonnegative"
+            )
 
-    def pressure(self, liquid_inflow_volume):
-        """Pressure in Pa; positive accumulated inlet volume compresses gas."""
-        gas_volume = self.initial_gas_volume - np.asarray(
-            liquid_inflow_volume, dtype=float)
+    def pressure(self, liquid_inflow_volume, flow_rate=0.0):
+        """Gauge pressure in Pa; positive liquid volume compresses gas."""
+        liquid_volume, flow = np.broadcast_arrays(
+            np.asarray(liquid_inflow_volume, dtype=float),
+            np.asarray(flow_rate, dtype=float),
+        )
+        if not np.isfinite(liquid_volume).all() or not np.isfinite(flow).all():
+            raise ValueError("accumulator volume and flow must be finite")
+        gas_volume = self.initial_gas_volume - liquid_volume
         if np.any(gas_volume <= 0):
             raise ValueError("accumulator gas volume must remain positive")
-        return (self.precharge_pressure
-                * (self.initial_gas_volume / gas_volume) ** self.exponent)
+        gas_pressure = ((self.precharge_pressure + self.atmospheric_pressure)
+                        * (self.initial_gas_volume / gas_volume) ** self.exponent
+                        - self.atmospheric_pressure)
+        capacity = self.initial_gas_volume - self.dead_gas_volume
+        below = np.minimum(liquid_volume, 0)
+        above = np.maximum(liquid_volume - capacity, 0)
+        contact_pressure = (
+            (self.hard_stop_stiffness
+             - self.hard_stop_damping * np.minimum(flow, 0)) * below
+            + (self.hard_stop_stiffness
+               + self.hard_stop_damping * np.maximum(flow, 0)) * above
+        )
+        return gas_pressure + contact_pressure
 
 
 @dataclass(frozen=True)
