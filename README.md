@@ -993,8 +993,7 @@ The published OSWEC Desalination rod uses a different attachment geometry.
 `PitchRodLinkage(anchor=(5.6021271782, -8.7), hinge=(0, -8.9),
 body_center=(0, -3.9), body_point=(0.9, -3.1))` specifies its fixed world
 anchor and flap-local endpoint in the x/z plane. Its stroke and speed pair
-with the 300 s MATLAB source trace; the reverse-osmosis fluid network and
-coupled response are still being validated (see [PARITY.md](PARITY.md)).
+with the 300 s MATLAB source trace.
 `ReverseOsmosisMembrane` also exposes the published osmotic valve and linear
 hydraulic-resistance settings as a Python object. Given an inlet pressure,
 `permeate_flow(pressure)` solves their series pressure drop. It does not
@@ -1002,12 +1001,43 @@ predict that pressure or the coupled flap motion.
 `GasChargedAccumulator` accepts optional atmospheric pressure, dead gas
 volume, and hard-stop settings for the published Desalination accumulator.
 Given its measured inlet flow and startup pressure, the Python component
-integrates liquid volume and reproduces the source pressure trace. The
-network must still predict that flow to run independently.
+integrates liquid volume and reproduces the source pressure trace.
 `IdealDoubleActingCylinder(area_a=.26, area_b=.26)` computes the published
 incompressible cylinder's rod force and A-in/B-out port flows from chamber
 pressures and rod speed. The source force sensor reverses the rod-force sign.
-The Python network does not yet predict those chamber pressures.
+`ReverseOsmosisHydraulicNetwork` predicts high-side pressure and branch flows
+from prescribed rod speed, with the source's relief-valve opening lag and
+brine-driven motor/pump ratio. Configure it with the published components:
+
+```python
+from wecsim import (
+    DynamicPressureReliefValve, GasChargedAccumulator,
+    ReverseOsmosisHydraulicNetwork, ReverseOsmosisMembrane,
+)
+
+network = ReverseOsmosisHydraulicNetwork(
+    accumulator=GasChargedAccumulator(
+        4, 3e6, atmospheric_pressure=101_325, dead_gas_volume=4e-5,
+        hard_stop_stiffness=1e7, hard_stop_damping=1e7,
+    ),
+    membrane=ReverseOsmosisMembrane(
+        .6023e8, 3e6, 5e4, .3, 1e-12, .7, 850,
+    ),
+    relief=DynamicPressureReliefValve(
+        5.6e6, 1e5, .0267, 1e-12, .7, 850, .1,
+    ),
+    cylinder_area=.26,
+    pump_to_motor_displacement_ratio=.95,
+    pump_outlet_resistance=.6023e8 / 22,
+)
+state = network.initial_state()
+state = network.step(rod_speed=0.1, previous=state, dt=.01)
+print(state.pressure, state.permeate_flow, state.relief_flow)
+```
+
+The paired 300 s test drives this network with the MATLAB cylinder's saved rod
+speed but no saved pressure or branch flow. It does not yet predict cylinder
+chamber pressures, rod force, or coupled flap motion; see [PARITY.md](PARITY.md).
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a

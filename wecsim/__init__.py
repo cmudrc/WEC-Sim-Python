@@ -7,7 +7,10 @@ from .api import (
 )
 from .controls import DeclutchingControl, LatchingControl
 from .crank import AdjustableRodCrank, FixedRodCrank, PitchRodLinkage
-from .desalination import ReverseOsmosisMembrane
+from .desalination import (
+    DynamicPressureReliefValve, ReverseOsmosisHydraulicNetwork,
+    ReverseOsmosisHydraulicState, ReverseOsmosisMembrane,
+)
 from .directLinearGenerator import (
     DirectLinearGenerator, DirectLinearGeneratorSignals,
     RM3DirectGeneratorResponse, run_rm3_direct_linear_generator,
@@ -49,7 +52,8 @@ __all__ = [
     "RM3DirectGeneratorResponse", "run_rm3_direct_linear_generator",
     "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
     "AdjustableRodCrank", "FixedRodCrank", "PitchRodLinkage",
-    "ReverseOsmosisMembrane",
+    "ReverseOsmosisMembrane", "DynamicPressureReliefValve",
+    "ReverseOsmosisHydraulicNetwork", "ReverseOsmosisHydraulicState",
     "GasChargedAccumulator", "IdealDoubleActingCylinder",
     "RectifiedHydraulicPTO", "RectifyingCheckValve",
     "DiscretePILoadController", "EquivalentCircuitGenerator",
