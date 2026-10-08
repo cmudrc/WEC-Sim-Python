@@ -68,8 +68,8 @@ two-body device with a shared pitch pivot and body-local PTO points. Run it
 with `python -m examples.configurable_rm3_pto`. Relative HDF5 paths in
 the Python API resolve from the current directory unless `base_dir` is passed
 to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
-Python builder currently covers the `linear_subspace` layout with regular or
-no waves; its named coordinates use small-motion kinematics and fixed-axis
+Python builder currently covers the `linear_subspace` layout with regular,
+regularCIC, or no waves; its named coordinates use small-motion kinematics and fixed-axis
 PTOs. The other validated reference layouts remain available through the
 case runner and focused solver functions.
 For a regular-wave declutching PTO, pass
@@ -111,7 +111,32 @@ Supported combinations are:
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
-| `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular`, `regularCIC`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+
+For the published Sphere `Mean_Drift` application, select the control-surface
+coefficient in the generated HDF5 file and use convolution radiation:
+
+```python
+from wecsim import RegularCICWave, WEC
+
+wec = WEC("Sphere mean drift")
+sphere = wec.body("sphere", "Mean_Drift/hydroData/sphere.h5",
+                  inertia=(837.75804096,) * 3,
+                  mean_drift="control_surface")
+for axis in ("surge", "heave", "pitch"):
+    wec.coordinate(axis, sphere.move(axis))
+result = wec.run(RegularCICWave(0.1, 2), dt=0.01, end_time=100,
+                 ramp_time=20, radiation_memory=10)
+drift_force = dict(result.raw.extra_outputs)["body1_mean_drift_force"]
+excitation_force = dict(result.raw.extra_outputs)["body1_excitation_force"]
+```
+
+`mean_drift="momentum_conservation"` selects that HDF5 coefficient when
+present. An absent selected dataset raises an error. The regular-wave drift
+force is the selected coefficient times wave amplitude squared and the wave
+force ramp. The published unmoored linear Sphere run travels more than 16 m
+in surge over 100 s; the paired result reproduces that source model but does
+not establish physical accuracy at such a large displacement.
 
 The runner rejects unsupported layouts and settings. For the PM case, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either

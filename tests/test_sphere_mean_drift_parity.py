@@ -1,0 +1,120 @@
+"""Pair the published Sphere Mean_Drift application with pinned MATLAB."""
+
+import os
+from pathlib import Path
+
+import h5py
+import numpy as np
+import pytest
+from scipy.interpolate import CubicSpline
+from scipy.signal import fftconvolve
+
+from wecsim import RegularCICWave, WEC
+
+
+APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+pytestmark = pytest.mark.skipif(
+    not (APPLICATIONS and REFERENCE),
+    reason="paired MATLAB Sphere mean-drift output not provided",
+)
+
+
+def _ramp(time):
+    return np.where(time < 20, (1 - np.cos(np.pi * time / 20)) / 2, 1)
+
+
+def _radiation_force(hydro_file, velocity, output_axis):
+    """Reconstruct the finite-window radiation integral from source HDF5."""
+    dt = 0.01
+    with h5py.File(hydro_file) as source:
+        path = source["body1/hydro_coeffs/radiation_damping/impulse_response_fun"]
+        lag = np.asarray(path["t"]).ravel()
+        kernel = 1000 * CubicSpline(lag, np.asarray(path["K"]), axis=2)(
+            np.arange(1001) * dt,
+        )
+    result = np.zeros(len(velocity))
+    for input_axis in (0, 2, 4):
+        tap = kernel[output_axis, input_axis]
+        speed = velocity[:, input_axis]
+        result += dt * fftconvolve(speed, tap, mode="full")[:len(speed)]
+        result -= dt / 2 * tap[0] * speed
+        result[1000:] -= dt / 2 * tap[-1] * speed[:-1000]
+    return result
+
+
+def test_sphere_control_surface_drift_matches_matlab_motion_and_forces():
+    reference = Path(REFERENCE)
+    hydro = (Path(APPLICATIONS) / "Mean_Drift/hydroData/sphere.h5").resolve()
+    source = np.loadtxt(
+        reference / "SPHERE_MEAN_DRIFT_Mean_Drift_body1.csv", delimiter=",",
+    )
+    source_wave = np.loadtxt(
+        reference / "SPHERE_MEAN_DRIFT_wave.csv", delimiter=",",
+    )
+    coefficients = np.loadtxt(
+        reference / "SPHERE_MEAN_DRIFT_excitation_coefficients.csv",
+        delimiter=",",
+    )
+    mass = np.loadtxt(
+        reference / "SPHERE_MEAN_DRIFT_mass_properties.csv", delimiter=",",
+    )
+    wec = WEC("Sphere mean drift")
+    sphere = wec.body("sphere", hydro, inertia=mass[1:],
+                      mean_drift="control_surface")
+    for axis in ("surge", "heave", "pitch"):
+        wec.coordinate(axis, sphere.move(axis))
+    result = wec.run(
+        RegularCICWave(0.1, 2), dt=0.01, end_time=100,
+        ramp_time=20, radiation_memory=10,
+    )
+    response = result.raw
+    assert result.case["bodies"][0]["mean_drift"] == "control_surface"
+    assert response.body_position.shape == (10_001, 1, 6)
+    np.testing.assert_allclose(response.time, source[:, 0], rtol=0, atol=1e-8)
+    np.testing.assert_allclose(response.wave_elevation, source_wave[:, 1],
+                               rtol=0, atol=1e-12)
+
+    for axis, label, position_limit, velocity_limit in (
+        (0, "surge", 1e-4, 1e-4),
+        (2, "heave", 7e-4, 2e-3),
+        (4, "pitch", 1e-6, 1e-6),
+    ):
+        position_error = np.max(np.abs(
+            response.body_position[:, 0, axis] - source[:, 1 + axis],
+        ))
+        velocity_error = np.max(np.abs(
+            response.body_velocity[:, 0, axis] - source[:, 7 + axis],
+        ))
+        assert position_error < position_limit, f"{label} position {position_error}"
+        assert velocity_error < velocity_limit, f"{label} velocity {velocity_error}"
+    np.testing.assert_allclose(response.body_position[:, 0, [1, 3, 5]],
+                               source[:, [2, 4, 6]], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(response.body_velocity[:, 0, [1, 3, 5]],
+                               source[:, [8, 10, 12]], rtol=0, atol=1e-10)
+
+    amplitude = 0.05
+    ramp = _ramp(response.time)
+    phase = np.pi * response.time
+    expected_excitation = ramp[:, None] * (
+        amplitude * (np.cos(phase[:, None]) * coefficients[:, 0]
+                     - np.sin(phase[:, None]) * coefficients[:, 1])
+        + amplitude**2 * coefficients[:, 2]
+    )
+    np.testing.assert_allclose(expected_excitation, source[:, 19:25],
+                               rtol=0, atol=2e-9)
+    outputs = dict(response.extra_outputs)
+    np.testing.assert_allclose(outputs["body1_excitation_force"],
+                               source[:, 19:25], rtol=0, atol=2e-9)
+    drift = outputs["body1_mean_drift_force"]
+    np.testing.assert_allclose(drift, amplitude**2 * ramp[:, None]
+                               * coefficients[:, 2], rtol=0, atol=2e-9)
+    for axis in (0, 2, 4):
+        reconstructed = _radiation_force(
+            hydro, response.body_velocity[:, 0], axis,
+        )
+        error = np.max(np.abs(reconstructed - source[:, 25 + axis]))
+        assert error < {0: 0.25, 2: 5.0, 4: 0.001}[axis], (
+            f"{('surge', 'heave', 'pitch')[(0, 2, 4).index(axis)]} "
+            f"radiation force {error}"
+        )

@@ -2,7 +2,7 @@
 
 from .api import (
     Body, BodyPoint, Coordinate, LinearPTO, Motion, MotionHistory, NoWave,
-    PTOHistory, RegularWave, WEC, WECResult, WorldPoint,
+    PTOHistory, RegularCICWave, RegularWave, WEC, WECResult, WorldPoint,
 )
 from .controls import DeclutchingControl, LatchingControl
 from .caseDynamics import CaseResponse, run_case
@@ -16,7 +16,8 @@ from .rm3Regular import solve_rm3_regular
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "DeclutchingControl", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
-    "MotionHistory", "NoWave", "PTOHistory", "RegularWave", "WEC",
+    "MotionHistory", "NoWave", "PTOHistory", "RegularCICWave",
+    "RegularWave", "WEC",
     "WECResult", "WorldPoint",
     "MCRCondition", "MCRPowerMatrix", "MCRResult", "MCRSeaStateResult",
     "MCRTrace", "mcr_grid", "mcr_mat_file", "mcr_spectrum_files",
