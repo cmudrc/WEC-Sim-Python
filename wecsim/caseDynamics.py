@@ -23,7 +23,8 @@ from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
 )
 from .irregularWave import (
-    imported_full_directional_components, jonswap_equal_energy_components,
+    imported_full_directional_components, imported_spectrum_components,
+    jonswap_equal_energy_components,
     pm_equal_energy_components,
     synthesize_full_directional_response, synthesize_irregular_response,
     synthesize_multiple_irregular_response,
@@ -1110,13 +1111,14 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     if set(constraint) - {"kind", "initial_coordinate", "initial_speed",
                            "coordinates"}:
         raise ValueError("linear_subspace uses coordinate maps, not joint locations")
-    if wave["type"] not in ("regular", "regularCIC", "pm", "jonswap", "none"):
-        raise ValueError("linear_subspace supports regular, regularCIC, PM, JONSWAP, or no waves")
+    if wave["type"] not in ("regular", "regularCIC", "pm", "jonswap",
+                            "spectrumImport", "none"):
+        raise ValueError("linear_subspace supports regular, regularCIC, PM, JONSWAP, spectrumImport, or no waves")
     if b2b and len(set(hydro)) != 1:
         raise ValueError("body-to-body hydrodynamics need one shared HDF5 file")
     if wave["type"] == "none" and set(wave) != {"type"}:
         raise ValueError("no-wave cases have no wave height or period")
-    if (wave["type"] in ("pm", "jonswap")
+    if (wave["type"] in ("pm", "jonswap", "spectrumImport")
             and any(body.get("mean_drift", "none") != "none" for body in bodies)):
         raise ValueError("irregular linear-subspace mean-drift forcing is not supported")
     components = None
@@ -1166,6 +1168,12 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             frequency_range=wave.get("frequency_range"),
             **spectrum_options,
         )
+    elif wave["type"] == "spectrumImport":
+        if set(wave) != {"type", "file"} or not isinstance(wave["file"], str) or not wave["file"]:
+            raise ValueError("spectrumImport needs one MAT spectrum file")
+        spectrum_file = (base_dir / wave["file"]).expanduser().resolve(strict=True)
+        components = imported_spectrum_components(hydro[0], spectrum_file)
+        auxiliary_files.append(spectrum_file)
     else:
         if "ramp_time" in sim:
             raise ValueError("ramp_time is inapplicable to no-wave dynamics")
@@ -1444,7 +1452,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             if memory_time > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             regular_memory = wave["type"] == "regularCIC"
-            irregular = wave["type"] in ("pm", "jonswap")
+            irregular = wave["type"] in ("pm", "jonswap", "spectrumImport")
             body.hydroForcePre(
                 (frequency if regular_memory else
                  components.omega if irregular else []),
@@ -1453,6 +1461,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 len(convolution_time), convolution_time,
                 len(components.omega) if irregular else [],
                 dt, rho, g, ("regularCIC" if regular_memory else
+                             "spectrumImport" if wave["type"] == "spectrumImport" else
                              "irregular" if irregular else "noWaveCIC"),
                 wave_amp,
                 index, len(bodies), 0, 0, int(b2b),
@@ -1503,7 +1512,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     real * np.cos(frequency * at_time)
                     - imaginary * np.sin(frequency * at_time)
                 ) + (height / 2)**2 * ramp * drift)
-        elif wave["type"] in ("pm", "jonswap"):
+        elif wave["type"] in ("pm", "jonswap", "spectrumImport"):
             if body_spec.get("passive_yaw", False):
                 def excitation(at_time):
                     return np.zeros(6)

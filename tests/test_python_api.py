@@ -8,9 +8,10 @@ import pytest
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import (JONSWAPWave, LatchingControl, NoWave, PMWave,
+from wecsim import (ImportedSpectrumWave, JONSWAPWave, LatchingControl, NoWave, PMWave,
                     RegularWave, WEC, WorldPoint)
-from wecsim.irregularWave import (jonswap_equal_energy_components,
+from wecsim.irregularWave import (imported_spectrum_components,
+                                  jonswap_equal_energy_components,
                                   pm_equal_energy_components,
                                   synthesize_irregular_response)
 
@@ -119,6 +120,27 @@ def test_hydrodynamic_wave_rejects_unimplemented_depth_override():
         wec.run(PMWave(2.5, 8, seed=7, water_depth=25),
                 dt=0.1, end_time=0.2, ramp_time=1,
                 radiation_memory=0.2)
+
+
+def test_python_builder_runs_imported_spectrum_with_relative_mat_path():
+    source = ("tests/test_objects/test_waveclass/testData/"
+              "spectrumImport_1_test/spectrumData.mat")
+    wec = build_wec()
+    wave = ImportedSpectrumWave(source)
+    response = wec.run(
+        wave, dt=0.1, end_time=0.2, ramp_time=1,
+        radiation_memory=0.2, base_dir=ROOT,
+    )
+    components = imported_spectrum_components(HYDRO, ROOT / source)
+    expected = synthesize_irregular_response(
+        HYDRO, components, dt=0.1, end_time=0.2, ramp_time=1,
+    )
+    np.testing.assert_allclose(response.wave_elevation, expected.elevation,
+                               rtol=0, atol=1e-12)
+    assert response.raw.auxiliary_files == ((ROOT / source).resolve(),)
+    assert np.isfinite(response.bodies["float"].position).all()
+    assert np.isfinite(response.bodies["spar"].position).all()
+    assert np.isfinite(response.ptos["main"].force).all()
 
 
 def test_python_builder_rejects_foreign_body_attachment():

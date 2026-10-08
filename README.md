@@ -312,6 +312,20 @@ discrete FIR calculation; `"convolution"` remains the default. The same
 setting is available for no-wave free decay, without a paired FIR baseline. Both use
 `radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+For a `linear_subspace` device, the Python API also accepts a WEC-Sim
+three-column imported spectrum MAT file, including its saved phases:
+
+```python
+from wecsim import ImportedSpectrumWave
+
+result = wec.run(ImportedSpectrumWave("spectrumData1.mat"),
+                 dt=0.1, end_time=400, ramp_time=100,
+                 radiation_memory=60, base_dir="path/to/inputs")
+```
+
+The file path resolves from `base_dir`. This selects an incident sea for the
+configured Python WEC; the specialized RM3 floating-joint MCR runner remains
+the paired solver for the published four-coordinate RM3 sea-state motion.
 The inherited `WaveClass` now uses the pinned MATLAB PM and JONSWAP spectrum
 definitions, including height-dependent PM energy and JONSWAP's inferred
 `gamma` when it is unspecified. Its seeded phases use a local NumPy generator;

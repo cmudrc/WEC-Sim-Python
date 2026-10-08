@@ -1,7 +1,7 @@
 """Public Python interface for supported WEC-Sim device dynamics."""
 
 from .api import (
-    Body, BodyPoint, Coordinate, DirectDriveHistory, FlexibleModeHistory, HydroState, JONSWAPWave, LinearGeneratorHistory, LinearPTO, Motion, MotionHistory, NoWave, PMWave,
+    Body, BodyPoint, Coordinate, DirectDriveHistory, FlexibleModeHistory, HydroState, ImportedSpectrumWave, JONSWAPWave, LinearGeneratorHistory, LinearPTO, Motion, MotionHistory, NoWave, PMWave,
     RotationalPTO,
     PTOHistory, RegularCICWave, RegularWave, SimpleDirectDrive, VariableHydro, WEC, WECResult, WorldPoint,
 )
@@ -27,7 +27,7 @@ from .sphereMpc import SphereMPCResult, run_sphere_mpc
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "DeclutchingControl", "DirectDriveHistory", "DirectLinearGenerator", "DirectLinearGeneratorSignals", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
-    "MotionHistory", "FlexibleModeHistory", "JONSWAPWave", "MorisonElement", "NoWave", "PMWave", "PTOHistory", "LinearGeneratorHistory", "RotationalPTO", "RegularCICWave",
+    "MotionHistory", "FlexibleModeHistory", "ImportedSpectrumWave", "JONSWAPWave", "MorisonElement", "NoWave", "PMWave", "PTOHistory", "LinearGeneratorHistory", "RotationalPTO", "RegularCICWave",
     "RegularWave", "SimpleDirectDrive", "VariableHydro", "HydroState", "WEC",
     "WECResult", "WorldPoint",
     "MCRCondition", "MCRPowerMatrix", "MCRResult", "MCRSeaStateResult",

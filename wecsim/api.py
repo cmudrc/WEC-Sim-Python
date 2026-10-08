@@ -230,6 +230,20 @@ class JONSWAPWave(PMWave):
 
 
 @dataclass(frozen=True)
+class ImportedSpectrumWave:
+    """WEC-Sim three-column MAT spectrum with its saved phase realization.
+
+    ``file`` resolves from ``WEC.run(base_dir=...)``. The MAT file contains
+    frequency in Hz, density in m²/Hz, and phase in radians.
+    """
+
+    file: str | Path
+
+    def as_case(self) -> dict:
+        return {"type": "spectrumImport", "file": str(self.file)}
+
+
+@dataclass(frozen=True)
 class NoWave:
     def as_case(self) -> dict:
         return {"type": "none"}
@@ -492,7 +506,7 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
@@ -501,8 +515,9 @@ class WEC:
         initial_speed: Mapping[str, float] | Sequence[float] | None = None,
     ) -> dict:
         """Return the case mapping used by the validated dynamics runner."""
-        if not isinstance(wave, (RegularWave, RegularCICWave, PMWave, JONSWAPWave, NoWave)):
-            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, or NoWave")
+        if not isinstance(wave, (RegularWave, RegularCICWave, PMWave,
+                                 JONSWAPWave, ImportedSpectrumWave, NoWave)):
+            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, ImportedSpectrumWave, or NoWave")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -624,7 +639,7 @@ class WEC:
         return case
 
     def run(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
