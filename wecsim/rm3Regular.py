@@ -35,6 +35,35 @@ class RM3RegularResponse:
     mooring_surge_force: np.ndarray | None = None
 
 
+def _rm3_slider_motion(coordinate, speed, *, body_index, lever):
+    """Map the pitched floating joint and one body-local slider to six DOFs."""
+    angle = coordinate[3]
+    slide = coordinate[body_index + 1]
+    radius = lever + slide
+    sine, cosine = np.sin(angle), np.cos(angle)
+    jacobian = np.zeros((6, 4))
+    jacobian[0, 0] = 1.0
+    jacobian[0, body_index + 1] = sine
+    jacobian[2, body_index + 1] = cosine
+    jacobian[0, 3] = radius * cosine
+    jacobian[2, 3] = -radius * sine
+    jacobian[4, 3] = 1.0
+    curvature = np.array([
+        2 * cosine * speed[body_index + 1] * speed[3]
+        - radius * sine * speed[3]**2,
+        0.0,
+        -2 * sine * speed[body_index + 1] * speed[3]
+        - radius * cosine * speed[3]**2,
+        0.0, 0.0, 0.0,
+    ])
+    displacement = np.array([
+        coordinate[0] + radius * sine, 0.0,
+        slide * cosine + lever * (cosine - 1.0),
+        0.0, angle, 0.0,
+    ])
+    return BodyMotion(displacement, jacobian, curvature)
+
+
 def solve_rm3_regular(
     h5_file: str | Path,
     *,
@@ -231,29 +260,7 @@ def solve_rm3_regular(
         lever = body["lever"]
 
         def motion(q, v, *, index=index, lever=lever):
-            angle = q[3]
-            slide = q[index + 1]
-            radius = lever + slide
-            sine, cosine = np.sin(angle), np.cos(angle)
-            jacobian = np.zeros((6, 4))
-            jacobian[0, 0] = 1.0
-            jacobian[0, index + 1] = sine
-            jacobian[2, index + 1] = cosine
-            jacobian[0, 3] = radius * cosine
-            jacobian[2, 3] = -radius * sine
-            jacobian[4, 3] = 1.0
-            curvature = np.array([
-                2 * cosine * v[index + 1] * v[3] - radius * sine * v[3]**2,
-                0.0,
-                -2 * sine * v[index + 1] * v[3] - radius * cosine * v[3]**2,
-                0.0, 0.0, 0.0,
-            ])
-            displacement = np.array([
-                q[0] + radius * sine, 0.0,
-                slide * cosine + lever * (cosine - 1.0),
-                0.0, angle, 0.0,
-            ])
-            return BodyMotion(displacement, jacobian, curvature)
+            return _rm3_slider_motion(q, v, body_index=index, lever=lever)
 
         def excitation(at_time, *, re=body["re"], im=body["im"],
                        body_index=index):
