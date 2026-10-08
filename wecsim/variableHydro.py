@@ -58,7 +58,8 @@ def integrate_variable_heave(
             or not np.isfinite(switches).all()
             or np.any(switches <= 0) or np.any(switches >= end_time)
             or np.any(np.diff(switches) <= 0)
-            or not np.allclose(switches / dt, np.round(switches / dt), atol=1e-8)):
+            or not np.allclose(switches / dt, np.round(switches / dt),
+                               rtol=0, atol=1e-8)):
         raise ValueError("variable heave settings must be finite and switches on the time grid")
     for state in states:
         values = tuple(vars(state).values())
