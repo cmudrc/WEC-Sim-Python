@@ -41,6 +41,36 @@ switch string(model)
         end
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
+    case "SPHERE_MOVING_MORISON"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "1m-ME";
+        caseDirs = string(fullfile(repoRoot, 'applications', ...
+            'Free_Decay', cases));
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        oldSettings = ["morisonElement.cd = [1 0 0];", ...
+            "morisonElement.ca = [1 0 0];", ...
+            "morisonElement.area = [1 0 0];", ...
+            "morisonElement.VME = [0.01];"];
+        newSettings = ["morisonElement.cd = [0 0 1];", ...
+            "morisonElement.ca = [0 0 1];", ...
+            "morisonElement.area = [0 0 100];", ...
+            "morisonElement.VME = [20];"];
+        for iSetting = 1:numel(oldSettings)
+            assert(contains(contents, oldSettings(iSetting)), ...
+                'The pinned Sphere Morison input changed');
+            contents = strrep(contents, char(oldSettings(iSetting)), ...
+                char(newSettings(iSetting)));
+        end
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not edit the Sphere Morison input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
     case "SPHERE_MPC"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
             'Sphere', 'hydroData');
@@ -949,6 +979,10 @@ for iCase = 1:numel(cases)
             values = [values, response.forceRadiationDamping, ...
                 response.forceAddedMass, response.forceRestoring, ...
                 response.forceMorisonAndViscous, response.acceleration];
+        end
+        if string(model) == "SPHERE_MOVING_MORISON"
+            values = [values, response.forceMorisonAndViscous, ...
+                response.acceleration];
         end
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         if string(model) == "RM3_DD_PTO"
