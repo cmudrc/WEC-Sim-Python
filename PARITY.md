@@ -204,6 +204,33 @@ file paths, plus 17 other or dynamic cases. Generate the CSV with
 `python tools/build_reference_case_inventory.py CORE_CHECKOUT APPLICATIONS_CHECKOUT`.
 This is a source inventory, not a claim that every case runs in Python.
 
+The [latest full reference-model sweep](https://github.com/cmudrc/wec-sim-python/actions/runs/37819599431)
+completed 34 MATLAB/Python jobs successfully, with one optional comparison
+skipped. That sweep covers the cases selected by its matrix, not all 63
+inventory entries. The [separate current-profile run](https://github.com/cmudrc/wec-sim-python/actions/runs/37820035413)
+covers the uniform, power-law, and linear fixed-Morison comparisons added
+after the sweep's code revision.
+
+### Named gaps in the published case inventory
+
+The table identifies cases without a full independent Python motion/output
+gate at the pinned source revisions. The detailed paired limits for covered
+cases are above. A passing upstream MATLAB application test only establishes
+that WEC-Sim ran; it does not establish Python parity.
+
+| Published case(s) | Evidence and remaining work |
+| --- | --- |
+| RM3 `B2B_Case5` and `B2B_Case6`; state-space setting in `Radiation_Force_Options` | MATLAB trajectories and fitted-transfer diagnostics exist. The pinned fit has negative low-frequency damping in the active joint coordinates. No physically validated Python state-space trajectory pair exists. |
+| OSWEC `PassiveYawRegression` and `Variable_Hydro/Passive_Yaw` | Source force laws and early motion are paired. Discrete heading updates amplify small integration offsets, so published full-trajectory parity is unestablished. |
+| RM3 `Mooring/MoorDyn` and `Paraview_Visualization/RM3_MoorDyn_Viz` | The pinned upstream CI skips MoorDyn; forcing it on GitHub exposed a native-library mismatch. There is no paired Python mooring trajectory. |
+| OSWEC `Desalination`, `PTO-Sim/OSWEC/OSWEC_Hydraulic_Crank_PTO`, `PTO-Sim/OSWEC/OSWEC_Hydraulic_PTO`, and RM3 `PTO-Sim/RM3/RM3_cHydraulic_PTO` | These couple body motion to hydraulic or reverse-osmosis PTO states. The current linear, electric, and orifice PTO models do not represent those networks; no Python trajectory gate exists. |
+| OSWEC `Paraview_Visualization/OSWEC_NonLinear_Viz`; RM3 and OSWEC `Wave_Markers` | Their visualization or marker outputs have no direct Python comparison. Regular-wave body dynamics are paired elsewhere but do not verify these outputs. |
+| Other/dynamic: `Cable`, `Load_Mitigating_Controls/CalcImpedance`, `Load_Mitigating_Controls/ControlTests`, `MOST`, `Morison_Element/monopile`, `OWC/FloatingOWC`, `WECCCOMP/WECCCOMP`, `WECCCOMP/WECCCOMP_Fault_Implementation`, and `WECCCOMP/WECCCOMP_Nonlinear_Model_Predictive` | Inventoried inputs without a published-case Python motion/output gate. They require case-specific mechanics or controls; the fixed hydro monopile is a separate stationary-force case. |
+| Other/dynamic: both `Nonlinear_Hydro/ode45` cases and `OWC/OrificeModel` | Source force components and bounded motion intervals are compared above, but full-trajectory parity remains unestablished because of source solver force timing or large late motion differences. |
+
+The published RM3 `End_Stops` trajectory has a separate refined-step gate;
+the pinned 0.1 s output is not treated as a converged motion reference.
+
 The `MATLAB reference model baselines` workflow runs the two canonical core
 examples, all five Sphere free-decay cases, RM3 body-to-body Cases 1–4,
 the RM3 MooringMatrix case when selected by workflow dispatch,
