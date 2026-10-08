@@ -1106,7 +1106,7 @@ The published MBARI Cable application has an axial spring and damper between
 two attachment points. Its source force law is available as a Python object:
 
 ```python
-from wecsim import PlanarCableAttachment, WecSimCableTension
+from wecsim import PlanarCableAttachment, WecSimCableTension, run_mbari_cable
 
 cable = WecSimCableTension(
     stiffness=1_000_000, damping=100,
@@ -1124,14 +1124,26 @@ stroke, speed = attachment.motion(
     follower_pose=(0, -4.8, 0), follower_rate=(0, 0, 0),
 )
 force_z = cable.force_z(stroke, speed)
+
+# The published application generates this file with Cable/hydroData/bemio.m.
+response = run_mbari_cable("applications/Cable/hydroData/mbari.h5",
+                           cable=cable, attachment=attachment)
+print(response.body_position.shape)  # time × three bodies × six coordinates
+print(response.cable_force_z)         # signed axial force, N
 ```
 
 `relative_position` and `relative_velocity` are the source cable block's
 local z displacement and speed. `PlanarCableAttachment` computes these from
-body-local endpoints as the bodies surge, heave, and pitch. The components do
-not yet advance the three MBARI bodies or feed cable force back into their
-motion. The source law can report positive force while the cable is
-stretched and contracting rapidly because its damping term is not clamped.
+body-local endpoints as the bodies surge, heave, and pitch. The coupled runner
+advances the two hydrodynamic bodies and the nonhydrodynamic cylinder, including
+spring/damper feedback and quadratic drag on the cable's two endpoint bodies.
+Its planar buoy-to-cylinder spherical joint matches the published geometry.
+It uses implicit regular-wave added mass and omits the endpoint bodies' 1 kg
+inertias. The MATLAB source shifts added mass into its Simscape bodies and
+feeds the remainder through a short acceleration delay, so brief cable snap
+events differ more than body positions. The source law can report positive
+force while stretched and contracting rapidly because its damping term is not
+clamped.
 
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
