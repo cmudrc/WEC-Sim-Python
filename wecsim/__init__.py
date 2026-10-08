@@ -26,6 +26,7 @@ from .hydraulic import (
 )
 from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 from .fixedHydroMonopile import FixedHydroMonopileResponse, run_fixed_hydro_monopile
+from .mbariCable import MBARICableResponse, run_mbari_cable
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
@@ -67,5 +68,6 @@ __all__ = [
     "OSWECDesalinationResponse", "run_oswec_desalination",
     "PlanarCableAttachment", "WecSimCableTension",
     "FixedHydroMonopileResponse", "run_fixed_hydro_monopile",
+    "MBARICableResponse", "run_mbari_cable",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]

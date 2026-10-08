@@ -104,3 +104,43 @@ class PlanarCableAttachment:
         if np.ndim(displacement) == 0:
             return float(displacement), float(speed)
         return displacement, speed
+
+    def world_wrenches(self, base_pose, follower_pose, force_z):
+        """Map signed axial cable force to body-center ``(Fx, Fz, My)``.
+
+        Positive ``force_z`` acts on the follower from base toward follower.
+        The base receives the equal and opposite force. Moments use each
+        body's local attachment arm and WEC-Sim's positive pitch convention.
+        """
+        base, follower = (np.asarray(pose, dtype=float)
+                          for pose in (base_pose, follower_pose))
+        force = np.asarray(force_z, dtype=float)
+        if (base.shape != follower.shape
+                or (base.shape != (3,) and
+                    (base.ndim != 2 or base.shape[1] != 3))
+                or force.shape != base.shape[:-1]
+                or not all(np.isfinite(value).all()
+                           for value in (base, follower, force))):
+            raise ValueError("cable poses and force must be finite and aligned")
+
+        def endpoint(pose, offset):
+            local_x, local_z = offset
+            sine, cosine = np.sin(pose[..., 2]), np.cos(pose[..., 2])
+            arm = np.stack((local_x * cosine + local_z * sine,
+                            -local_x * sine + local_z * cosine), axis=-1)
+            return pose[..., :2] + arm, arm
+
+        base_point, base_arm = endpoint(base, self.base_offset)
+        follower_point, follower_arm = endpoint(follower, self.follower_offset)
+        direction = follower_point - base_point
+        distance = np.linalg.norm(direction, axis=-1)
+        if np.any(distance <= 0):
+            raise ValueError("cable endpoints must not coincide")
+        follower_force = force[..., None] * direction / distance[..., None]
+        base_force = -follower_force
+
+        def wrench(applied, arm):
+            moment_y = arm[..., 1] * applied[..., 0] - arm[..., 0] * applied[..., 1]
+            return np.concatenate((applied, moment_y[..., None]), axis=-1)
+
+        return wrench(base_force, base_arm), wrench(follower_force, follower_arm)
