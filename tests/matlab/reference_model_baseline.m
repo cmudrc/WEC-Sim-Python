@@ -593,6 +593,34 @@ for iCase = 1:numel(cases)
     if string(model) == "SPHERE_MPC"
         instrument_sphere_mpc();
     end
+    if string(model) == "OSWEC_DESALINATION_SOURCE"
+        % Keep a bounded Simscape trace of the energy-storing hydraulic
+        % elements. This exposes chamber and accumulator states needed to
+        % validate an independent Python network, without editing the
+        % published application model on disk.
+        load_system('OSWEC_RO');
+        set_param('OSWEC_RO', 'SimscapeLogType', 'local', ...
+            'SimscapeLogName', 'desalinationLog', ...
+            'SimscapeLogLimitData', 'on', ...
+            'SimscapeLogDataHistory', '50000');
+        selected = find_system('OSWEC_RO', 'FindAll', 'on', ...
+            'LookUnderMasks', 'all', 'FollowLinks', 'off', ...
+            'Type', 'Block');
+        selectedPaths = {};
+        for iBlock = 1:numel(selected)
+            blockName = get_param(selected(iBlock), 'Name');
+            if contains(blockName, 'Gas-Charged') || ...
+                    contains(blockName, 'Double-Acting') || ...
+                    contains(blockName, 'Pressure Relief') || ...
+                    contains(blockName, 'Hydraulic Motor') || ...
+                    contains(blockName, 'Fixed-Displacement Pump')
+                set_param(selected(iBlock), 'LogSimulationData', 'on');
+                selectedPaths{end+1} = getfullname(selected(iBlock)); %#ok<AGROW>
+            end
+        end
+        assert(numel(selectedPaths) >= 2, ...
+            'Desalination hydraulic logging blocks were not found');
+    end
     if string(model) == "RM3_Radiation_Options"
         [output, simu] = run_radiation_option(cases(iCase));
     else
@@ -601,6 +629,18 @@ for iCase = 1:numel(cases)
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
     if string(model) == "OSWEC_DESALINATION_SOURCE"
+        log = simscape.logging.getSimulationLog('OSWEC_RO');
+        fid = fopen(fullfile(outDir, ...
+            'OSWEC_DESALINATION_SOURCE_hydraulic_log_tree.txt'), 'w');
+        assert(fid ~= -1, 'Could not write hydraulic logging summary');
+        for iBlock = 1:numel(selectedPaths)
+            node = simscape.logging.findNode(log, selectedPaths{iBlock});
+            if ~isempty(node)
+                fprintf(fid, '%s\n%s\n', selectedPaths{iBlock}, ...
+                    evalc('print(node)'));
+            end
+        end
+        fclose(fid);
         assert(strcmp(simu.solver, 'ode4') && simu.dt == 0.01 && ...
             simu.endTime == 300 && simu.rampTime == 50 && ...
             strcmp(waves.type, 'irregular') && ...
