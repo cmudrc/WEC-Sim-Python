@@ -706,8 +706,9 @@ analytical checks. A paired MATLAB Sphere case covers nonzero stiffness,
 extra damping while specifying a body-local attachment shifted 1 m in x.
 Its heave-only motion cannot validate attachment-location dynamics or a
 rotational moment arm.
-Force limits, general controller networks, and hydraulic PTO models are not
-implemented.
+Force limits, general controller networks, and general hydraulic PTO models
+are not implemented. The published RM3 hydraulic layout has the focused
+Python runner described below.
 
 ### Reactive direct-drive PTO
 
@@ -791,6 +792,34 @@ phase_current = result.ptos["PTO1"].linear_generator.phase_current
 This public configuration is currently limited to constant-radiation
 regular waves and cannot be combined with sampled PTO controls. The
 attachment points use the existing small-motion, fixed-axis PTO geometry.
+
+### RM3 rectified hydraulic PTO
+
+The published `PTO-Sim/RM3/RM3_cHydraulic_PTO` case has a dedicated Python
+runner for its two heave-constrained bodies. Its cylinder, valve, two
+accumulators, motor, generator, and PI load are configured as Python objects.
+Run `python -m examples.rm3_hydraulic` for a complete example, or use its
+`build_pto()` function as a starting point:
+
+```python
+from examples.rm3_hydraulic import HYDRO, build_pto
+from wecsim import run_rm3_rectified_hydraulic
+from wecsim.irregularWave import pm_equal_energy_components
+
+sea = pm_equal_energy_components(
+    HYDRO, significant_height=2.5, peak_period=8,
+    directions=(0,), spreading=(1,), seed=1,
+)
+result = run_rm3_rectified_hydraulic(HYDRO, sea, build_pto())
+print(result.pto_force.max(), result.generator_voltage.max())
+```
+
+The 400 s paired MATLAB test supplies the saved source phases instead of a
+Python seed. It checks independent body, hydraulic, and electrical
+trajectories. This runner covers the published vertical slider layout;
+general hydraulic PTO networks are not yet part of the `WEC` builder. The
+published PI law eventually commands negative load resistance, so this
+source-specific setting should not be interpreted as a passive load design.
 
 ### Instantaneous nonlinear hydrodynamics for heave
 
