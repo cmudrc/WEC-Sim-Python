@@ -30,3 +30,23 @@ def test_passive_yaw_rejects_incomplete_bem_heading_range():
     with pytest.raises(ValueError, match="full-circle BEM headings"):
         wec.run(RegularWave(2.5, 8, 10), dt=0.1,
                 end_time=0.1, ramp_time=100)
+
+
+@pytest.mark.parametrize("threshold", [-1, float("nan"), True, "1"])
+def test_passive_yaw_rejects_invalid_threshold(threshold):
+    with pytest.raises(ValueError, match="passive_yaw_threshold"):
+        WEC().body("flap", HYDRO, passive_yaw=True,
+                   passive_yaw_threshold=threshold)
+
+
+def test_heading_threshold_requires_passive_yaw_and_pm_wave():
+    with pytest.raises(ValueError, match="passive_yaw_threshold"):
+        WEC().body("flap", HYDRO, passive_yaw_threshold=1)
+    wec = WEC("PM-only heading threshold")
+    flap = wec.body("flap", HYDRO, mass=12700,
+                    inertia=(1.85e6,) * 3, passive_yaw=True,
+                    passive_yaw_threshold=1)
+    wec.coordinate("yaw", flap.move("yaw"))
+    with pytest.raises(ValueError, match="positive passive_yaw_threshold needs PM"):
+        wec.run(RegularWave(2.5, 8, 10), dt=0.1,
+                end_time=0.1, ramp_time=100)

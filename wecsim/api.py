@@ -8,6 +8,7 @@ waves directly in Python and receive NumPy arrays without writing JSON or CSV.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from numbers import Real
 from pathlib import Path
 from typing import Mapping, Sequence
 
@@ -81,6 +82,7 @@ class Body:
     drag_coefficient: float = 0.0
     drag_area: float = 0.0
     variable_hydro: VariableHydro | None = None
+    passive_yaw_threshold: float = 0.0
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -265,15 +267,23 @@ class WEC:
              hydro_body: int | None = None,
              mean_drift: str = "none",
              passive_yaw: bool = False,
+             passive_yaw_threshold: float = 0.0,
              geometry_file: str | Path | None = None,
              nonlinear_hydro: str | None = None,
              drag_coefficient: float = 0.0,
              drag_area: float = 0.0) -> Body:
         if any(existing.name == name for existing in self.bodies):
             raise ValueError(f"body name already exists: {name}")
+        if (isinstance(passive_yaw_threshold, bool)
+                or not isinstance(passive_yaw_threshold, Real)
+                or not np.isfinite(passive_yaw_threshold)
+                or passive_yaw_threshold < 0
+                or (passive_yaw_threshold > 0 and passive_yaw is not True)):
+            raise ValueError("passive_yaw_threshold needs a nonnegative degree value and passive_yaw=True")
         body = Body(name, hydro_file, mass, tuple(inertia), hydro_body,
                     mean_drift, passive_yaw, geometry_file, nonlinear_hydro,
-                    drag_coefficient, drag_area)
+                    drag_coefficient, drag_area,
+                    passive_yaw_threshold=passive_yaw_threshold)
         self.bodies.append(body)
         return body
 
@@ -396,6 +406,8 @@ class WEC:
                 body_case["mean_drift"] = body.mean_drift
             if body.passive_yaw:
                 body_case["passive_yaw"] = True
+            if body.passive_yaw_threshold:
+                body_case["passive_yaw_threshold"] = body.passive_yaw_threshold
             if body.geometry_file is not None:
                 body_case["geometry_file"] = str(body.geometry_file)
             if body.nonlinear_hydro is not None:

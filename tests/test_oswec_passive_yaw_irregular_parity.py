@@ -10,7 +10,9 @@ import pytest
 from wecsim import PMWave, WEC, WorldPoint
 from wecsim.bodyClass import BodyClass
 from wecsim.irregularWave import pm_equal_energy_components
-from wecsim.passiveYaw import SampledPassiveYawExcitation
+from wecsim.passiveYaw import (
+    HeldPassiveYawExcitation, SampledPassiveYawExcitation,
+)
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
@@ -106,6 +108,63 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path):
                "source-forced source-signed PTO power")
     _max_error(pto[:, 17], -120000 * pto[:, 11], 1e-5,
                "source PTO damping law")
+
+
+def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
+    """Check the published 1-degree coefficient hold and native motion."""
+    source = Path(REFERENCE)
+    hydro = (Path(APPLICATIONS)
+             / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
+    prefix = "OSWEC_PASSIVE_YAW_IRR"
+    flap = np.loadtxt(source / f"{prefix}_PassiveYawRegression_body1.csv",
+                      delimiter=",")
+    pto = np.loadtxt(source / f"{prefix}_PassiveYawRegression_pto1.csv",
+                     delimiter=",")
+    components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
+    phases = tmp_path / "phases.csv"
+    np.savetxt(phases, components_csv[:, 3, None], delimiter=",")
+    components = pm_equal_energy_components(
+        hydro, significant_height=2.5, peak_period=8,
+        directions=[10], spreading=[1], phase=components_csv[:, 3, None],
+    )
+    body = BodyClass(str(hydro))
+    body.bodyNumber = 1
+    body.bodyTotal = 2
+    body.readH5file()
+    model = SampledPassiveYawExcitation.from_hydro_data(
+        body.hydroData, components, dt=.01, end_time=250,
+        ramp_time=100, rho=1000, g=9.81,
+    )
+    held = HeldPassiveYawExcitation(model, threshold=1)
+    for at_time, angle in zip(flap[:, 0], flap[:, 6]):
+        held.commit(at_time, np.array([angle]))
+    _max_error(np.asarray(held.force_history), flap[:, 19:25], 1e-6,
+               "published sampled heading force on MATLAB yaw")
+
+    wec = WEC("OSWEC sampled irregular passive yaw")
+    moving = wec.body(
+        "flap", hydro, mass=12700, inertia=(1.85e6,) * 3,
+        passive_yaw=True, passive_yaw_threshold=1,
+    )
+    wec.body("base", hydro, mass=999, inertia=(999,) * 3)
+    yaw = wec.coordinate(
+        "yaw", moving.move("yaw", pivot=WorldPoint(0, 0, -8.9)),
+    )
+    wec.rotational_pto("hinge", yaw, damping=120000)
+    result = wec.run(
+        PMWave(2.5, 8, direction=10, phase_file=phases),
+        dt=.01, end_time=250, ramp_time=100, radiation_memory=40,
+    )
+    _max_error(result.time, flap[:, 0], 1e-10, "time")
+    _max_error(result.bodies["flap"].position[:5001, 5], flap[:5001, 6],
+               1e-5, "motion before first threshold crossing")
+    _max_error(result.bodies["flap"].position[:, 5], flap[:, 6], .21,
+               "sampled-heading trajectory sensitivity envelope")
+    _max_error(result.bodies["flap"].velocity[:, 5], flap[:, 12], .03,
+               "sampled-heading speed sensitivity envelope")
+    _max_error(result.ptos["hinge"].force, -120000 * result.ptos["hinge"].velocity,
+               1e-8, "native PTO damping law")
+    assert pto.shape == (25001, 25)
 
 
 def test_continuous_heading_irregular_passive_yaw(tmp_path):

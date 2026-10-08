@@ -174,7 +174,7 @@ class SampledPassiveYawExcitation:
         return cls(time, headings, incident, forces * ramp[:, None, None, None],
                    elevation * ramp)
 
-    def force(self, at_time: float, yaw: float) -> np.ndarray:
+    def force(self, at_time: float, yaw: float, *, coefficient_yaw: float | None = None) -> np.ndarray:
         """Return world-frame excitation at one sample and yaw angle."""
         dt = self.time[1] - self.time[0] if len(self.time) > 1 else None
         index = round(at_time / dt) if dt is not None else 0
@@ -182,9 +182,11 @@ class SampledPassiveYawExcitation:
                 or not np.isclose(self.time[index], at_time, rtol=0, atol=1e-8)):
             raise ValueError("sampled passive-yaw force needs a grid time")
         local = np.zeros(6)
+        if coefficient_yaw is None:
+            coefficient_yaw = yaw
         start = self.directions[0]
         for sea, heading in enumerate(self.incident_directions):
-            relative = ((heading - np.degrees(yaw) - start) % 360) + start
+            relative = ((heading - np.degrees(coefficient_yaw) - start) % 360) + start
             left = np.searchsorted(self.directions, relative, side="right") - 1
             right = (left + 1) % len(self.directions)
             next_heading = (self.directions[right] if right > left
@@ -200,3 +202,49 @@ class SampledPassiveYawExcitation:
             world[first] = c * local[first] - s * local[first + 1]
             world[first + 1] = s * local[first] + c * local[first + 1]
         return world
+
+
+class HeldPassiveYawExcitation:
+    """Apply the source's sampled heading-coefficient update threshold.
+
+    Force evaluation during a trial step is side-effect free. The integrator
+    commits a heading only after it accepts the corresponding body state.
+    """
+
+    def __init__(self, model: SampledPassiveYawExcitation, threshold: float):
+        if (len(model.incident_directions) != 1 or not np.isfinite(threshold)
+                or threshold <= 0):
+            raise ValueError("held passive yaw needs one incident direction and positive threshold")
+        self.model = model
+        self.threshold = threshold
+        self.last_heading: float | None = None
+        self.force_history: list[np.ndarray] = []
+
+    def _heading(self, yaw: float) -> float:
+        relative = float(self.model.incident_directions[0] - np.degrees(yaw))
+        directions = self.model.directions
+        wrapped_distance = (relative - directions + 180) % 360 - 180
+        nearest_index = int(np.argmin(np.abs(wrapped_distance)))
+        if abs(wrapped_distance[nearest_index]) <= self.threshold:
+            # The pinned MATLAB block selects a tabulated BEM heading when
+            # the current relative heading lies inside its threshold.
+            return relative - wrapped_distance[nearest_index]
+        if (self.last_heading is None
+                or abs(relative - self.last_heading) > self.threshold):
+            return relative
+        return self.last_heading
+
+    def _force(self, at_time: float, yaw: float, heading: float) -> np.ndarray:
+        coefficient_yaw = np.deg2rad(self.model.incident_directions[0] - heading)
+        return self.model.force(at_time, yaw, coefficient_yaw=coefficient_yaw)
+
+    def __call__(self, at_time: float, coordinate: np.ndarray,
+                 speed: np.ndarray) -> np.ndarray:
+        yaw = float(coordinate[0])
+        return self._force(at_time, yaw, self._heading(yaw))
+
+    def commit(self, at_time: float, coordinate: np.ndarray) -> None:
+        yaw = float(coordinate[0])
+        heading = self._heading(yaw)
+        self.force_history.append(self._force(at_time, yaw, heading))
+        self.last_heading = heading

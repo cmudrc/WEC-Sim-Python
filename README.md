@@ -152,6 +152,12 @@ hydrodynamic body, stationary additional bodies, and independent radiation
 with full-circle BEM headings. Python interpolates the wave heading
 continuously. The published MATLAB regular and irregular passive-yaw inputs
 hold heading coefficients until yaw changes by 0.01° and 1°, respectively.
+For the published irregular PM case, set `passive_yaw_threshold=1` in the
+moving body's `wec.body(...)` call. This reproduces the source's one-degree
+coefficient hold and snap to a nearby tabulated BEM heading. A zero threshold
+keeps continuous interpolation. The sampled setting is available for PM waves
+with one incident direction; small trajectory differences can change its
+update sample and accumulate over long runs.
 
 For the published Sphere `Mean_Drift` application, select the control-surface
 coefficient in the generated HDF5 file and use convolution radiation:
