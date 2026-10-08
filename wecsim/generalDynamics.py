@@ -424,9 +424,16 @@ class GeneralizedDynamics:
                 result.append(known)
             return tuple(result)
 
+        def commit_sampled_excitation(step):
+            for body in self.bodies:
+                commit = getattr(body.state_excitation, "commit", None)
+                if commit is not None:
+                    commit(time[step], q[step])
+
         zeros = tuple(np.zeros(6) for _ in self.bodies)
         a[0] = self.acceleration(time[0], q[0], v[0],
                                  known_radiation=zeros, dt=dt)
+        commit_sampled_excitation(0)
         save_body_state(0)
         for step in range(1, len(time)):
             if body_acceleration is not None:
@@ -464,6 +471,7 @@ class GeneralizedDynamics:
             a[step] = self.acceleration(
                 time[step], q[step], v[step], known_radiation=known, dt=dt,
             )
+            commit_sampled_excitation(step)
             save_body_state(step)
 
     def _integrate_fir(self, time, q, v, a, dt):

@@ -28,7 +28,9 @@ from .irregularWave import (
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
 from .nonlinearHydro import HeaveMeshHydro
-from .passiveYaw import PassiveYawExcitation, SampledPassiveYawExcitation
+from .passiveYaw import (
+    HeldPassiveYawExcitation, PassiveYawExcitation, SampledPassiveYawExcitation,
+)
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
 from .variableHydro import HeaveHydroState, integrate_variable_heave
@@ -95,7 +97,7 @@ def _hydro_file(body, base_dir):
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name", "mean_drift", "fixed",
-              "passive_yaw", "geometry_file", "nonlinear_hydro",
+              "passive_yaw", "passive_yaw_threshold", "geometry_file", "nonlinear_hydro",
               "drag_coefficient", "drag_area", "variable_hydro"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
@@ -1068,6 +1070,15 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     if any(not isinstance(spec.get("passive_yaw", False), bool)
            for spec in bodies):
         raise ValueError("body.passive_yaw must be a boolean")
+    yaw_thresholds = [
+        _number(spec.get("passive_yaw_threshold", 0),
+                "body.passive_yaw_threshold", nonnegative=True)
+        for spec in bodies
+    ]
+    if any(threshold and (not bodies[index].get("passive_yaw", False)
+                          or wave["type"] != "pm")
+           for index, threshold in enumerate(yaw_thresholds)):
+        raise ValueError("positive passive_yaw_threshold needs PM passive yaw")
     if passive_indices:
         yaw_map = np.zeros((6, 1))
         yaw_map[5, 0] = 1
@@ -1288,6 +1299,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     ramp_time=ramp_time, rho=rho, g=g,
                 )
                 pm_elevation = passive_model.elevation
+                if yaw_thresholds[index - 1]:
+                    passive_model = HeldPassiveYawExcitation(
+                        passive_model, yaw_thresholds[index - 1],
+                    )
             else:
                 passive_model = PassiveYawExcitation.from_hydro_data(
                     body.hydroData, omega=frequency,
@@ -1295,9 +1310,12 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     ramp_time=ramp_time, rho=rho, g=g,
                 )
 
-            def state_excitation(at_time, coordinate, speed, *,
-                                 model=passive_model):
-                return model.force(at_time, coordinate[0])
+            if isinstance(passive_model, HeldPassiveYawExcitation):
+                state_excitation = passive_model
+            else:
+                def state_excitation(at_time, coordinate, speed, *,
+                                     model=passive_model):
+                    return model.force(at_time, coordinate[0])
         if mesh_model is not None:
             def state_excitation(at_time, coordinate, speed, *,
                                  model=mesh_model, linear=excitation):
@@ -1392,12 +1410,16 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     passive_outputs = ()
     if passive_model is not None:
         body_index = passive_indices[0] + 1
-        passive_outputs = ((
-            f"body{body_index}_excitation_force",
-            np.stack([
+        if isinstance(passive_model, HeldPassiveYawExcitation):
+            excitation_history = np.asarray(passive_model.force_history)
+        else:
+            excitation_history = np.stack([
                 passive_model.force(t, angle)
                 for t, angle in zip(response.time, response.coordinate[:, 0])
-            ]),
+            ])
+        passive_outputs = ((
+            f"body{body_index}_excitation_force",
+            excitation_history,
         ),)
     nonlinear_outputs = ()
     if nonlinear_indices:
