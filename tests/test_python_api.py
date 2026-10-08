@@ -164,6 +164,32 @@ def test_python_builder_runs_imported_elevation_with_relative_mat_path():
     assert dict(response.raw.extra_outputs)["body1_excitation_force"].shape == (3, 6)
 
 
+def test_python_builder_configures_paired_floating_joint_and_pto():
+    wec = WEC("RM3 floating joint")
+    float_body = wec.body("float", HYDRO, inertia=(0, 21_306_090.66, 0))
+    spar = wec.body("spar", HYDRO, inertia=(0, 94_407_091.24, 0))
+    wec.floating_joint(
+        float_body, spar, damping=1_200_000, stiffness=100_000,
+        equilibrium_position=0.1, pto_name="main",
+    )
+    result = wec.run(RegularWave(2.5, 8), dt=0.1, end_time=0.2,
+                     ramp_time=1)
+    assert set(result.coordinates) == {"surge", "float_heave",
+                                       "spar_heave", "pitch"}
+    pto = result.ptos["main"]
+    np.testing.assert_allclose(
+        pto.force,
+        -1_200_000 * pto.velocity - 100_000 * (pto.stroke - 0.1),
+    )
+    np.testing.assert_allclose(pto.absorbed_power,
+                               1_200_000 * pto.velocity**2)
+    np.testing.assert_allclose(
+        pto.stroke,
+        result.coordinates["float_heave"].position
+        - result.coordinates["spar_heave"].position,
+    )
+
+
 def test_python_builder_rejects_foreign_body_attachment():
     first = WEC("first")
     second = WEC("second")

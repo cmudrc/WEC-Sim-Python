@@ -25,6 +25,8 @@ class RM3RegularResponse:
     time: np.ndarray
     body_position: np.ndarray
     body_velocity: np.ndarray
+    coordinate_position: np.ndarray
+    coordinate_velocity: np.ndarray
     pto_force: np.ndarray
     pto_stroke: np.ndarray
     pto_velocity: np.ndarray
@@ -323,6 +325,7 @@ def solve_rm3_regular(
     return RM3RegularResponse(
         time=solved.time, body_position=solved.body_position,
         body_velocity=solved.body_velocity,
+        coordinate_position=q, coordinate_velocity=v,
         pto_force=pto_force, pto_stroke=pto_stroke,
         pto_velocity=pto_velocity,
         pto_mechanical_power=-pto_force * pto_velocity,

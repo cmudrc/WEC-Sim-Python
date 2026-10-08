@@ -71,10 +71,36 @@ two-body device with a shared pitch pivot and body-local PTO points. Run it
 with `python -m examples.configurable_rm3_pto`. Relative HDF5 paths in
 the Python API resolve from the current directory unless `base_dir` is passed
 to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
-Python builder covers `linear_subspace` with supported waves and the
-single-body `floating_gbm` regular-wave layout. Its named coordinates use
-small-motion kinematics and fixed-axis PTOs. Other validated reference
-layouts remain available through the case runner and focused solver functions.
+Python builder covers `linear_subspace`, the single-body `floating_gbm`
+regular-wave layout, and the paired two-body `floating_joint` layout. Mapped
+coordinates use small-motion kinematics and fixed-axis PTOs. The floating
+joint uses its own pitched-slider geometry and a relative-heave PTO; arbitrary
+PTO attachment points are not part of that reduced layout.
+
+For the published RM3 floating joint, configure the two bodies in HDF5 order:
+
+```python
+from wecsim import RegularCICWave, WEC
+
+wec = WEC("RM3 floating joint")
+float_body = wec.body("float", "path/to/rm3.h5",
+                      inertia=(0, 21_306_090.66, 0))
+spar = wec.body("spar", "path/to/rm3.h5",
+                inertia=(0, 94_407_091.24, 0))
+wec.floating_joint(float_body, spar, damping=1_200_000)
+result = wec.run(RegularCICWave(2.5, 8), dt=0.1, end_time=400,
+                 ramp_time=100, radiation_memory=60)
+stroke = result.ptos["relative_heave"].stroke
+```
+
+The default uses implicit added mass. For comparisons with the pinned MATLAB
+Simulink block, `added_mass_scheme="simulink_delay"` selects its numerical
+feedback setting explicitly. `floating_joint` also accepts a joint surge
+spring, PTO stiffness and equilibrium, hard stops, and convolution/FIR
+radiation where the underlying paired solver supports them. The returned
+`absorbed_power` counts the linear damper; spring energy exchange can be
+computed from `-force * velocity`. The returned stroke is float heave minus
+spar heave, so an initial body offset appears in the first stroke sample.
 
 For the published generalized-body-mode barge, generate its HDF5 with the
 Applications `Generalized_Body_Modes/hydroData/bemio.m`, then run:
