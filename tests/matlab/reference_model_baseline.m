@@ -437,6 +437,19 @@ for iCase = 1:numel(cases)
             plant = rmfield(plant, 'sys_c');
         end
         save(fullfile(outDir, 'SPHERE_MPC_setup.mat'), 'setup', 'plant');
+        assert(exist('plantOutput', 'var') == 1 && ...
+            isa(plantOutput, 'timeseries'), ...
+            'Sphere MPC prediction-plant output is missing');
+        plantTime = plantOutput.Time(:);
+        plantValues = squeeze(plantOutput.Data);
+        if size(plantValues, 1) ~= numel(plantTime)
+            plantValues = plantValues.';
+        end
+        assert(size(plantValues, 1) == numel(plantTime) && ...
+            size(plantValues, 2) == 3, ...
+            'Sphere MPC prediction-plant signal changed');
+        writematrix([plantTime, plantValues], ...
+            fullfile(outDir, 'SPHERE_MPC_plant_output.csv'));
     end
     if string(model) == "GBM_BARGE"
         assert(exist('Flex_out', 'var') == 1 && isstruct(Flex_out) && ...
