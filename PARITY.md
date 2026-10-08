@@ -245,8 +245,10 @@ that body only heaves, the shifted point does not affect its trajectory;
 attachment-location dynamics remain unpaired.
 `wecsim.WEC` provides a Python builder for this same validated path and
 returns named NumPy body, coordinate, and PTO histories. The JSON case runner
-remains available for saved cases; the Python builder currently covers the
-`linear_subspace` layout only.
+remains available for saved cases; the Python builder covers the mapped
+`linear_subspace`, one-body `floating_gbm`, and two-body RM3-style
+`floating_joint` layouts. The latter uses a relative-heave PTO and does not
+accept arbitrary attachment points.
 `python -m wecsim CASE.json --output motion.csv` runs a
 supported dynamics configuration. The case declares wave, body, constraint,
 PTO, and time settings; the result includes all six body position and

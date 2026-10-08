@@ -7,7 +7,7 @@ waves directly in Python and receive NumPy arrays without writing JSON or CSV.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from numbers import Real
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -17,6 +17,7 @@ import numpy as np
 from .caseDynamics import CaseResponse, run_case
 from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
+from .hardStops import LinearHardStops
 from .morison import MorisonElement
 
 
@@ -97,6 +98,21 @@ class Body:
              pivot: WorldPoint | BodyPoint | None = None) -> Motion:
         """Describe this body's contribution to one device coordinate."""
         return Motion(self, dof, scale, pivot)
+
+
+@dataclass(frozen=True)
+class _FloatingJoint:
+    float_body: Body
+    spar_body: Body
+    location: WorldPoint
+    pto_name: str
+    damping: float
+    stiffness: float
+    equilibrium_position: float
+    mooring_surge_stiffness: float
+    hard_stops: LinearHardStops | None
+    radiation_method: str | None
+    added_mass_scheme: str
 
 
 @dataclass(frozen=True)
@@ -350,6 +366,7 @@ class WEC:
         self.ptos: list[LinearPTO] = []
         self.rotational_ptos: list[RotationalPTO] = []
         self._floating_gbm_body: Body | None = None
+        self._floating_joint: _FloatingJoint | None = None
         self._morison_elements: list[tuple[Body, MorisonElement]] = []
 
     def body(self, name: str, hydro_file: str | Path, *,
@@ -446,6 +463,41 @@ class WEC:
         if self._floating_gbm_body is not None:
             raise ValueError("a floating GBM body is already selected")
         self._floating_gbm_body = body
+
+    def floating_joint(self, float_body: Body, spar_body: Body, *,
+                       location: WorldPoint = WorldPoint(0, 0, 0),
+                       pto_name: str = "relative_heave",
+                       damping: float = 0.0, stiffness: float = 0.0,
+                       equilibrium_position: float = 0.0,
+                       mooring_surge_stiffness: float = 0.0,
+                       hard_stops: LinearHardStops | None = None,
+                       radiation_method: str | None = None,
+                       added_mass_scheme: str = "implicit") -> None:
+        """Select the paired two-body surge/heave/pitch slider joint.
+
+        The PTO acts on float heave minus spar heave. The reduced joint does
+        not model off-axis PTO endpoints or arbitrary Simscape constraints.
+        """
+        if (len(self.bodies) != 2 or self.bodies[0] is not float_body
+                or self.bodies[1] is not spar_body or self._floating_joint is not None
+                or self._floating_gbm_body is not None or self.coordinates
+                or self.ptos or self.rotational_ptos or self._morison_elements):
+            raise ValueError("floating_joint needs exactly two ordered bodies and no other layout or PTO")
+        if not isinstance(location, WorldPoint) or location.x != 0 or location.y != 0:
+            raise ValueError("floating_joint location needs a world point on the z axis")
+        if not isinstance(pto_name, str) or not pto_name:
+            raise ValueError("floating_joint PTO name must be nonempty")
+        if hard_stops is not None and not isinstance(hard_stops, LinearHardStops):
+            raise TypeError("hard_stops must be LinearHardStops")
+        if radiation_method not in (None, "constant", "convolution", "fir"):
+            raise ValueError("unsupported floating_joint radiation method")
+        if added_mass_scheme not in ("implicit", "simulink_delay"):
+            raise ValueError("unsupported floating_joint added-mass scheme")
+        self._floating_joint = _FloatingJoint(
+            float_body, spar_body, location, pto_name, damping, stiffness,
+            equilibrium_position, mooring_surge_stiffness, hard_stops,
+            radiation_method, added_mass_scheme,
+        )
 
     def coordinate(self, name: str, *motions: Motion) -> Coordinate:
         if any(existing.name == name for existing in self.coordinates):
@@ -544,6 +596,10 @@ class WEC:
         ):
             if value is not None:
                 simulation[key] = value
+        if self._floating_joint is not None:
+            return self._floating_joint_case(
+                wave, simulation, initial_coordinate, initial_speed,
+            )
         bodies = []
         for index, body in enumerate(self.bodies, start=1):
             if body.fixed:
@@ -657,6 +713,63 @@ class WEC:
                                for pto in self.rotational_ptos])
         return case
 
+    def _floating_joint_case(self, wave, simulation,
+                             initial_coordinate, initial_speed) -> dict:
+        joint = self._floating_joint
+        if (len(self.bodies) != 2 or self.bodies[0] is not joint.float_body
+                or self.bodies[1] is not joint.spar_body or self.coordinates
+                or self.ptos or self.rotational_ptos or self._morison_elements
+                or self._floating_gbm_body is not None):
+            raise ValueError("floating_joint cannot combine with other bodies, coordinates, or PTOs")
+        if not isinstance(wave, (RegularWave, RegularCICWave,
+                                 ImportedElevationWave, NoWave)):
+            raise ValueError("floating_joint supports regular, regularCIC, imported elevation, or no waves")
+        if (not np.isfinite(joint.location.coordinates()).all()
+                or not np.isfinite([joint.damping, joint.stiffness,
+                                    joint.equilibrium_position,
+                                    joint.mooring_surge_stiffness]).all()
+                or joint.mooring_surge_stiffness < 0):
+            raise ValueError("floating_joint location, PTO, and mooring settings must be finite")
+        bodies = []
+        for index, body in enumerate((joint.float_body, joint.spar_body), start=1):
+            if (body.fixed or body.hydro_file is None or body.mass != "equilibrium"
+                    or body.mean_drift != "none" or body.passive_yaw
+                    or body.geometry_file is not None or body.nonlinear_hydro is not None
+                    or body.variable_hydro is not None or body.drag_coefficient
+                    or body.drag_area or body.passive_yaw_threshold):
+                raise ValueError("floating_joint needs equilibrium-mass hydrodynamic bodies without extra force models")
+            inertia = np.asarray(body.inertia, dtype=float)
+            if inertia.shape != (3,) or not np.isfinite(inertia).all() or inertia[1] <= 0:
+                raise ValueError("floating_joint needs a positive pitch inertia on each body")
+            bodies.append({
+                "hydro_file": str(body.hydro_file),
+                "hydro_body": body.hydro_body if body.hydro_body is not None else index,
+                "mass": "equilibrium", "pitch_inertia": float(inertia[1]),
+            })
+        simulation["added_mass_scheme"] = joint.added_mass_scheme
+        if joint.radiation_method is not None:
+            simulation["radiation_method"] = joint.radiation_method
+        constraint = {"kind": "floating_joint",
+                      "location": joint.location.coordinates()}
+        if initial_coordinate is not None:
+            constraint["initial_coordinate"] = _state(initial_coordinate)
+        if initial_speed is not None:
+            constraint["initial_speed"] = _state(initial_speed)
+        pto = {"kind": "relative_heave", "damping": joint.damping,
+               "stiffness": joint.stiffness,
+               "equilibrium_position": joint.equilibrium_position}
+        if joint.hard_stops is not None:
+            pto["hard_stops"] = asdict(joint.hard_stops)
+        case = {"name": self.name, "simulation": simulation,
+                "wave": wave.as_case(), "bodies": bodies,
+                "constraint": constraint, "pto": pto}
+        if self.body_to_body:
+            case["body_to_body"] = True
+        if joint.mooring_surge_stiffness:
+            case["mooring"] = {"kind": "joint_surge_spring",
+                               "stiffness": joint.mooring_surge_stiffness}
+        return case
+
     def run(
         self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
@@ -682,6 +795,27 @@ class WEC:
             )
             for index, body in enumerate(self.bodies)
         }
+        if self._floating_joint is not None:
+            coordinates = {
+                name: MotionHistory(
+                    response.coordinate_position[:, index],
+                    response.coordinate_velocity[:, index],
+                )
+                for index, name in enumerate(
+                    ("surge", "float_heave", "spar_heave", "pitch")
+                )
+            }
+            pto = PTOHistory(
+                response.pto_stroke,
+                response.pto_velocity,
+                response.pto_force,
+                response.pto_absorbed_power,
+            )
+            return WECResult(
+                response.time, bodies, coordinates,
+                {self._floating_joint.pto_name: pto},
+                response.wave_elevation, case, response,
+            )
         coordinates = {
             coordinate.name: MotionHistory(
                 extras[f"coordinate_{coordinate.name}_position"],

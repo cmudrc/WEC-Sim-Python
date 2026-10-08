@@ -61,6 +61,11 @@ class CaseResponse:
     auxiliary_files: tuple[Path, ...] = ()
     pto_generalized_force: np.ndarray | None = None
     extra_outputs: tuple[tuple[str, np.ndarray], ...] = ()
+    coordinate_position: np.ndarray | None = None
+    coordinate_velocity: np.ndarray | None = None
+    pto_stroke: np.ndarray | None = None
+    pto_velocity: np.ndarray | None = None
+    pto_absorbed_power: np.ndarray | None = None
 
 
 def _section(value, name, required, allowed):
@@ -757,6 +762,11 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             wave_elevation=elevation,
             auxiliary_files=auxiliary_files,
             extra_outputs=tuple(extra_outputs),
+            coordinate_position=solved.coordinate_position,
+            coordinate_velocity=solved.coordinate_velocity,
+            pto_stroke=solved.pto_stroke,
+            pto_velocity=solved.pto_velocity,
+            pto_absorbed_power=solved.pto_dissipated_power,
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")
