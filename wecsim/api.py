@@ -90,7 +90,7 @@ class Body:
     volume: float = 0.0
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
-        """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
+        """Locate an attachment or Morison point relative to this body's CG."""
         return BodyPoint(self, x, y, z)
 
     def move(self, dof: str, *, scale: float = 1.0,
@@ -386,9 +386,9 @@ class WEC:
                         phase_mode: str = "directional") -> MorisonElement:
         """Attach a Cartesian Morison element at a body-local point.
 
-        Moving hydrodynamic bodies currently support axial heave elements in
-        still water or zero-heading regular waves; the case runner validates
-        that restricted layout.
+        Moving hydrodynamic bodies support axial elements in pure heave or
+        regular-wave surge/heave/pitch motion; the case runner validates
+        those layouts.
         """
         if not any(body is item for item in self.bodies):
             raise ValueError("Morison body must belong to this WEC")

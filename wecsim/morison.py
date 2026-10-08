@@ -3,7 +3,10 @@
 The public WEC runner uses Cartesian option 1 for fixed elements in a
 directional irregular sea. Each incident heading contributes its own
 nonlinear drag before the forces are summed, as in ``irregWaveMorison.m``.
-The regular-wave moving-state function is a source diagnostic only.
+The public runner also couples axial elements to heave or to a body's
+surge/heave/pitch motion in regular waves. The separate full six-DOF
+``regular_morison_source_force`` retains source-specific conventions only
+for diagnostics.
 """
 
 from dataclasses import dataclass
@@ -238,6 +241,85 @@ def regular_wave_heave_morison_terms(
                   + rho * volume * (1 + ca) * fluid_acceleration)
         added_mass += rho * volume * ca
     return force, added_mass
+
+
+def regular_wave_axial_morison_terms(
+    elements: Sequence[MorisonElement], *, position: Sequence[float],
+    velocity: Sequence[float], time: float, wave_height: float,
+    wave_period: float, ramp_time: float, water_depth: float,
+    rho: float, g: float = 9.81,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Physical axial-element wrench and added mass for surge/heave/pitch.
+
+    The point and its axial direction rotate with body pitch. The returned
+    wrench excludes the body's translational and angular acceleration; the
+    six-by-six matrix places that acceleration dependence on the mass side.
+    This uses a proper pitch rotation, independently of the pinned MATLAB
+    source function's nonorthogonal general rotation diagnostic.
+    """
+    pose = np.asarray(position, dtype=float)
+    speed = np.asarray(velocity, dtype=float)
+    if (pose.shape != (6,) or speed.shape != (6,)
+            or not np.isfinite(pose).all() or not np.isfinite(speed).all()
+            or not np.allclose(pose[[1, 3, 5]], 0, rtol=0, atol=1e-12)
+            or not np.allclose(speed[[1, 3, 5]], 0, rtol=0, atol=1e-12)):
+        raise ValueError("axial moving Morison needs finite surge/heave/pitch state")
+    if (not np.isfinite([time, wave_height, wave_period, ramp_time, rho, g]).all()
+            or time < 0 or wave_height < 0 or wave_period <= 0
+            or ramp_time < 0 or rho <= 0 or g <= 0
+            or not (np.isfinite(water_depth) or np.isposinf(water_depth))
+            or water_depth <= 0):
+        raise ValueError("regular-wave Morison settings are invalid")
+    omega = 2 * np.pi / wave_period
+    k = (omega * omega / g if np.isposinf(water_depth) else
+         finite_depth_wavenumber(
+             np.array([omega]), water_depth=water_depth, gravity=g,
+         )[0])
+    amplitude = wave_height / 2
+    if ramp_time and time < ramp_time:
+        amplitude *= (1 - np.cos(np.pi * time / ramp_time)) / 2
+    pitch = pose[4]
+    axis = np.array([np.sin(pitch), 0.0, np.cos(pitch)])
+    angular_velocity = np.array([0.0, speed[4], 0.0])
+    wrench = np.zeros(6)
+    added_mass = np.zeros((6, 6))
+    for element in elements:
+        point_z, cd, ca, area, volume = _axial_heave_element(element)
+        arm = point_z * axis
+        world = pose[:3] + arm
+        if world[2] > 0:
+            continue
+        kh = k * water_depth
+        if kh > np.pi:
+            horizontal = vertical = np.exp(k * world[2])
+        else:
+            kz = k * world[2]
+            horizontal = np.cosh(kz + kh) / np.cosh(kh)
+            vertical = np.sinh(kz + kh) / np.cosh(kh)
+        phase = omega * time - k * world[0]
+        wave_speed = amplitude * g * k / omega
+        wave_acceleration = amplitude * g * k
+        fluid_velocity = np.array([
+            wave_speed * horizontal * np.cos(phase), 0.0,
+            -wave_speed * vertical * np.sin(phase),
+        ])
+        fluid_acceleration = np.array([
+            -wave_acceleration * horizontal * np.sin(phase), 0.0,
+            -wave_acceleration * vertical * np.cos(phase),
+        ])
+        point_velocity = speed[:3] + np.cross(angular_velocity, arm)
+        bias_acceleration = np.cross(
+            angular_velocity, np.cross(angular_velocity, arm),
+        )
+        axial_speed = axis @ (fluid_velocity - point_velocity)
+        force = (0.5 * rho * cd * area * axial_speed * abs(axial_speed) * axis
+                 + rho * volume * fluid_acceleration
+                 + rho * volume * ca * axis
+                 * (axis @ (fluid_acceleration - bias_acceleration)))
+        wrench[:3] += force
+        wrench[3:] += np.cross(arm, force)
+        added_mass[:3, :3] += rho * volume * ca * np.outer(axis, axis)
+    return wrench, added_mass
 
 
 def solve_fixed_morison_irregular(
