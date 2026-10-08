@@ -114,7 +114,7 @@ def test_current_irregular_spectrum_against_executed_matlab(
         components = builder(
             hydro, significant_height=height, peak_period=8,
             directions=wave.waveDir, spreading=wave.waveSpread,
-            count=64, phase=wave.phaseData, frequency_range=(0.5, 1.5),
+            count=64, phase=wave.phase.T, frequency_range=(0.5, 1.5),
         )
         np.testing.assert_allclose(
             np.column_stack((components.omega, components.d_omega,
