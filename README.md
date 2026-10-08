@@ -184,8 +184,25 @@ seed=1, gamma=3.3)` selects a JONSWAP sea. Omitting `gamma` uses WEC-Sim's
 height/period-dependent value. The published Sphere MPC case uses 2.5 m and
 8 s, which infers `gamma=1`; its JONSWAP spectrum therefore equals the PM
 spectrum for those inputs. `phase_file` replays a saved MATLAB realization.
-The Sphere MPC optimizer and closed-loop PTO trajectory are still being
-validated; `JONSWAPWave` alone does not enable that controller.
+The published Sphere MPC controller has a focused Python runner:
+
+```python
+from wecsim import run_sphere_mpc
+
+result = run_sphere_mpc(
+    "sphere.h5", "coeff.mat", seed=1,
+    max_force=2e6, max_force_rate=1.5e6,
+)
+heave = result.position
+pto_force = result.pto_force
+```
+
+This reproduces the published single-body heave layout, fourth-order
+radiation fit, 0.5 s optimizer updates, and 0.5 s command transition. The
+force, force-rate, heave, speed, horizon, and penalty settings are adjustable.
+An integer seed produces a reproducible Python sea; pass a 500-by-1 `phase`
+array to replay MATLAB's sea. The paired gate covers the published defaults,
+not arbitrary changes to the controller or a general multi-body MPC.
 
 For the published Sphere `Mean_Drift` application, select the control-surface
 coefficient in the generated HDF5 file and use convolution radiation:
