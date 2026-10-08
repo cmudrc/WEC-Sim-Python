@@ -10,7 +10,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim.electricGenerator import EquivalentCircuitGenerator
+from wecsim.electricGenerator import (
+    DiscretePILoadController, EquivalentCircuitGenerator,
+)
 from wecsim.hydraulic import (
     CompressibleCylinder, ConstantEfficiencyHydraulicMotor,
     GasChargedAccumulator, RectifyingCheckValve,
@@ -162,6 +164,7 @@ def test_hydraulic_motor_and_generator_drive_states():
     generator_output = _load("generator")
     motor = ConstantEfficiencyHydraulicMotor(120e-6, .9, .85)
     generator = EquivalentCircuitGenerator(.8, .8, .8, .8, .8)
+    controller = DiscretePILoadController(1000, .001, .001)
 
     pressure_drop = motor_output[:, 3]
     speed = generator_output[:, 2] * (2 * np.pi / 60)
@@ -173,12 +176,16 @@ def test_hydraulic_motor_and_generator_drive_states():
     assert np.max(np.abs(motor_flow - motor_output[:, 4])) < 1e-14
 
     current = generator_output[:, 3]
-    voltage = generator_output[:, 4]
+    dt = np.diff(generator_output[:, 0])
+    integral = np.r_[
+        0, np.cumsum(dt * controller.integral_rate(generator_output[:-1, 2])),
+    ]
+    voltage = controller.voltage(generator_output[:, 2], current, integral)
+    assert np.max(np.abs(voltage - generator_output[:, 4])) < 1e-10
     torque_em = generator.electromagnetic_torque(current)
     assert np.max(np.abs(torque_em - generator_output[:, 1])) < 1e-10
     current_rate = generator.current_rate(speed, current, voltage)
     speed_rate = generator.speed_rate(speed, current, drive_torque)
-    dt = np.diff(generator_output[:, 0])
     assert np.max(np.abs(current[:-1] + dt * current_rate[:-1]
                          - current[1:])) < 1e-10
     assert np.max(np.abs(speed[:-1] + dt * speed_rate[:-1]

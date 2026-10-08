@@ -35,3 +35,31 @@ class EquivalentCircuitGenerator:
         return (np.asarray(drive_torque, dtype=float)
                 + self.electromagnetic_torque(current)
                 - self.shaft_damping * np.asarray(angular_speed, dtype=float)) / self.rotor_inertia
+
+
+@dataclass(frozen=True)
+class DiscretePILoadController:
+    """Source PID's proportional/integral load resistance (D = 0)."""
+
+    reference_rpm: float
+    proportional_gain: float
+    integral_gain: float
+
+    def __post_init__(self):
+        values = np.asarray((self.reference_rpm, self.proportional_gain,
+                             self.integral_gain), dtype=float)
+        if not np.isfinite(values).all() or (values < 0).any():
+            raise ValueError("load-controller reference and gains must be nonnegative")
+
+    def integral_rate(self, shaft_rpm):
+        return self.integral_gain * (self.reference_rpm
+                                     - np.asarray(shaft_rpm, dtype=float))
+
+    def resistance(self, shaft_rpm, integral_state):
+        return (self.proportional_gain
+                * (self.reference_rpm - np.asarray(shaft_rpm, dtype=float))
+                + np.asarray(integral_state, dtype=float))
+
+    def voltage(self, shaft_rpm, current, integral_state):
+        return self.resistance(shaft_rpm, integral_state) * np.asarray(
+            current, dtype=float)

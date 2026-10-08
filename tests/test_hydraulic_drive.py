@@ -3,7 +3,9 @@
 import numpy as np
 import pytest
 
-from wecsim.electricGenerator import EquivalentCircuitGenerator
+from wecsim.electricGenerator import (
+    DiscretePILoadController, EquivalentCircuitGenerator,
+)
 from wecsim.hydraulic import ConstantEfficiencyHydraulicMotor
 
 
@@ -21,6 +23,15 @@ def test_generator_drive_and_back_emf_signs():
     assert generator.speed_rate(0, 0, 160) == 200
     assert generator.current_rate(100, 0, 0) == -100
     assert generator.electromagnetic_torque(-10) == -8
+
+
+def test_source_pi_load_uses_previous_integral_state():
+    controller = DiscretePILoadController(1000, .001, .001)
+    assert controller.resistance(0, 0) == 1
+    next_integral = .01 * controller.integral_rate(0)
+    np.testing.assert_allclose(next_integral, .01)
+    np.testing.assert_allclose(controller.voltage(100, -10, next_integral),
+                               -9.1)
 
 
 def test_drive_rejects_invalid_efficiency_and_inertia():
