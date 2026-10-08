@@ -1081,19 +1081,31 @@ The published MBARI Cable application has an axial spring and damper between
 two attachment points. Its source force law is available as a Python object:
 
 ```python
-from wecsim import WecSimCableTension
+from wecsim import PlanarCableAttachment, WecSimCableTension
 
 cable = WecSimCableTension(
     stiffness=1_000_000, damping=100,
     length=17.8, initial_length=18,
 )
 force_z = cable.force_z(relative_position=0.03, relative_velocity=0.1)
+
+attachment = PlanarCableAttachment(
+    base_offset=(0, 1.95), follower_offset=(0, -5.2),
+    initial_length=18,
+)
+# Each pose/rate is (x, z, pitch)/(vx, vz, pitch_rate).
+stroke, speed = attachment.motion(
+    base_pose=(0, -29.95, 0), base_rate=(0, 0, 0),
+    follower_pose=(0, -4.8, 0), follower_rate=(0, 0, 0),
+)
+force_z = cable.force_z(stroke, speed)
 ```
 
 `relative_position` and `relative_velocity` are the source cable block's
-local z displacement and speed. This component returns its signed actuation
-force. It does not yet advance the three MBARI bodies or their attachment
-points together. The source law can report positive force while the cable is
+local z displacement and speed. `PlanarCableAttachment` computes these from
+body-local endpoints as the bodies surge, heave, and pitch. The components do
+not yet advance the three MBARI bodies or feed cable force back into their
+motion. The source law can report positive force while the cable is
 stretched and contracting rapidly because its damping term is not clamped.
 
 The paired 300 s test drives the network and valve model with MATLAB's saved

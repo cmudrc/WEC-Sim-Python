@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim import WecSimCableTension
+from wecsim import PlanarCableAttachment, WecSimCableTension
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -49,3 +49,28 @@ def test_published_mbari_cable_force_from_relative_motion():
     np.testing.assert_allclose(force, source_force, rtol=0, atol=1e-5)
     assert np.all(force[np.abs(cable[:, 3] + parameters[3])
                         <= parameters[2]] == 0)
+
+
+def test_published_cable_attachment_from_body_local_points():
+    cable = _load("cable1")
+    base = _load("Cable_body2")
+    follower = _load("Cable_body3")
+    attachment = PlanarCableAttachment(
+        base_offset=(0, 1.95), follower_offset=(0, -5.2),
+        initial_length=18,
+    )
+
+    def pose_and_rate(body):
+        return (body[:, (1, 3, 5)], body[:, (7, 9, 11)])
+
+    displacement, speed = attachment.motion(
+        *pose_and_rate(base), *pose_and_rate(follower),
+    )
+    np.testing.assert_allclose(displacement, cable[:, 3],
+                               rtol=0, atol=1e-10)
+    np.testing.assert_allclose(speed, cable[:, 9],
+                               rtol=0, atol=1e-11)
+    force = WecSimCableTension(1e6, 100, 17.8, 18).force_z(
+        displacement, speed,
+    )
+    np.testing.assert_allclose(force, cable[:, 21], rtol=0, atol=1e-5)
