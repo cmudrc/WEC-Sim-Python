@@ -102,6 +102,12 @@ full nonlinear trajectory has only one cause.
 Diagnostic PR #6 was closed without merging its state-space solver. The
 convolution results for Cases 3 and 4 were identical, sample for sample,
 between the original branch point and that diagnostic branch.
+The pitched-slider map used by the current default solver is also checked
+independently of MATLAB output: finite differences of body position verify
+its velocity Jacobian and acceleration bias, and an unforced two-body joint
+with symmetric added mass conserves kinetic energy within `1e-8` relative
+over 10 s. These checks guard the default joint mechanics; they do not
+establish passivity of the published fitted radiation model.
 An independent no-wave check also separates the models: from a 0.01 m/s
 common-surge perturbation, the default convolution solver ends at 0.00959 m/s
 without cross-body radiation and 0.00934 m/s with it after 400 s. The pinned
