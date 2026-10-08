@@ -47,7 +47,7 @@ the supported device dynamics have paired MATLAB checks. The published
 generalized-body-mode barge now has a coupled rigid and flexible regular-wave
 runner for its floating three-DOF joint. Other GBM layouts and wave options
 remain unsupported; see [PARITY.md](PARITY.md). The Python API is
-the primary way to configure a linearized device. It constructs bodies,
+the primary way to configure a supported device. It constructs bodies,
 named motions, attachment points, PTOs, and waves as Python objects, then
 returns NumPy arrays directly. Import it as `wecsim` after installation:
 
@@ -72,7 +72,8 @@ with `python -m examples.configurable_rm3_pto`. Relative HDF5 paths in
 the Python API resolve from the current directory unless `base_dir` is passed
 to `wec.run`. Body order must match the HDF5 hydrodynamic body order. The
 Python builder covers `linear_subspace`, the single-body `floating_gbm`
-regular-wave layout, and the paired two-body `floating_joint` layout. Mapped
+regular-wave layout, the paired two-body `floating_joint`, and the OSWEC
+`fixed_hinge` layout. Mapped
 coordinates use small-motion kinematics and fixed-axis PTOs. The floating
 joint uses its own pitched-slider geometry and a relative-heave PTO; arbitrary
 PTO attachment points are not part of that reduced layout.
@@ -161,6 +162,29 @@ Supported combinations are:
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
 | `linear_subspace` | `regular`, `regularCIC`, `pm`, `jonswap`, `spectrumImport`, `elevationImport`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+
+The canonical OSWEC pitch hinge also has a direct Python configuration:
+
+```python
+from wecsim import PMWave, WEC, WorldPoint
+
+wec = WEC("OSWEC pitch flap")
+flap = wec.body("flap", "oswec.h5", mass=127_000,
+                inertia=(1.85e6,) * 3)
+base = wec.body("base", "oswec.h5", mass=999, inertia=(999,) * 3)
+wec.fixed_hinge(flap, base, location=WorldPoint(0, 0, -10),
+                pto_location=WorldPoint(0, 0, -8.9), damping=12_000)
+sea = PMWave(2.5, 8, directions=(0, 30, 90),
+             spreading=(0.1, 0.2, 0.7), seed=1)
+result = wec.run(sea, dt=0.1, end_time=400, ramp_time=100,
+                 radiation_memory=30)
+pitch = result.coordinates["pitch"].position
+torque = result.ptos["hinge"].force
+```
+
+The hinge can also take a `fixed_body(...)` base. Both hinge and PTO points
+currently lie on the world z axis. PTO angle and speed are in radians and
+radians per second; `absorbed_power` reports positive damping dissipation.
 
 The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
 PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at

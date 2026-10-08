@@ -46,6 +46,38 @@ def test_python_builder_matches_equivalent_case():
     json.dumps(case_mapping)
 
 
+def test_public_fixed_hinge_reports_named_motion_and_dissipated_power():
+    hydro = (ROOT / "tests/test_objects/test_bodyclass/testData/hydroData/oswec.h5")
+    wec = WEC("Hinged OSWEC")
+    flap = wec.body("flap", hydro, mass=127_000,
+                    inertia=(0, 1.85e6, 0))
+    base = wec.fixed_body("base", center_gravity=(0, 0, -10.9),
+                          mass=999, inertia=(1, 1, 1))
+    wec.fixed_hinge(flap, base, damping=12_000, stiffness=500,
+                    equilibrium_angle=0.1)
+    result = wec.run(RegularWave(2.5, 8), dt=0.1, end_time=1,
+                     ramp_time=0)
+    assert result.case["constraint"]["kind"] == "fixed_hinge"
+    assert result.case["pto"]["equilibrium_position"] == 0.1
+    np.testing.assert_array_equal(result.coordinates["pitch"].position,
+                                  result.ptos["hinge"].stroke)
+    np.testing.assert_array_equal(result.coordinates["pitch"].velocity,
+                                  result.ptos["hinge"].velocity)
+    np.testing.assert_allclose(
+        result.ptos["hinge"].force,
+        -12_000 * result.ptos["hinge"].velocity
+        - 500 * (result.ptos["hinge"].stroke - 0.1),
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        result.ptos["hinge"].absorbed_power,
+        12_000 * result.ptos["hinge"].velocity**2,
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_array_equal(result.bodies["base"].position[:, 2],
+                                  np.full(11, -10.9))
+
+
 def test_python_builder_supports_ground_anchor_and_named_initial_state():
     wec = WEC("Anchored float")
     body = wec.body("float", HYDRO)
