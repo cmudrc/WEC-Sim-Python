@@ -91,6 +91,41 @@ def test_historical_equal_energy_matlab_reference():
     np.testing.assert_allclose(wave.Pw, 16836.8900561635, rtol=1e-13)
 
 
+def test_irregular_wave_setup_uses_height_and_local_seed():
+    np.random.seed(731)
+    before = np.random.get_state()
+    waves = []
+    for height in (2.5, 5.0, 2.5):
+        wave = WaveClass("irregular")
+        wave.T = 8
+        wave.H = height
+        wave.spectrumType = "PM"
+        wave.freqDisc = "Traditional"
+        wave.numFreq = 64
+        wave.phaseSeed = 1
+        wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
+        waves.append(wave)
+    after = np.random.get_state()
+    assert before[0] == after[0]
+    np.testing.assert_array_equal(before[1], after[1])
+    assert before[2:] == after[2:]
+    np.testing.assert_allclose(waves[1].S, 4 * waves[0].S, rtol=1e-14)
+    np.testing.assert_array_equal(waves[0].phase, waves[2].phase)
+    assert np.isfinite(waves[0].waveAmpTime[1]).all()
+
+
+def test_irregular_wave_setup_initializes_traditional_default_count():
+    wave = WaveClass("irregular")
+    wave.T = 8
+    wave.H = 2.5
+    wave.spectrumType = "PM"
+    wave.freqDisc = "Traditional"
+    wave.phaseSeed = 1
+    wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
+    assert wave.numFreq == 1000
+    assert wave.S.shape == (1000,)
+
+
 def test_wave_surface_grid_matches_matlab_regular_and_irregular_equations():
     X = np.array([[0.0, 2.0], [0.0, 2.0]])
     Y = np.array([[0.0, 0.0], [3.0, 3.0]])

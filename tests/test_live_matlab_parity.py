@@ -50,3 +50,27 @@ def test_finite_depth_against_executed_matlab():
     expected = np.loadtxt(Path(REFERENCE) / "finite_depth.csv", delimiter=",")
     np.testing.assert_allclose([np.asarray(wave.k).item(), np.asarray(wave.Pw).item()],
                                expected, rtol=1e-11)
+
+
+@pytest.mark.parametrize("spectrum,height", [("PM", 2.5), ("JS", 4.0)])
+def test_current_irregular_spectrum_against_executed_matlab(spectrum, height):
+    wave = WaveClass("irregular")
+    wave.T = 8
+    wave.H = height
+    wave.spectrumType = spectrum
+    wave.freqDisc = "Traditional"
+    wave.numFreq = 64
+    wave.phaseSeed = 1
+    wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
+
+    reference = Path(REFERENCE)
+    expected = np.loadtxt(reference / f"{spectrum.lower()}_spectrum.csv",
+                          delimiter=",")
+    np.testing.assert_allclose(np.column_stack((wave.w, wave.S)), expected,
+                               rtol=2e-12, atol=1e-14)
+    power = np.loadtxt(reference / f"{spectrum.lower()}_power.csv",
+                       delimiter=",")
+    np.testing.assert_allclose(wave.Pw, power, rtol=2e-12, atol=1e-9)
+    if spectrum == "JS":
+        gamma = np.loadtxt(reference / "js_gamma.csv", delimiter=",")
+        np.testing.assert_allclose(wave.gamma, gamma, rtol=2e-12)

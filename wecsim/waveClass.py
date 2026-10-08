@@ -69,13 +69,13 @@ class WaveClass:
         self.H = 'NOT DEFINED'
         
         #spectrumType -  String containing the wave spectrum type
-        #Can be one of : 'PM', 'BS', and 'JS' 
+        # Current MATLAB supports PM and JS; BS remains for historical fixtures.
         #(Default = 'NOT DEFINED'). 
         self.spectrumType = 'NOT DEFINED'
         
         #gamma - Only used for 'JS' spectrum type to define gamma 
-        #(Default = 3.3)
-        self.gamma = 3.3
+        # None selects the pinned MATLAB height/period-dependent default.
+        self.gamma = None
         
         #phaseSeed - Only used for irregular waves 
         #if equal to 1,2,3,...,etc, the waves phase is seeded.
@@ -241,9 +241,9 @@ class WaveClass:
     
         """
         
+        self.inputProperties()
+        self._internalProperties()
         self.wType = wType
-        self.gamma = 3.3
-        self.w = []
         
         if self.wType == 'noWave': #No Waves with Constant Hydrodynamic Coefficients
             self.typeNum = 0
@@ -334,15 +334,15 @@ class WaveClass:
                 else:
                     warnings.warn("Max frequency range outside BEM data, max frequency set to max BEM frequency",DeprecationWarning)
             if self.freqDisc == 'Traditional':    # Traditional method of computing. Refer to theory of waveclass provided by WEC-Sim to understand the theory.
-                if np.size(self.numFreq) == 0:  # numfreq for Traditional is 1000 for default
+                if self.numFreq == 0:  # Traditional defaults to 1000 frequencies.
                     self.numFreq = 1000
                 self.w = arange_MATLAB(WFQSt,WFQEd+((WFQEd-WFQSt)/(self.numFreq-1)),(WFQEd-WFQSt)/(self.numFreq-1))
-                self.dw = np.ones(shape=(self.numFreq,1))*(WFQEd-WFQSt)/(self.numFreq-1)
+                self.dw = np.full(self.numFreq, (WFQEd-WFQSt)/(self.numFreq-1))
             elif self.freqDisc == 'EqualEnergy':    # Default way of computing irregular wave. Refer to theory of waveclass provided by WEC-Sim to understand the theory.
                 numFreq_interp = 500000     # number of interpolation that will set array size for SF and S_f used in irregWaveSpectrum method. Lowering this value might decrease the run time but accuracy will decrease
                 self.w = arange_MATLAB(WFQSt,WFQEd+((WFQEd-WFQSt)/numFreq_interp),(WFQEd-WFQSt)/numFreq_interp)
                 self.dw = np.mean(np.diff(self.w))
-                if np.size(self.numFreq) == 0:  # numfreq for EqualEnergy is 500 for default
+                if self.numFreq == 0:  # EqualEnergy defaults to 500 frequencies.
                     self.numFreq = 500
             elif self.freqDisc == 'Imported': # set from setWaveProps method
                 data = self.readData(self.spectrumDataFile) # call on readData method to get files in both mat file and txt file
@@ -426,17 +426,13 @@ class WaveClass:
 
     def setWavePhase(self):
         """
-        Sets the irregular wave's random phase
-        MATLAB and Python use same random number generator
-        multiple arrays of phase is not supported for regular wave as it was not supported in the WEC-Sim
+        Set a reproducible irregular-wave phase. MATLAB uses Threefry
+        substreams, so equal integer seeds do not produce identical phases.
 
         """
-        if self.phaseSeed != 0:
-            np.random.seed(self.phaseSeed) #Phase seed = 1,2,3,...,etc
-        else:
-            np.random.seed(np.random.shuffle(self.phaseSeed)) # shuffle phase seed
+        rng = np.random.default_rng(None if self.phaseSeed == 0 else self.phaseSeed)
         if (self.freqDisc == 'EqualEnergy') or (self.freqDisc == 'Traditional'): 
-            self.phase = 2*np.pi*np.conj(np.transpose(np.random.rand(self.numFreq,np.size(self.waveDir)))) # for multiple wave direction, multiple arrays of phase will be made
+            self.phase = 2*np.pi*rng.random((np.size(self.waveDir), self.numFreq))
         elif (self.freqDisc == 'Imported'):
             data = self.readData(self.spectrumDataFile)
             if len(data) == 3: # if imported spectrum data file is correct it should have 3 rows of data
@@ -444,7 +440,7 @@ class WaveClass:
                 self.phase = np.array([[x for x,i in zip(data[2],freq_data) 
                                        if i>=min(self.bemFreq)/2/np.pi and i<=max(self.bemFreq)/2/np.pi]])
             else:
-                self.phase = 2*np.pi*np.random.rand(1,self.numFreq) # if imported spectrum data is faulty, phase will be calculated randomly
+                self.phase = 2*np.pi*rng.random((1,self.numFreq))
             
     def waveElevNowave(self,maxIt,dt):
         """
@@ -525,12 +521,11 @@ class WaveClass:
         Tp = self.T
         Hs = self.H
         if self.spectrumType == 'PM':
-            # Pierson-Moskowitz Spectrum from Tucker and Pitt (2001)
-            B_PM = (5/4)*(1/Tp)**(4)
-            A_PM = 0.0081*g**2*(2*np.pi)**(-4)
-            S_f  = (A_PM*freq**(-5)*np.exp(-B_PM*freq**(-4)))              # Wave Spectrum [m^2-s] for 'EqualEnergy'
-            self.S = S_f/(2*np.pi)                                      # Wave Spectrum [m^2-s/rad] for 'Traditional'
-            S_f = self.S*2*np.pi
+            # Current WEC-Sim: IEC TS 62600-2 ED2 Annex C.2 (2019).
+            B_PM = (5/4)*(1/Tp)**4
+            A_PM = B_PM*(Hs/2)**2
+            S_f = A_PM*freq**(-5)*np.exp(-B_PM*freq**(-4))
+            self.S = S_f/(2*np.pi)
         elif self.spectrumType == 'BS':
             # Bretschneider Sprectrum from Tucker and Pitt (2001)
             B_BS = (1.057/Tp)**4
@@ -538,19 +533,25 @@ class WaveClass:
             S_f = (A_BS*freq**(-5)*np.exp(-B_BS*freq**(-4)))               # Wave Spectrum [m^2-s]
             self.S = S_f/(2*np.pi)                                      # Wave Spectrum [m^2-s/rad]
         elif self.spectrumType == 'JS':
-            # JONSWAP Spectrum from Hasselmann et. al (1973)
+            # Current WEC-Sim: PM baseline times the IEC JONSWAP peak factor.
             fp = 1/Tp
             siga = 0.07
             sigb = 0.09                                                 # cutoff frequencies for gamma function
-            Gf = np.zeros((np.size(freq)))
-            for lind in np.argwhere(np.array(freq)<=fp):
-                Gf[lind] = self.gamma**np.exp(-(freq[lind]-fp)**2/(2*siga**2*fp**2))
-            for hind in np.argwhere(np.array(freq)>fp):
-                Gf[hind] = self.gamma**np.exp(-(freq[hind]-fp)**2/(2*sigb**2*fp**2))
-            S_temp = g**2*(2*np.pi)**(-4)*freq**(-5)*np.exp(-(5/4)*(freq/fp)**(-4))
-            alpha_JS = Hs**(2)/16/np.trapezoid(S_temp*Gf,freq)
-            S_f = alpha_JS*S_temp*Gf                                 # Wave Spectrum [m^2-s]
-            self.S = S_f/(2*np.pi)                                       # Wave Spectrum [m^2-s/rad]
+            gamma = self.gamma
+            if gamma is None:
+                ratio = Tp/np.sqrt(Hs)
+                gamma = (5.0 if ratio <= 3.6 else 1.0 if ratio > 5.0
+                         else np.exp(5.75 - 1.15*ratio))
+                self.gamma = gamma
+            if not np.isfinite(gamma) or gamma <= 0:
+                raise ValueError("JONSWAP gamma must be positive and finite")
+            sigma = np.where(freq <= fp, siga, sigb)
+            peak = gamma**np.exp(-(freq-fp)**2/(2*sigma**2*fp**2))
+            B_PM = (5/4)*(1/Tp)**4
+            A_PM = B_PM*(Hs/2)**2
+            S_f = ((1 - 0.287*np.log(gamma)) * A_PM * freq**(-5)
+                   * np.exp(-B_PM*freq**(-4)) * peak)
+            self.S = S_f/(2*np.pi)
         elif self.spectrumType == 'spectrumImport':
             # Imported Wave Spectrum
             data = self.readData(self.spectrumDataFile)
@@ -562,12 +563,15 @@ class WaveClass:
             print('\t"spectrumImport" uses the number of imported wave frequencies (not "Traditional" or "EqualEnergy")\n')
             # Power per Unit Wave Crest
         self.waveNumber(g)                                          # Calculate Wave Number for Larger Number of Frequencies Before Down Sampling in Equal Energy Method
+        # Current MATLAB integrates the spectrum per radian, not per hertz.
+        # Retain the original BS power fixture only for that retired option.
+        power_spectrum = S_f if self.spectrumType == 'BS' else self.S
         if self.deepWaterWave == 1:
             # Deepwater Approximation
-            self.Pw = np.sum(1/2*rho*g**(2)*S_f*self.dw/self.w)
+            self.Pw = np.sum(1/2*rho*g**(2)*power_spectrum*self.dw/self.w)
         else:
             # Full Wave Power Equation
-            self.Pw = np.sum((1/2)*rho*g*S_f*self.dw*np.sqrt(9.81/self.k*np.tanh(self.k*self.waterDepth))*(1 + 2*self.k*self.waterDepth/np.sinh(2*self.k*self.waterDepth)))
+            self.Pw = np.sum((1/2)*rho*g*power_spectrum*self.dw*np.sqrt(g/self.k*np.tanh(self.k*self.waterDepth))*(1 + 2*self.k*self.waterDepth/np.sinh(2*self.k*self.waterDepth)))
         if self.freqDisc == 'EqualEnergy':
             m0 = np.trapezoid(np.abs(S_f),freq)
             numBins = self.numFreq+1
@@ -732,8 +736,6 @@ class WaveClass:
                 print('\tWave Type                            = Irregular Waves (Predefined Random Phase)\n')
             self.printWaveSpectrumType
             print('\tSignificant Wave Height, Hs      (m) = {:f}\n'.format(self.H))
-            if self.spectrumType == 'PM':
-                print('\tNOTE: Pierson-Moskowitz does not use Hs to define spectrum\n')
             print('\tPeak Wave Period, Tp           (sec) = {:f}\n'.format(self.T))
         if self.wType == 'spectrumImport':
             if np.size(np.loadtxt(self.spectrumDataFile),1) == 3:

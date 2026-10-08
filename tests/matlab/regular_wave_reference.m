@@ -25,6 +25,32 @@ finite.setup([0.4, 2.0], 25, 0, 0.1, 2000, times, 9.81, 1000);
 writematrix([finite.wavenumber, finite.power], ...
     fullfile(outputDir, 'finite_depth.csv'));
 
+% Current IEC PM and JONSWAP spectra. Only deterministic spectral quantities
+% are paired here: MATLAB's seeded phases use Threefry substreams.
+for spectrum = ["PM", "JS"]
+    irregular = waveClass('irregular');
+    irregular.period = 8;
+    irregular.height = 2.5;
+    if spectrum == "JS"
+        irregular.height = 4;
+    end
+    irregular.spectrumType = char(spectrum);
+    irregular.bem.option = 'Traditional';
+    irregular.bem.count = 64;
+    irregular.phaseSeed = 1;
+    irregular.setup([0.4, 2.0], 'infinite', 1, 0.1, 20, ...
+        (0:0.1:2)', 9.81, 1000);
+    label = lower(char(spectrum));
+    writematrix([irregular.omega, irregular.spectrum], ...
+        fullfile(outputDir, sprintf('%s_spectrum.csv', label)));
+    writematrix(irregular.power, ...
+        fullfile(outputDir, sprintf('%s_power.csv', label)));
+    if spectrum == "JS"
+        writematrix(irregular.gamma, ...
+            fullfile(outputDir, 'js_gamma.csv'));
+    end
+end
+
 fid = fopen(fullfile(outputDir, 'matlab_release.txt'), 'w');
 fprintf(fid, '%s\n', version('-release'));
 fclose(fid);
