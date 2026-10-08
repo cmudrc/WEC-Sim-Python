@@ -94,6 +94,7 @@ on:
       - 'wecsim/hydraulic.py'
       - 'wecsim/crank.py'
       - 'wecsim/oswecHydraulic.py'
+      - 'wecsim/oswecDesalination.py'
       - 'wecsim/desalination.py'
       - 'wecsim/rm3Hydraulic.py'
       - 'wecsim/electricGenerator.py'
