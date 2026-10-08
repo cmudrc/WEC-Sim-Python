@@ -119,6 +119,26 @@ surge = result.bodies["barge"].position[:, 0]
 mode_displacement = result.flexible_modes["barge"].position
 ```
 
+The published OWC orifice block has a component-level Python model:
+
+```python
+from math import pi
+from wecsim import OrificePTO
+
+orifice = OrificePTO(piston_area=pi * 0.25**2,
+                     orifice_area=pi * 0.01**2,
+                     discharge_coefficient=0.62, air_density=1.2)
+reaction = orifice.evaluate(piston_speed=0.1)
+force = reaction.force                 # N, opposes piston motion
+power = reaction.absorbed_power        # W, positive dissipation
+```
+
+This evaluates the incompressible pressure law at a supplied piston speed;
+it is not yet coupled to `WEC.run` or the OWC's generalized body mode.
+`compressibility_flag` marks speeds beyond the chosen Mach threshold. In the
+published case the flag is active for most of the simulated time, so matching
+its source force law does not establish physical accuracy of that air model.
+
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
 instead of constant damping. Import `DeclutchingControl` from `wecsim`.

@@ -231,6 +231,10 @@ jobs:
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_owc_orifice_source.py
+        if: matrix.model == 'OWC_ORIFICE'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_sphere_mpc_source.py
         if: matrix.model == 'SPHERE_MPC'
         env:

@@ -13,6 +13,7 @@ from .directLinearGenerator import (
 from .caseDynamics import CaseResponse, run_case
 from .hardStops import LinearHardStops
 from .morison import MorisonElement
+from .orifice import OrificePTO, OrificeResponse
 from .irregularWave import (
     FullDirectionalComponents, IrregularResponse,
     imported_full_directional_components, synthesize_full_directional_response,
@@ -29,6 +30,7 @@ __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "DeclutchingControl", "DirectDriveHistory", "DirectLinearGenerator", "DirectLinearGeneratorSignals", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
     "MotionHistory", "FlexibleModeHistory", "ImportedElevationWave", "ImportedSpectrumWave", "JONSWAPWave", "MorisonElement", "NoWave", "PMWave", "PTOHistory", "LinearGeneratorHistory", "RotationalPTO", "RegularCICWave",
     "RegularWave", "SimpleDirectDrive", "VariableHydro", "HydroState", "WEC",
+    "OrificePTO", "OrificeResponse",
     "WECResult", "WorldPoint",
     "MCRCondition", "MCRPowerMatrix", "MCRResult", "MCRSeaStateResult",
     "MCRTrace", "mcr_grid", "mcr_mat_file", "mcr_spectrum_files",
