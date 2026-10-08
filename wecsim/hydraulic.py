@@ -96,3 +96,27 @@ class RectifyingCheckValve:
         low_to_a = self.check_flow(low - a)
         return (low_to_a - a_to_high, low_to_b - b_to_high,
                 a_to_high + b_to_high, -low_to_b - low_to_a)
+
+
+@dataclass(frozen=True)
+class GasChargedAccumulator:
+    """Polytropic gas pressure versus integrated liquid inflow."""
+
+    initial_gas_volume: float
+    precharge_pressure: float
+    exponent: float = 1.4
+
+    def __post_init__(self):
+        values = np.asarray((self.initial_gas_volume, self.precharge_pressure,
+                             self.exponent), dtype=float)
+        if not np.isfinite(values).all() or (values <= 0).any():
+            raise ValueError("accumulator volume, precharge, and exponent must be positive")
+
+    def pressure(self, liquid_inflow_volume):
+        """Pressure in Pa; positive accumulated inlet volume compresses gas."""
+        gas_volume = self.initial_gas_volume - np.asarray(
+            liquid_inflow_volume, dtype=float)
+        if np.any(gas_volume <= 0):
+            raise ValueError("accumulator gas volume must remain positive")
+        return (self.precharge_pressure
+                * (self.initial_gas_volume / gas_volume) ** self.exponent)
