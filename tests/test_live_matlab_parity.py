@@ -61,9 +61,17 @@ def test_current_irregular_spectrum_against_executed_matlab(spectrum, height):
     wave.freqDisc = "Traditional"
     wave.numFreq = 64
     wave.phaseSeed = 1
+    if spectrum == "PM":
+        wave.waveDir = [0, 30, 90]
+        wave.waveSpread = [0.1, 0.2, 0.7]
+    wave.wavegauge1loc = [5, 5]
+    wave.wavegauge2loc = [10, 0]
+    wave.wavegauge3loc = [0, -10]
+    reference = Path(REFERENCE)
+    wave.phaseData = np.loadtxt(reference / f"{spectrum.lower()}_phase.csv",
+                                delimiter=",")
     wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 
-    reference = Path(REFERENCE)
     expected = np.loadtxt(reference / f"{spectrum.lower()}_spectrum.csv",
                           delimiter=",")
     np.testing.assert_allclose(np.column_stack((wave.w, wave.S)), expected,
@@ -74,3 +82,15 @@ def test_current_irregular_spectrum_against_executed_matlab(spectrum, height):
     if spectrum == "JS":
         gamma = np.loadtxt(reference / "js_gamma.csv", delimiter=",")
         np.testing.assert_allclose(wave.gamma, gamma, rtol=2e-12)
+    source_elevation = np.loadtxt(
+        reference / f"{spectrum.lower()}_elevation.csv", delimiter=",")
+    np.testing.assert_allclose(np.asarray(wave.waveAmpTime).T,
+                               source_elevation, rtol=0, atol=2e-12)
+    source_markers = np.loadtxt(
+        reference / f"{spectrum.lower()}_markers.csv", delimiter=",")
+    for index, attribute in enumerate(("waveAmpTime1", "waveAmpTime2",
+                                       "waveAmpTime3")):
+        np.testing.assert_allclose(
+            np.asarray(getattr(wave, attribute))[1], source_markers[:, index + 1],
+            rtol=0, atol=2e-12,
+        )

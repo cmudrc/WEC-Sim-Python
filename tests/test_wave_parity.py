@@ -8,6 +8,7 @@ from pathlib import Path
 import sys
 
 import numpy as np
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -124,6 +125,20 @@ def test_irregular_wave_setup_initializes_traditional_default_count():
     wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
     assert wave.numFreq == 1000
     assert wave.S.shape == (1000,)
+
+
+def test_irregular_phase_replay_rejects_missing_directions():
+    wave = WaveClass("irregular")
+    wave.T = 8
+    wave.H = 2.5
+    wave.spectrumType = "PM"
+    wave.freqDisc = "Traditional"
+    wave.numFreq = 16
+    wave.waveDir = [0, 30]
+    wave.waveSpread = [0.5, 0.5]
+    wave.phaseData = np.zeros((16, 1))
+    with pytest.raises(ValueError, match=r"shape \(frequency, direction\)"):
+        wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 
 
 def test_wave_surface_grid_matches_matlab_regular_and_irregular_equations():

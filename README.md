@@ -127,8 +127,23 @@ The inherited `WaveClass` now uses the pinned MATLAB PM and JONSWAP spectrum
 definitions, including height-dependent PM energy and JONSWAP's inferred
 `gamma` when it is unspecified. Its seeded phases use a local NumPy generator;
 MATLAB's Threefry substreams produce different realizations for the same
-integer seed. Paired irregular trajectories therefore replay saved source
-phases. The historical BS fixture remains a compatibility check for the
+integer seed. To replay a MATLAB realization, assign its frequency-by-direction
+phase matrix before `waveSetup`:
+
+```python
+import numpy as np
+from wecsim.waveClass import WaveClass
+
+wave = WaveClass("irregular")
+wave.T, wave.H = 8, 2.5
+wave.spectrumType = "PM"
+wave.freqDisc, wave.numFreq = "Traditional", 64
+wave.waveDir, wave.waveSpread = [0, 30, 90], [0.1, 0.2, 0.7]
+wave.phaseData = np.loadtxt("pm_phase.csv", delimiter=",")
+wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
+```
+
+The historical BS fixture remains a compatibility check for the
 original Python port; current MATLAB WEC-Sim rejects BS inputs.
 For this RM3 convolution layout, the solver follows the published pitched
 slider geometry and uses an implicit effective added mass by default. To

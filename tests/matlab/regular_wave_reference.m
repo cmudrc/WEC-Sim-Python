@@ -25,8 +25,7 @@ finite.setup([0.4, 2.0], 25, 0, 0.1, 2000, times, 9.81, 1000);
 writematrix([finite.wavenumber, finite.power], ...
     fullfile(outputDir, 'finite_depth.csv'));
 
-% Current IEC PM and JONSWAP spectra. Only deterministic spectral quantities
-% are paired here: MATLAB's seeded phases use Threefry substreams.
+% Current IEC PM and JONSWAP spectra with replayable Threefry phases.
 for spectrum = ["PM", "JS"]
     irregular = waveClass('irregular');
     irregular.period = 8;
@@ -38,6 +37,11 @@ for spectrum = ["PM", "JS"]
     irregular.bem.option = 'Traditional';
     irregular.bem.count = 64;
     irregular.phaseSeed = 1;
+    irregular.marker.location = [5 5; 10 0; 0 -10];
+    if spectrum == "PM"
+        irregular.direction = [0 30 90];
+        irregular.spread = [0.1 0.2 0.7];
+    end
     irregular.setup([0.4, 2.0], 'infinite', 1, 0.1, 20, ...
         (0:0.1:2)', 9.81, 1000);
     label = lower(char(spectrum));
@@ -45,6 +49,12 @@ for spectrum = ["PM", "JS"]
         fullfile(outputDir, sprintf('%s_spectrum.csv', label)));
     writematrix(irregular.power, ...
         fullfile(outputDir, sprintf('%s_power.csv', label)));
+    writematrix(irregular.phase, ...
+        fullfile(outputDir, sprintf('%s_phase.csv', label)));
+    writematrix(irregular.waveAmpTime, ...
+        fullfile(outputDir, sprintf('%s_elevation.csv', label)));
+    writematrix(irregular.waveAmpTimeViz, ...
+        fullfile(outputDir, sprintf('%s_markers.csv', label)));
     if spectrum == "JS"
         writematrix(irregular.gamma, ...
             fullfile(outputDir, 'js_gamma.csv'));

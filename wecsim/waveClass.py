@@ -81,6 +81,10 @@ class WaveClass:
         #if equal to 1,2,3,...,etc, the waves phase is seeded.
         #(Default = 0)
         self.phaseSeed = 0
+
+        # Optional source phase matrix, with one frequency per row and one
+        # direction per column. Use this to replay a MATLAB realization.
+        self.phaseData = None
         
         #spectrumDataFile - Data file that contains the spectrum data file
         #(Default = 'NOT DEFINED')
@@ -426,10 +430,21 @@ class WaveClass:
 
     def setWavePhase(self):
         """
-        Set a reproducible irregular-wave phase. MATLAB uses Threefry
-        substreams, so equal integer seeds do not produce identical phases.
+        Set a reproducible irregular-wave phase or replay supplied values.
+        MATLAB uses Threefry substreams, so equal integer seeds do not
+        produce identical phases. ``phaseData`` uses MATLAB's frequency-by-
+        direction orientation; the internal array is transposed for Python.
 
         """
+        if self.phaseData is not None:
+            phase = np.asarray(self.phaseData, dtype=float)
+            if phase.ndim == 1 and np.size(self.waveDir) == 1:
+                phase = phase[:, None]
+            if (phase.shape != (self.numFreq, np.size(self.waveDir))
+                    or not np.isfinite(phase).all()):
+                raise ValueError("phaseData must be finite with shape (frequency, direction)")
+            self.phase = phase.T.copy()
+            return
         rng = np.random.default_rng(None if self.phaseSeed == 0 else self.phaseSeed)
         if (self.freqDisc == 'EqualEnergy') or (self.freqDisc == 'Traditional'): 
             self.phase = 2*np.pi*rng.random((np.size(self.waveDir), self.numFreq))
