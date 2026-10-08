@@ -473,6 +473,10 @@ and the configured PTO. The STL determines equilibrium mass when
 Current validation covers one pure-heave body with its center of gravity at
 horizontal origin in zero-direction regular waves, with either constant or
 convolution radiation.
+The published ode45 variants are tracked separately: MATLAB applies mesh
+buoyancy from the preceding 0.05 s sample while the Python mode evaluates it
+at the current state. Their motion comparisons are recorded as solver
+diagnostics in [PARITY.md](PARITY.md), not as ode45 numerical parity.
 Other motions and sea states raise an error until their mesh force and dynamics
 checks are paired with MATLAB.
 
