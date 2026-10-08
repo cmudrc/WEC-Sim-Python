@@ -19,7 +19,10 @@ from .hardStops import LinearHardStops
 from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
 )
-from .irregularWave import pm_equal_energy_components, synthesize_irregular_response
+from .irregularWave import (
+    pm_equal_energy_components, synthesize_irregular_response,
+    synthesize_multiple_irregular_response,
+)
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
 from .ptoConnections import build_linear_ptos
@@ -86,7 +89,7 @@ def _hydro_file(body, base_dir):
         return None
     _section(body, "body", {"hydro_file"},
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
-              "inertia", "coordinate_map", "name", "mean_drift"})
+              "inertia", "coordinate_map", "name", "mean_drift", "fixed"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -227,7 +230,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     wave = _section(case["wave"], "wave", {"type"},
                     {"type", "height", "period", "direction", "directions",
                      "spreading", "seed", "phase_file", "frequency_count",
-                     "file", "variable", "reapply_force_ramp"})
+                     "file", "variable", "reapply_force_ramp", "seas",
+                     "excitation_interpolation"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates"})
@@ -240,10 +244,14 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if not isinstance(b2b, bool):
         raise ValueError("body_to_body must be a boolean")
     kind = constraint["kind"]
+    for index, body in enumerate(bodies):
+        if "fixed" in body and not (kind == "fixed_hinge" and len(bodies) == 2
+                                     and index == 1 and body["fixed"] is True):
+            raise ValueError("a fixed hydrodynamic body currently requires a two-body fixed_hinge")
     if "radiation_method" in sim and kind != "floating_joint":
         raise ValueError("radiation_method currently applies to floating_joint")
-    if "added_mass_scheme" in sim and kind != "floating_joint":
-        raise ValueError("added_mass_scheme currently applies to floating_joint")
+    if "added_mass_scheme" in sim and kind not in ("floating_joint", "fixed_hinge"):
+        raise ValueError("added_mass_scheme currently applies to floating_joint or fixed_hinge")
     if any(path is None for path in hydro) and not (
         kind == "fixed_hinge" and len(bodies) == 2
         and hydro[0] is not None and hydro[1] is None
@@ -296,11 +304,18 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     if kind == "fixed_hinge":
-        if (len(bodies) not in (1, 2) or wave["type"] not in ("pm", "regular")
-                or (len(bodies) == 2 and hydro[1] is not None) or b2b):
+        if (len(bodies) not in (1, 2)
+                or wave["type"] not in ("pm", "pm_multi", "regular")
+                or b2b):
             raise ValueError("fixed-hinge pitch needs one flap, optional fixed base, and PM or regular waves")
-        if len(bodies) == 2 and wave["type"] != "regular":
-            raise ValueError("the fixed nonhydrodynamic base currently needs regular waves")
+        if len(bodies) == 2 and hydro[1] is not None:
+            _body_number(bodies[1], 2)
+            fixed_body = BodyClass(str(hydro[1]))
+            fixed_body.bodyNumber = 2
+            fixed_body.readH5file()
+            fixed_center = np.asarray(fixed_body.cg, dtype=float).ravel()
+        elif len(bodies) == 2:
+            fixed_center = np.asarray(bodies[1]["center_gravity"], dtype=float)
         _body_number(bodies[0], 1)
         if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "pitch_inertia", "name"}:
             raise ValueError("fixed-hinge pitch uses mass and pitch_inertia")
@@ -318,9 +333,11 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             raise ValueError("fixed nonhydrodynamic base needs pto.location")
         hinge = (_location({"location": pto_data["location"]}, "pto.location")
                  if "location" in pto_data else location)
-        height = _number(wave.get("height"), "wave.height", positive=True)
-        period = _number(wave.get("period"), "wave.period", positive=True)
         if wave["type"] == "regular":
+            if sim.get("added_mass_scheme", "implicit") != "implicit":
+                raise ValueError("regular fixed-hinge dynamics need implicit added mass")
+            height = _number(wave.get("height"), "wave.height", positive=True)
+            period = _number(wave.get("period"), "wave.period", positive=True)
             if set(wave) - {"type", "height", "period", "direction"}:
                 raise ValueError("regular waves use height, period, and direction")
             direction = _number(wave.get("direction", 0), "wave.direction")
@@ -347,40 +364,97 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             velocity[:, 0, :3] = solved.center_velocity
             velocity[:, 0, 4] = solved.angular_velocity
             if len(bodies) == 2:
-                position[:, 1, :3] = np.asarray(bodies[1]["center_gravity"], dtype=float)
+                position[:, 1, :3] = fixed_center
             return CaseResponse(
-                solved.time, position, velocity, (hydro[0],),
+                solved.time, position, velocity,
+                tuple(path for path in hydro if path is not None),
                 pto_force=solved.pto_torque, pto_label="pto_pitch_torque",
                 wave_elevation=elevation,
             )
-        if "direction" in wave:
-            raise ValueError("PM waves use directions and spreading arrays")
-        if "seed" in wave and "phase_file" in wave:
-            raise ValueError("supply either wave.seed or wave.phase_file")
-        if "phase_file" in wave:
-            if not isinstance(wave["phase_file"], str) or not wave["phase_file"]:
-                raise ValueError("wave.phase_file must be a file path")
-            phase_path = (base / wave["phase_file"]).resolve(strict=True)
-            phase = np.loadtxt(phase_path, delimiter=",")
-            seed = None
-            auxiliary_files = (phase_path,)
+        if wave["type"] == "pm_multi":
+            if set(wave) - {"type", "seas", "excitation_interpolation"} or "seas" not in wave:
+                raise ValueError("pm_multi waves use a seas list")
+            seas = wave["seas"]
+            if not isinstance(seas, list) or len(seas) < 2:
+                raise ValueError("pm_multi needs at least two sea spectra")
+            components = []
+            auxiliary_files = []
+            for index, sea in enumerate(seas):
+                _section(sea, f"wave.seas[{index}]", {"height", "period"},
+                         {"height", "period", "direction", "directions",
+                          "spreading", "seed", "phase_file", "frequency_count"})
+                if "direction" in sea:
+                    if "directions" in sea or "spreading" in sea:
+                        raise ValueError("a sea uses direction or directions and spreading")
+                    directions = [_number(sea["direction"],
+                                          f"wave.seas[{index}].direction")]
+                    spreading = [1.0]
+                else:
+                    if "directions" not in sea or "spreading" not in sea:
+                        raise ValueError("a sea needs direction or directions and spreading")
+                    directions, spreading = sea["directions"], sea["spreading"]
+                if "phase_file" in sea and "seed" in sea:
+                    raise ValueError("a sea uses either phase_file or seed")
+                if "phase_file" in sea:
+                    if not isinstance(sea["phase_file"], str) or not sea["phase_file"]:
+                        raise ValueError("sea.phase_file must be a file path")
+                    phase_path = (base / sea["phase_file"]).resolve(strict=True)
+                    phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+                    seed = None
+                    auxiliary_files.append(phase_path)
+                else:
+                    phase = None
+                    seed = sea.get("seed", index + 7)
+                    if not isinstance(seed, int) or isinstance(seed, bool):
+                        raise ValueError("sea.seed must be an integer")
+                components.append(pm_equal_energy_components(
+                    hydro[0],
+                    significant_height=_number(
+                        sea["height"], f"wave.seas[{index}].height", positive=True,
+                    ),
+                    peak_period=_number(
+                        sea["period"], f"wave.seas[{index}].period", positive=True,
+                    ),
+                    directions=directions, spreading=spreading,
+                    count=sea.get("frequency_count", 500), seed=seed, phase=phase,
+                ))
+            incident = synthesize_multiple_irregular_response(
+                hydro[0], components, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, rho=rho, g=g,
+                excitation_interpolation=wave.get("excitation_interpolation", "linear"),
+            )
         else:
-            phase = None
-            seed = wave.get("seed", 7)
-            if not isinstance(seed, int) or isinstance(seed, bool):
-                raise ValueError("wave.seed must be an integer")
-            auxiliary_files = ()
-        count = wave.get("frequency_count", 500)
-        components = pm_equal_energy_components(
-            hydro[0], significant_height=height, peak_period=period,
-            directions=wave.get("directions", [0, 30, 90]),
-            spreading=wave.get("spreading", [0.1, 0.2, 0.7]),
-            count=count, seed=seed, phase=phase,
-        )
-        incident = synthesize_irregular_response(
-            hydro[0], components, dt=dt, end_time=end_time,
-            ramp_time=ramp_time, rho=rho, g=g,
-        )
+            height = _number(wave.get("height"), "wave.height", positive=True)
+            period = _number(wave.get("period"), "wave.period", positive=True)
+            if "direction" in wave:
+                raise ValueError("PM waves use directions and spreading arrays")
+            if "seed" in wave and "phase_file" in wave:
+                raise ValueError("supply either wave.seed or wave.phase_file")
+            if "phase_file" in wave:
+                if not isinstance(wave["phase_file"], str) or not wave["phase_file"]:
+                    raise ValueError("wave.phase_file must be a file path")
+                phase_path = (base / wave["phase_file"]).resolve(strict=True)
+                phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+                seed = None
+                auxiliary_files = [phase_path]
+            else:
+                phase = None
+                seed = wave.get("seed", 7)
+                if not isinstance(seed, int) or isinstance(seed, bool):
+                    raise ValueError("wave.seed must be an integer")
+                auxiliary_files = []
+            count = wave.get("frequency_count", 500)
+            components = pm_equal_energy_components(
+                hydro[0], significant_height=height, peak_period=period,
+                directions=wave.get("directions", [0, 30, 90]),
+                spreading=wave.get("spreading", [0.1, 0.2, 0.7]),
+                count=count, seed=seed, phase=phase,
+            )
+            incident = synthesize_irregular_response(
+                hydro[0], components, dt=dt, end_time=end_time,
+                ramp_time=ramp_time, rho=rho, g=g,
+                excitation_interpolation=wave.get("excitation_interpolation", "linear"),
+            )
         solved = solve_hinged_pitch_from_excitation(
             hydro[0], incident.excitation_force,
             hinge_z=hinge[2], body_mass=mass, pitch_inertia=inertia,
@@ -390,19 +464,23 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 sim.get("radiation_memory", 30), "simulation.radiation_memory",
                 positive=True,
             ),
+            added_mass_scheme=sim.get("added_mass_scheme", "implicit"),
             rho=rho, g=g,
         )
-        position = np.zeros((len(solved.time), 1, 6))
+        position = np.zeros((len(solved.time), len(bodies), 6))
         velocity = np.zeros_like(position)
         position[:, 0, :3] = solved.center_position
         position[:, 0, 4] = solved.angle
         velocity[:, 0, :3] = solved.center_velocity
         velocity[:, 0, 4] = solved.angular_velocity
+        if len(bodies) == 2:
+            position[:, 1, :3] = fixed_center
         return CaseResponse(
-            solved.time, position, velocity, hydro,
+            solved.time, position, velocity,
+            tuple(path for path in hydro if path is not None),
             pto_force=solved.pto_torque, pto_label="pto_pitch_torque",
             wave_elevation=incident.elevation,
-            auxiliary_files=auxiliary_files,
+            auxiliary_files=tuple(auxiliary_files),
         )
 
     if kind == "floating_joint":

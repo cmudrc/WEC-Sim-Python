@@ -39,6 +39,7 @@ def solve_hinged_pitch_from_excitation(
     pto_equilibrium: float = 0.0,
     dt: float = 0.1,
     memory_time: float = 30.0,
+    added_mass_scheme: str = "implicit",
     rho: float = 1000.0,
     g: float = 9.81,
 ) -> HingePitchResponse:
@@ -69,6 +70,8 @@ def solve_hinged_pitch_from_excitation(
             or pto_stiffness < 0 or dt <= 0 or memory_time <= 0
             or rho <= 0 or g <= 0):
         raise ValueError("mass, inertia, dt, memory time, rho, and g must be positive")
+    if added_mass_scheme not in ("implicit", "simulink_delay"):
+        raise ValueError("added_mass_scheme must be implicit or simulink_delay")
     memory_steps = round(memory_time / dt)
     if not np.isclose(memory_steps * dt, memory_time, rtol=0, atol=1e-10):
         raise ValueError("memory_time must be an integer multiple of dt")
@@ -147,6 +150,7 @@ def solve_hinged_pitch_from_excitation(
         pto_stiffness=np.array([[pto_stiffness]]),
         pto_damping=np.array([[pto_damping]]),
         pto_equilibrium=np.array([pto_equilibrium]),
+        added_mass_delay=(1e-7 if added_mass_scheme == "simulink_delay" else None),
     )
     solved = device.integrate(dt=dt, end_time=(count - 1) * dt)
     angle = solved.coordinate[:, 0]

@@ -8,8 +8,10 @@ Python realization with an integer seed.
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Sequence
 
 import numpy as np
+from scipy.interpolate import CubicSpline
 from scipy.io import loadmat
 
 from .bodyClass import BodyClass
@@ -164,12 +166,15 @@ def synthesize_irregular_response(
     body_number: int = 1,
     rho: float = 1000.0,
     g: float = 9.81,
+    excitation_interpolation: str = "linear",
 ) -> IrregularResponse:
     """Return wave elevation and six-component excitation at uniform times."""
     if not np.isfinite([dt, end_time, ramp_time, rho, g]).all():
         raise ValueError("time and fluid parameters must be finite")
     if dt <= 0 or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0:
         raise ValueError("dt, rho, and g must be positive; times must be nonnegative")
+    if excitation_interpolation not in ("linear", "spline"):
+        raise ValueError("excitation_interpolation must be linear or spline")
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
@@ -192,10 +197,38 @@ def synthesize_irregular_response(
     body = BodyClass(str(h5_file))
     body.bodyNumber = body_number
     body.readH5file()
-    body.irrExcitation(omega, len(omega), direction, rho, g)
-    real = np.transpose(body.hydroForce["fExt"]["re"], (1, 0, 2))
-    imaginary = np.transpose(body.hydroForce["fExt"]["im"], (1, 0, 2))
-    mean_drift = np.transpose(body.hydroForce["fExt"]["md"], (1, 0, 2))
+    if excitation_interpolation == "linear":
+        body.irrExcitation(omega, len(omega), direction, rho, g)
+        real = np.transpose(body.hydroForce["fExt"]["re"], (1, 0, 2))
+        imaginary = np.transpose(body.hydroForce["fExt"]["im"], (1, 0, 2))
+        mean_drift = np.transpose(body.hydroForce["fExt"]["md"], (1, 0, 2))
+    else:
+        # MATLAB's passive-yaw preprocessing uses spline interpolation in
+        # frequency. At zero yaw, a tabulated BEM direction is selected
+        # exactly; varying yaw needs a separate direction-interpolation path.
+        bem = body.hydroData["simulation_parameters"]
+        bem_frequency = np.asarray(bem["w"], dtype=float).ravel()
+        bem_direction = np.asarray(bem["wave_dir"], dtype=float).ravel()
+        hydro = body.hydroData["hydro_coeffs"]
+        interpolated = []
+        for field in (hydro["excitation"]["re"],
+                      hydro["excitation"]["im"],
+                      hydro["mean_drift"]):
+            values = np.asarray(field, dtype=float)
+            samples = np.empty((len(omega), len(direction), 6))
+            for index, heading in enumerate(direction):
+                matches = np.flatnonzero(np.isclose(
+                    bem_direction, heading, rtol=0, atol=1e-10,
+                ))
+                if len(matches) != 1:
+                    raise ValueError(
+                        "spline excitation currently needs tabulated BEM directions"
+                    )
+                samples[:, index] = CubicSpline(
+                    bem_frequency, values[:, matches[0], :], axis=1,
+                )(omega).T * rho * g
+            interpolated.append(samples)
+        real, imaginary, mean_drift = interpolated
     wave_energy = amplitude[:, None] * d_omega[:, None] * spread[None, :]
     height = np.sqrt(wave_energy)
     drift_force = np.einsum("fd,fdc->c", wave_energy, mean_drift)
@@ -222,6 +255,44 @@ def synthesize_irregular_response(
         time=time, elevation=ramp * elevation,
         excitation_force=ramp[:, None] * excitation,
     )
+
+
+def synthesize_multiple_irregular_response(
+    h5_file: str | Path,
+    seas: Sequence[IrregularComponents],
+    *,
+    dt: float,
+    end_time: float,
+    ramp_time: float,
+    body_number: int = 1,
+    rho: float = 1000.0,
+    g: float = 9.81,
+    excitation_interpolation: str = "linear",
+) -> IrregularResponse:
+    """Sum independent realized sea elevations and linear excitation forces.
+
+    Each sea keeps its own spectrum, incident directions, and phase matrix.
+    WEC-Sim's multiple-wave input combines their forcing before the body
+    dynamics, so radiation and inertia are applied once to the total motion.
+    """
+    seas = tuple(seas)
+    if not seas or any(not isinstance(sea, IrregularComponents) for sea in seas):
+        raise ValueError("seas must contain at least one irregular-wave realization")
+    time = elevation = excitation_force = None
+    for sea in seas:
+        response = synthesize_irregular_response(
+            h5_file, sea, dt=dt, end_time=end_time, ramp_time=ramp_time,
+            body_number=body_number, rho=rho, g=g,
+            excitation_interpolation=excitation_interpolation,
+        )
+        if time is None:
+            time = response.time
+            elevation = response.elevation.copy()
+            excitation_force = response.excitation_force.copy()
+        else:
+            elevation += response.elevation
+            excitation_force += response.excitation_force
+    return IrregularResponse(time, elevation, excitation_force)
 
 
 def _directions_and_spread(directions, spreading):
