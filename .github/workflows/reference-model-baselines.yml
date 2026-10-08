@@ -352,6 +352,7 @@ jobs:
             applications/Variable_Hydro/Variable_Mass/hydroData/draft*.h5
             applications/Nonlinear_Hydro/hydroData/ellipsoid.h5
             applications/Nonlinear_Hydro/geometry/elipsoid.stl
+            applications/Generalized_Body_Modes/hydroData/barge.h5
 
   compare-end-stops-full:
     if: inputs.model == 'RM3_END_STOPS_FULL_PAIR'

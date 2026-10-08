@@ -333,20 +333,26 @@ class BodyClass:
             self.userDefinedExcitation(waveAmpTime,dt,waveDir,rho,g)
             self.irfInfAddedMassAndDamping(CIkt,CTTime,ssCalc,rho,B2B)
 
-        gbmDOF = self.dof_gbm
-        if gbmDOF>0:
-            self.hydroForce['gbm']['stiffness']=self.hydroData['gbm']['stiffness']
-            self.hydroForce['gbm']['damping']=self.hydroData['gbm']['damping']
-            self.hydroForce['gbm']['mass_ff']=[self.hydroForce['fAddedMass'].arange(7,self.dof+1)[self.hydroForce['fAddedMass'].arange(self.dof_start+6,self.dof_end+1)]]+self.hydroData['gbm']['mass']   # need scaling for hydro part
-            self.hydroForce['fAddedMass'][7:self.dof+1] = np.zeros(len(np.arange(7,self.dof+1)))
-            self.hydroForce['fAddedMass'][(self.dof_start[0]+6):(self.dof_end[0]+1)] = np.zeros(len(np.arange(self.dof_start+6,self.dof_end+1)))
-            self.hydroForce['gbm']['mass_ff_inv']=inv(self.hydroForce['gbm']['mass_ff'])
-            
-            # state-space formulation for solving the GBM
-            self.hydroForce['gbm']['state_space']['A'] = [np.zeros((gbmDOF,gbmDOF)), np.eye(gbmDOF,gbmDOF)-inv(self.hydroForce['gbm']['mass_ff'])*self.hydroForce['gbm']['stiffness'],-inv(self.hydroForce['gbm']['mass_ff'])*self.hydroForce['gbm']['damping']]    # move to ... hydroForce sector with scaling .         # or create a new fun for all flex parameters
-            self.hydroForce['gbm']['state_space']['B'] = np.eye(2*gbmDOF,2*gbmDOF)
-            self.hydroForce['gbm']['state_space']['C'] = np.eye(2*gbmDOF,2*gbmDOF)
-            self.hydroForce['gbm']['state_space']['D'] = np.zeros((2*gbmDOF,2*gbmDOF))
+        gbmDOF = int(np.asarray(self.dof_gbm).item())
+        if gbmDOF > 0:
+            flexible = slice(6, 6 + gbmDOF)
+            gbm = self.hydroForce['gbm']
+            gbm['stiffness'] = np.asarray(self.hydroData['gbm']['stiffness'])
+            gbm['damping'] = np.asarray(self.hydroData['gbm']['damping'])
+            gbm['mass_ff'] = (self.hydroForce['fAddedMass'][flexible, flexible]
+                              + np.asarray(self.hydroData['gbm']['mass']))
+            # MATLAB's flexible state-space block carries this mass, so its
+            # applied added-mass matrix no longer contains the flex block.
+            self.hydroForce['fAddedMass'][flexible, flexible] = 0
+            gbm['mass_ff_inv'] = inv(gbm['mass_ff'])
+            gbm['state_space']['A'] = np.block([
+                [np.zeros((gbmDOF, gbmDOF)), np.eye(gbmDOF)],
+                [-gbm['mass_ff_inv'] @ gbm['stiffness'],
+                 -gbm['mass_ff_inv'] @ gbm['damping']],
+            ])
+            gbm['state_space']['B'] = np.eye(2 * gbmDOF)
+            gbm['state_space']['C'] = np.eye(2 * gbmDOF)
+            gbm['state_space']['D'] = np.zeros((2 * gbmDOF, 2 * gbmDOF))
             self.flexHydroBody = 1
             self.nhBody=0
             
