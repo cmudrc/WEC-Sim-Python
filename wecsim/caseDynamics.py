@@ -287,7 +287,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                      "spreading", "seed", "phase_file", "frequency_count",
                      "gamma", "file", "variable", "reapply_force_ramp", "seas",
                      "excitation_interpolation", "force_quadrature",
-                     "frequency_range", "water_depth"})
+                     "frequency_range", "water_depth", "current"})
     constraint = _section(case["constraint"], "constraint", {"kind"},
                           {"kind", "location", "initial_displacement",
                            "initial_coordinate", "initial_speed", "coordinates",
@@ -295,6 +295,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                            "mode_linear_damping", "heave_drag_cd",
                            "heave_drag_area", "pitch_drag_cd",
                            "pitch_drag_area"})
+    if "current" in wave and constraint["kind"] != "fixed_morison":
+        raise ValueError("wave.current currently requires fixed_morison")
     bodies = case["bodies"]
     if not isinstance(bodies, list) or not bodies:
         raise ValueError("bodies must be a nonempty list")

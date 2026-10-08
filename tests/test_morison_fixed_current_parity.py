@@ -14,6 +14,31 @@ from wecsim.morison import finite_depth_wavenumber
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
 
 
+def test_public_fixed_morison_current_reaches_force_solver():
+    wec = WEC("fixed current smoke test")
+    body = wec.fixed_body(
+        "pile", center_gravity=(0, 0, -5), mass="equilibrium",
+        inertia=(1, 1, 1), volume=1,
+    )
+    wec.morison_element(
+        body, point=body.at(0, 0, 0), drag_coefficient=(1, 1, 1),
+        added_mass_coefficient=(0, 0, 0), area=(2, 2, 2), volume=1,
+    )
+    settings = dict(seed=1, directions=(30,), spreading=(1,),
+                    frequency_count=4, frequency_range=(.1, 2),
+                    water_depth=30)
+    still = wec.run(PMWave(2, 5, **settings), dt=.1, end_time=.2,
+                    ramp_time=.1)
+    with_current = wec.run(
+        PMWave(2, 5, **settings, current=Current(.8, 45, "power", 30)),
+        dt=.1, end_time=.2, ramp_time=.1,
+    )
+    np.testing.assert_array_equal(with_current.wave_elevation,
+                                  still.wave_elevation)
+    assert np.max(np.abs(with_current.body_forces["pile"]
+                             - still.body_forces["pile"])) > 1
+
+
 def _check(actual, expected, tolerance, label):
     actual, expected = np.asarray(actual), np.asarray(expected)
     assert actual.shape == expected.shape, label
