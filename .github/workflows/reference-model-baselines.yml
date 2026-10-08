@@ -56,7 +56,7 @@ on:
       model:
         description: Run all models or a selected RM3 application
         type: choice
-        options: [all, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
+        options: [all, OSWEC_PASSIVE_YAW, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
         default: all
 
 jobs:
@@ -66,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
+        model: ${{ fromJSON(inputs.model == 'OSWEC_PASSIVE_YAW' && '["OSWEC_PASSIVE_YAW"]' || inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -80,7 +80,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR'
+        if: matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR' || matrix.model == 'OSWEC_PASSIVE_YAW'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -95,6 +95,8 @@ jobs:
             Nonhydro_Body
             Multiple_Wave_Spectra
             Full_Directional_Waves
+            Passive_Yaw/PassiveYawOFF
+            Passive_Yaw/PassiveYawON
             Body-to-Body_Interactions/B2B_Case1
             Body-to-Body_Interactions/B2B_Case2
             Body-to-Body_Interactions/B2B_Case3
