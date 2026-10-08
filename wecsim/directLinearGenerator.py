@@ -85,6 +85,15 @@ class DirectLinearGenerator:
             omega,
         ])
 
+    def force(self, velocity: float, state: np.ndarray) -> float:
+        """Force applied along the PTO stroke axis, without phase outputs."""
+        if not np.isfinite(velocity):
+            raise ValueError("generator velocity must be finite")
+        _, current_q = self._currents(state)
+        return self.friction * velocity + (
+            np.pi / self.pole_pitch * self.magnet_flux * current_q
+        )
+
     def signals(self, velocity: float, state: np.ndarray) -> DirectLinearGeneratorSignals:
         """Evaluate PTO force and balanced three-phase electrical output."""
         if not np.isfinite(velocity):
@@ -203,7 +212,7 @@ def run_rm3_direct_linear_generator(
         velocity = state[2:4]
         electrical = state[4:]
         stroke_speed = velocity[0] - velocity[1]
-        pto_force = generator.signals(stroke_speed, electrical).force
+        pto_force = generator.force(stroke_speed, electrical)
         ramp = (1.0 if ramp_time == 0 or at_time >= ramp_time else
                 (1 - np.cos(np.pi * at_time / ramp_time)) / 2)
         excitation = height / 2 * ramp * (

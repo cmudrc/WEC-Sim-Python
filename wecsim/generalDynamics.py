@@ -14,6 +14,8 @@ from typing import Callable
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from .directLinearGenerator import DirectLinearGenerator
+
 @dataclass(frozen=True)
 class BodyMotion:
     """Six-DOF displacement and its generalized-coordinate derivatives."""
@@ -46,6 +48,8 @@ class DynamicsResponse:
     body_position: np.ndarray
     body_velocity: np.ndarray
     controlled_pto_force: np.ndarray | None = None
+    linear_generator_state: np.ndarray | None = None
+    linear_generator_force: np.ndarray | None = None
 
 
 class GeneralizedDynamics:
@@ -70,6 +74,7 @@ class GeneralizedDynamics:
         added_mass_delay: float | None = None,
         nonlinear_force: Callable[[np.ndarray, np.ndarray], np.ndarray] | None = None,
         controlled_ptos: tuple = (),
+        linear_generators: tuple = (),
     ):
         if not bodies or coordinate_count < 1:
             raise ValueError("a device needs bodies and independent coordinates")
@@ -105,11 +110,17 @@ class GeneralizedDynamics:
             raise TypeError("nonlinear_force must be callable")
         self.nonlinear_force = nonlinear_force
         self.controlled_ptos = tuple(controlled_ptos)
+        self.linear_generators = tuple(linear_generators)
         for connection in self.controlled_ptos:
             if (connection.control is None
                     or np.shape(connection.stroke_jacobian) != (n,)
                     or not np.isfinite(connection.stroke_jacobian).all()):
                 raise ValueError("controlled PTO needs a finite coordinate projection")
+        for connection, generator in self.linear_generators:
+            if (not isinstance(generator, DirectLinearGenerator)
+                    or np.shape(connection.stroke_jacobian) != (n,)
+                    or not np.isfinite(connection.stroke_jacobian).all()):
+                raise ValueError("linear generator needs a finite PTO coordinate projection")
         if (self.pto_stiffness.shape != (n, n)
                 or self.pto_damping.shape != (n, n)
                 or self.pto_equilibrium.shape != (n,)
@@ -145,6 +156,10 @@ class GeneralizedDynamics:
         if (self.controlled_ptos
                 and any(body.radiation_kernel is not None for body in self.bodies)):
             raise ValueError("sampled PTO control currently needs constant radiation")
+        if self.linear_generators and (
+                self.controlled_ptos or self.added_mass_delay is not None
+                or any(body.radiation_kernel is not None for body in self.bodies)):
+            raise ValueError("linear generators currently need constant radiation and no sampled control")
         self.adjusted_rigid_mass = []
         self.applied_added_mass = []
         if added_mass_delay is not None:
@@ -276,9 +291,12 @@ class GeneralizedDynamics:
                     or not np.isfinite(applied_force_history).all()):
                 raise ValueError("sampled applied force needs finite radiation-memory coordinate history")
         if adaptive_regular and (memory or self.controlled_ptos
+                                 or self.linear_generators
                                  or self.added_mass_delay is not None):
             raise ValueError("adaptive regular integration needs implicit mass, constant radiation, and no sampled control")
         controlled_force = None
+        generator_state = None
+        generator_force = None
         if adaptive_regular:
             self._integrate_adaptive_regular(time, q, v, a, dt)
         elif memory:
@@ -288,6 +306,10 @@ class GeneralizedDynamics:
                 self._integrate_memory(time, q, v, a, dt, applied_force_history)
         elif self.controlled_ptos:
             controlled_force = self._integrate_controlled_regular(time, q, v, a, dt)
+        elif self.linear_generators:
+            generator_state, generator_force = self._integrate_linear_generator_regular(
+                time, q, v, a, dt,
+            )
         else:
             self._integrate_regular(time, q, v, a, dt)
         positions = np.zeros((steps + 1, len(self.bodies), 6))
@@ -298,7 +320,59 @@ class GeneralizedDynamics:
                 positions[step, i] = body.reference_position + motion.displacement
                 velocities[step, i] = motion.jacobian @ v[step]
         return DynamicsResponse(time, q, v, a, positions, velocities,
-                                controlled_force)
+                                controlled_force, generator_state,
+                                generator_force)
+
+    def _integrate_linear_generator_regular(self, time, q, v, a, dt):
+        """Integrate body motion and continuous generator flux states together."""
+        n = self.coordinate_count
+        count = len(self.linear_generators)
+        electrical = np.empty((len(time), count, 3))
+        for index, (_, generator) in enumerate(self.linear_generators):
+            electrical[0, index] = generator.initial_state()
+
+        def forces_and_rates(speed, states):
+            applied = np.zeros(n)
+            rates = np.empty_like(states)
+            forces = np.empty(count)
+            for index, (connection, generator) in enumerate(self.linear_generators):
+                stroke_speed = float(connection.stroke_jacobian @ speed)
+                forces[index] = generator.force(stroke_speed, states[index])
+                rates[index] = generator.state_rate(stroke_speed, states[index])
+                applied += connection.stroke_jacobian * forces[index]
+            return applied, rates, forces
+
+        def derivative(at_time, state):
+            coordinate = state[:n]
+            speed = state[n:2*n]
+            states = state[2*n:].reshape(count, 3)
+            applied, rates, _ = forces_and_rates(speed, states)
+            return np.r_[
+                speed,
+                self.acceleration(at_time, coordinate, speed,
+                                  applied_force=applied),
+                rates.ravel(),
+            ]
+
+        for step in range(len(time) - 1):
+            at_time = time[step]
+            state = np.r_[q[step], v[step], electrical[step].ravel()]
+            k1 = derivative(at_time, state)
+            k2 = derivative(at_time + dt / 2, state + dt * k1 / 2)
+            k3 = derivative(at_time + dt / 2, state + dt * k2 / 2)
+            k4 = derivative(at_time + dt, state + dt * k3)
+            next_state = state + dt * (k1 + 2*k2 + 2*k3 + k4) / 6
+            q[step + 1] = next_state[:n]
+            v[step + 1] = next_state[n:2*n]
+            electrical[step + 1] = next_state[2*n:].reshape(count, 3)
+        force_history = np.empty((len(time), count))
+        for step, at_time in enumerate(time):
+            applied, _, forces = forces_and_rates(v[step], electrical[step])
+            force_history[step] = forces
+            a[step] = self.acceleration(
+                at_time, q[step], v[step], applied_force=applied,
+            )
+        return electrical, force_history
 
     def _integrate_controlled_regular(self, time, q, v, a, dt):
         """Integrate regular-wave dynamics with sampled PTO controller memory."""
