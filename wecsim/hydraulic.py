@@ -46,3 +46,53 @@ class CompressibleCylinder:
         rate_b = (self.bulk_modulus * (flow_b - self.area_b * velocity)
                   / volume_b)
         return rate_a, rate_b
+
+
+@dataclass(frozen=True)
+class RectifyingCheckValve:
+    """Four-port PTO-Sim valve with smooth pressure-dependent check openings."""
+
+    discharge_coefficient: float
+    area_max: float
+    area_min: float
+    pressure_max: float
+    pressure_min: float
+    density: float
+    switch_gain: float
+    opening_gain: float
+
+    def __post_init__(self):
+        values = np.asarray((self.discharge_coefficient, self.area_max,
+                             self.area_min, self.pressure_max,
+                             self.pressure_min, self.density,
+                             self.switch_gain, self.opening_gain), dtype=float)
+        if not np.isfinite(values).all() or (values[[0, 1, 5, 6, 7]] <= 0).any():
+            raise ValueError("valve coefficient, maximum area, density, and gains must be positive")
+        if (self.area_min < 0 or self.area_min > self.area_max
+                or self.pressure_max <= self.pressure_min):
+            raise ValueError("valve area and pressure bounds are invalid")
+
+    def check_flow(self, pressure_drop):
+        """Nonnegative flow through one source check valve, in m³/s."""
+        drop = np.asarray(pressure_drop, dtype=float)
+        midpoint = (self.pressure_max + self.pressure_min) / 2
+        area = self.area_min + (self.area_max - self.area_min) / 2 * (
+            1 + np.tanh(self.opening_gain * (drop - midpoint)))
+        speed = np.sqrt(2 * drop * np.tanh(self.switch_gain * drop)
+                        / self.density)
+        return self.discharge_coefficient * area * speed
+
+    def flows(self, pressure_a, pressure_b, pressure_high, pressure_low):
+        """Return signed flows at cylinder A/B and high/low pressure ports."""
+        a, b, high, low = np.broadcast_arrays(
+            np.asarray(pressure_a, dtype=float),
+            np.asarray(pressure_b, dtype=float),
+            np.asarray(pressure_high, dtype=float),
+            np.asarray(pressure_low, dtype=float),
+        )
+        a_to_high = self.check_flow(a - high)
+        b_to_high = self.check_flow(b - high)
+        low_to_b = self.check_flow(low - b)
+        low_to_a = self.check_flow(low - a)
+        return (low_to_a - a_to_high, low_to_b - b_to_high,
+                a_to_high + b_to_high, -low_to_b - low_to_a)
