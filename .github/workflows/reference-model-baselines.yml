@@ -2,6 +2,7 @@ name: MATLAB reference model baselines
 
 on:
   push:
+    branches: [master]
     paths:
       - '.github/workflows/reference-model-baselines.yml'
       - 'tests/matlab/reference_model_baseline.m'
@@ -33,6 +34,7 @@ on:
       - 'tests/test_sphere_variable_mass_parity.py'
       - 'tests/test_sphere_direct_drive_parity.py'
       - 'tests/test_rm3_direct_linear_generator_source.py'
+      - 'tests/test_rm3_direct_linear_generator_parity.py'
       - 'tests/test_gbm_source_parity.py'
       - 'tests/test_gbm_motion_parity.py'
       - 'tests/test_sphere_mpc_source.py'
@@ -61,6 +63,7 @@ on:
       - 'wecsim/nonlinearHydro.py'
       - 'wecsim/variableHydro.py'
       - 'wecsim/directDrive.py'
+      - 'wecsim/directLinearGenerator.py'
       - 'wecsim/api.py'
       - 'wecsim/__init__.py'
       - 'wecsim/cli.py'

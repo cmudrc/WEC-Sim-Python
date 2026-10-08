@@ -70,19 +70,6 @@ switch string(model)
         cases = "RM3_DD_PTO";
         caseDirs = string(fullfile(repoRoot, 'applications', ...
             'PTO-Sim', 'RM3', 'RM3_DD_PTO'));
-        % Keep the published 0.0005 s integration step and 400 s duration.
-        % Only decimate saved outputs to 0.01 s to bound the artifact size.
-        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
-        contents = fileread(inputFile);
-        assert(contains(contents, 'simu.dt = 0.0005;') && ...
-            ~contains(contents, 'simu.dtOut'), ...
-            'The pinned RM3 direct-drive output settings changed');
-        contents = strrep(contents, 'simu.dt = 0.0005;', ...
-            sprintf('simu.dt = 0.0005;\nsimu.dtOut = 0.01;'));
-        fid = fopen(inputFile, 'w');
-        assert(fid ~= -1, 'Could not set RM3 direct-drive output sampling');
-        fprintf(fid, '%s', contents);
-        fclose(fid);
     case {"ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", ...
             "ELLIPSOID_NLH_ODE45"}
         hydroDir = fullfile(repoRoot, 'applications', 'Nonlinear_Hydro', ...
@@ -619,7 +606,7 @@ for iCase = 1:numel(cases)
     if string(model) == "RM3_DD_PTO"
         generator = ptoSim(1).directLinearGenerator;
         assert(strcmp(simu.solver, 'ode4') && simu.dt == 0.0005 && ...
-            simu.dtOut == 0.01 && simu.endTime == 400 && ...
+            simu.dtOut == 0.0005 && simu.endTime == 400 && ...
             simu.rampTime == 100 && ...
             strcmp(waves.type, 'regular') && waves.height == 2.5 && ...
             waves.period == 8 && pto(1).stiffness == 0 && ...
@@ -640,6 +627,7 @@ for iCase = 1:numel(cases)
             driveOutput.Ia(:), driveOutput.Ib(:), driveOutput.Ic(:), ...
             driveOutput.Va(:), driveOutput.Vb(:), driveOutput.Vc(:), ...
             driveOutput.vel(:), driveOutput.elecPower(:)];
+        driveValues = driveValues(1:20:end, :);
         assert(size(driveValues, 2) == 12 && ...
             all(isfinite(driveValues), 'all'), ...
             'The RM3 direct linear generator output is nonfinite');
@@ -896,6 +884,9 @@ for iCase = 1:numel(cases)
                 response.forceMorisonAndViscous, response.acceleration];
         end
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
+        if string(model) == "RM3_DD_PTO"
+            values = values(1:20:end, :);
+        end
         filename = sprintf('%s_%s_body%d.csv', model, cases(iCase), iBody);
         writematrix(values, fullfile(outDir, filename));
     end
@@ -926,6 +917,9 @@ for iCase = 1:numel(cases)
                     response.acceleration];
             end
             assert(all(isfinite(values), 'all'), 'The MATLAB PTO response contains nonfinite values');
+            if string(model) == "RM3_DD_PTO"
+                values = values(1:20:end, :);
+            end
             filename = sprintf('%s_%s_pto%d.csv', model, cases(iCase), iPto);
             writematrix(values, fullfile(outDir, filename));
         end
