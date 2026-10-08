@@ -48,6 +48,7 @@ on:
       - 'tests/test_oswec_desalination_accumulator_parity.py'
       - 'tests/test_oswec_desalination_cylinder_parity.py'
       - 'tests/test_oswec_desalination_network_parity.py'
+      - 'tests/test_cable_source.py'
       - 'tests/test_crank.py'
       - 'tests/test_hydraulic_cylinder.py'
       - 'tests/test_hydraulic_valve.py'
@@ -96,6 +97,7 @@ on:
       - 'wecsim/oswecHydraulic.py'
       - 'wecsim/oswecDesalination.py'
       - 'wecsim/desalination.py'
+      - 'wecsim/cable.py'
       - 'wecsim/rm3Hydraulic.py'
       - 'wecsim/electricGenerator.py'
       - 'wecsim/api.py'
@@ -110,7 +112,7 @@ on:
       model:
         description: Run all models or a selected reference application
         type: choice
-        options: [all, OSWEC, OSWEC_Nonhydro, OWC_ORIFICE, RM3_MCR_ARRAY, SPHERE_ELEVATION_IMPORT, MORISON_FIXED, MORISON_FIXED_CURRENT, SPHERE_MOVING_MORISON, SPHERE_MOVING_MORISON_WAVE, RM3_DD_PTO, RM3_HYDRAULIC_SOURCE, OSWEC_HYDRAULIC_SOURCE, OSWEC_DESALINATION_SOURCE, SPHERE_MPC, GBM_BARGE, SPHERE_REACTIVE_DDPTO, SPHERE_VARIABLE_MASS, ELLIPSOID_NLH_REG, ELLIPSOID_NLH_CIC, ELLIPSOID_NLH_ODE45, OSWEC_PASSIVE_YAW_IRR_CONT, OSWEC_PASSIVE_YAW_IRR, OSWEC_PASSIVE_YAW, OSWEC_VARIABLE_YAW_2DEG, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
+        options: [all, CABLE_SOURCE, OSWEC, OSWEC_Nonhydro, OWC_ORIFICE, RM3_MCR_ARRAY, SPHERE_ELEVATION_IMPORT, MORISON_FIXED, MORISON_FIXED_CURRENT, SPHERE_MOVING_MORISON, SPHERE_MOVING_MORISON_WAVE, RM3_DD_PTO, RM3_HYDRAULIC_SOURCE, OSWEC_HYDRAULIC_SOURCE, OSWEC_DESALINATION_SOURCE, SPHERE_MPC, GBM_BARGE, SPHERE_REACTIVE_DDPTO, SPHERE_VARIABLE_MASS, ELLIPSOID_NLH_REG, ELLIPSOID_NLH_CIC, ELLIPSOID_NLH_ODE45, OSWEC_PASSIVE_YAW_IRR_CONT, OSWEC_PASSIVE_YAW_IRR, OSWEC_PASSIVE_YAW, OSWEC_VARIABLE_YAW_2DEG, OSWEC_FULL_DIR, OSWEC_MULTI_WAVE, RM3_B2B, RM3_MOORING_MATRIX, SPHERE_MEAN_DRIFT, RM3_MCR_SEASTATE, RM3_END_STOPS, RM3_END_STOPS_STEP, RM3_END_STOPS_STEP_FINE, RM3_END_STOPS_STEP_FINER, RM3_END_STOPS_FULL_FINE, RM3_END_STOPS_FULL_FINER, RM3_END_STOPS_FULL_PAIR]
         default: all
 
 jobs:
@@ -120,7 +122,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'OWC_ORIFICE' && '["OWC_ORIFICE"]' || inputs.model == 'OSWEC' && '["OSWEC"]' || inputs.model == 'OSWEC_Nonhydro' && '["OSWEC_Nonhydro"]' || inputs.model == 'RM3_MCR_ARRAY' && '["RM3_MCR_ARRAY"]' || inputs.model == 'SPHERE_ELEVATION_IMPORT' && '["SPHERE_ELEVATION_IMPORT"]' || inputs.model == 'MORISON_FIXED' && '["MORISON_FIXED"]' || inputs.model == 'MORISON_FIXED_CURRENT' && '["MORISON_FIXED_CURRENT"]' || inputs.model == 'SPHERE_MOVING_MORISON' && '["SPHERE_MOVING_MORISON"]' || inputs.model == 'SPHERE_MOVING_MORISON_WAVE' && '["SPHERE_MOVING_MORISON_WAVE"]' || inputs.model == 'RM3_DD_PTO' && '["RM3_DD_PTO"]' || inputs.model == 'RM3_HYDRAULIC_SOURCE' && '["RM3_HYDRAULIC_SOURCE"]' || inputs.model == 'OSWEC_HYDRAULIC_SOURCE' && '["OSWEC_HYDRAULIC_SOURCE"]' || inputs.model == 'OSWEC_DESALINATION_SOURCE' && '["OSWEC_DESALINATION_SOURCE"]' || inputs.model == 'SPHERE_MPC' && '["SPHERE_MPC"]' || inputs.model == 'GBM_BARGE' && '["GBM_BARGE"]' || inputs.model == 'SPHERE_REACTIVE_DDPTO' && '["SPHERE_REACTIVE_DDPTO"]' || inputs.model == 'SPHERE_VARIABLE_MASS' && '["SPHERE_VARIABLE_MASS"]' || inputs.model == 'ELLIPSOID_NLH_REG' && '["ELLIPSOID_NLH_REG"]' || inputs.model == 'ELLIPSOID_NLH_CIC' && '["ELLIPSOID_NLH_CIC"]' || inputs.model == 'ELLIPSOID_NLH_ODE45' && '["ELLIPSOID_NLH_ODE45"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR_CONT' && '["OSWEC_PASSIVE_YAW_IRR_CONT"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR' && '["OSWEC_PASSIVE_YAW_IRR"]' || inputs.model == 'OSWEC_PASSIVE_YAW' && '["OSWEC_PASSIVE_YAW"]' || inputs.model == 'OSWEC_VARIABLE_YAW_2DEG' && '["OSWEC_VARIABLE_YAW_2DEG"]' || inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["SPHERE_ELEVATION_IMPORT", "MORISON_FIXED", "MORISON_FIXED_CURRENT", "SPHERE_MOVING_MORISON", "SPHERE_MOVING_MORISON_WAVE", "RM3_DD_PTO", "RM3", "OSWEC", "OSWEC_Nonhydro", "GBM_BARGE", "SPHERE_VARIABLE_MASS", "SPHERE_REACTIVE_DDPTO", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "OSWEC_PASSIVE_YAW", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE", "ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", "ELLIPSOID_NLH_ODE45"]') }}
+        model: ${{ fromJSON(inputs.model == 'CABLE_SOURCE' && '["CABLE_SOURCE"]' || inputs.model == 'OWC_ORIFICE' && '["OWC_ORIFICE"]' || inputs.model == 'OSWEC' && '["OSWEC"]' || inputs.model == 'OSWEC_Nonhydro' && '["OSWEC_Nonhydro"]' || inputs.model == 'RM3_MCR_ARRAY' && '["RM3_MCR_ARRAY"]' || inputs.model == 'SPHERE_ELEVATION_IMPORT' && '["SPHERE_ELEVATION_IMPORT"]' || inputs.model == 'MORISON_FIXED' && '["MORISON_FIXED"]' || inputs.model == 'MORISON_FIXED_CURRENT' && '["MORISON_FIXED_CURRENT"]' || inputs.model == 'SPHERE_MOVING_MORISON' && '["SPHERE_MOVING_MORISON"]' || inputs.model == 'SPHERE_MOVING_MORISON_WAVE' && '["SPHERE_MOVING_MORISON_WAVE"]' || inputs.model == 'RM3_DD_PTO' && '["RM3_DD_PTO"]' || inputs.model == 'RM3_HYDRAULIC_SOURCE' && '["RM3_HYDRAULIC_SOURCE"]' || inputs.model == 'OSWEC_HYDRAULIC_SOURCE' && '["OSWEC_HYDRAULIC_SOURCE"]' || inputs.model == 'OSWEC_DESALINATION_SOURCE' && '["OSWEC_DESALINATION_SOURCE"]' || inputs.model == 'SPHERE_MPC' && '["SPHERE_MPC"]' || inputs.model == 'GBM_BARGE' && '["GBM_BARGE"]' || inputs.model == 'SPHERE_REACTIVE_DDPTO' && '["SPHERE_REACTIVE_DDPTO"]' || inputs.model == 'SPHERE_VARIABLE_MASS' && '["SPHERE_VARIABLE_MASS"]' || inputs.model == 'ELLIPSOID_NLH_REG' && '["ELLIPSOID_NLH_REG"]' || inputs.model == 'ELLIPSOID_NLH_CIC' && '["ELLIPSOID_NLH_CIC"]' || inputs.model == 'ELLIPSOID_NLH_ODE45' && '["ELLIPSOID_NLH_ODE45"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR_CONT' && '["OSWEC_PASSIVE_YAW_IRR_CONT"]' || inputs.model == 'OSWEC_PASSIVE_YAW_IRR' && '["OSWEC_PASSIVE_YAW_IRR"]' || inputs.model == 'OSWEC_PASSIVE_YAW' && '["OSWEC_PASSIVE_YAW"]' || inputs.model == 'OSWEC_VARIABLE_YAW_2DEG' && '["OSWEC_VARIABLE_YAW_2DEG"]' || inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["SPHERE_ELEVATION_IMPORT", "MORISON_FIXED", "MORISON_FIXED_CURRENT", "SPHERE_MOVING_MORISON", "SPHERE_MOVING_MORISON_WAVE", "RM3_DD_PTO", "RM3", "OSWEC", "OSWEC_Nonhydro", "GBM_BARGE", "SPHERE_VARIABLE_MASS", "SPHERE_REACTIVE_DDPTO", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "OSWEC_PASSIVE_YAW", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE", "ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", "ELLIPSOID_NLH_ODE45"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -134,7 +136,7 @@ jobs:
             source
             examples/${{ matrix.model }}
       - uses: actions/checkout@v7
-        if: matrix.model == 'OWC_ORIFICE' || matrix.model == 'SPHERE_ELEVATION_IMPORT' || matrix.model == 'MORISON_FIXED' || matrix.model == 'MORISON_FIXED_CURRENT' || matrix.model == 'SPHERE_MOVING_MORISON' || matrix.model == 'SPHERE_MOVING_MORISON_WAVE' || matrix.model == 'RM3_DD_PTO' || matrix.model == 'RM3_HYDRAULIC_SOURCE' || matrix.model == 'OSWEC_HYDRAULIC_SOURCE' || matrix.model == 'OSWEC_DESALINATION_SOURCE' || matrix.model == 'SPHERE_MPC' || matrix.model == 'GBM_BARGE' || matrix.model == 'SPHERE_REACTIVE_DDPTO' || matrix.model == 'SPHERE_VARIABLE_MASS' || matrix.model == 'ELLIPSOID_NLH_REG' || matrix.model == 'ELLIPSOID_NLH_CIC' || matrix.model == 'ELLIPSOID_NLH_ODE45' || matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR' || matrix.model == 'OSWEC_PASSIVE_YAW' || matrix.model == 'OSWEC_VARIABLE_YAW_2DEG' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR_CONT'
+        if: matrix.model == 'CABLE_SOURCE' || matrix.model == 'OWC_ORIFICE' || matrix.model == 'SPHERE_ELEVATION_IMPORT' || matrix.model == 'MORISON_FIXED' || matrix.model == 'MORISON_FIXED_CURRENT' || matrix.model == 'SPHERE_MOVING_MORISON' || matrix.model == 'SPHERE_MOVING_MORISON_WAVE' || matrix.model == 'RM3_DD_PTO' || matrix.model == 'RM3_HYDRAULIC_SOURCE' || matrix.model == 'OSWEC_HYDRAULIC_SOURCE' || matrix.model == 'OSWEC_DESALINATION_SOURCE' || matrix.model == 'SPHERE_MPC' || matrix.model == 'GBM_BARGE' || matrix.model == 'SPHERE_REACTIVE_DDPTO' || matrix.model == 'SPHERE_VARIABLE_MASS' || matrix.model == 'ELLIPSOID_NLH_REG' || matrix.model == 'ELLIPSOID_NLH_CIC' || matrix.model == 'ELLIPSOID_NLH_ODE45' || matrix.model == 'Sphere' || matrix.model == 'SPHERE_MEAN_DRIFT' || matrix.model == 'Sphere_Passive' || matrix.model == 'Sphere_PTO_Config' || matrix.model == 'Sphere_Reactive_PI' || matrix.model == 'Sphere_Declutching' || matrix.model == 'Sphere_Latching' || matrix.model == 'RM3_B2B' || matrix.model == 'RM3_MOORING_MATRIX' || matrix.model == 'RM3_END_STOPS' || matrix.model == 'RM3_END_STOPS_STEP' || matrix.model == 'RM3_END_STOPS_STEP_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINE' || matrix.model == 'RM3_END_STOPS_FULL_FINER' || matrix.model == 'RM3_END_STOPS_STEP_FINER' || matrix.model == 'RM3_PTO_Extension' || matrix.model == 'RM3_Radiation_Options' || matrix.model == 'RM3_MCR' || matrix.model == 'RM3_MCR_ARRAY' || matrix.model == 'RM3_MCR_EXCEL' || matrix.model == 'RM3_MCR_MAT' || matrix.model == 'RM3_MCR_SEASTATE' || matrix.model == 'OSWEC_Nonhydro' || matrix.model == 'OSWEC_MULTI_WAVE' || matrix.model == 'OSWEC_FULL_DIR' || matrix.model == 'OSWEC_PASSIVE_YAW' || matrix.model == 'OSWEC_VARIABLE_YAW_2DEG' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR' || matrix.model == 'OSWEC_PASSIVE_YAW_IRR_CONT'
         with:
           repository: WEC-Sim/WEC-Sim_Applications
           ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
@@ -147,6 +149,7 @@ jobs:
             PTO-Sim/OSWEC/OSWEC_Hydraulic_PTO
             PTO-Sim/OSWEC/OSWEC_Hydraulic_Crank_PTO
             Desalination
+            Cable
             Morison_Element/morisonElement
             _Common_Input_Files/Sphere
             Free_Decay
@@ -194,6 +197,10 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: python -m pip install -r requirements.txt pytest
+      - run: python -m pytest -q tests/test_cable_source.py
+        if: matrix.model == 'CABLE_SOURCE'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_morison_fixed_parity.py
         if: matrix.model == 'MORISON_FIXED'
         env:
@@ -503,6 +510,7 @@ jobs:
             applications/Nonlinear_Hydro/geometry/elipsoid.stl
             applications/Generalized_Body_Modes/hydroData/barge.h5
             applications/OWC/OrificeModel/hydroData/test17a_clean.h5
+            applications/Cable/hydroData/mbari.h5
             applications/Controls/MPC/coeff.mat
 
   compare-end-stops-full:
