@@ -1011,7 +1011,8 @@ brine-driven motor/pump ratio. Configure it with the published components:
 
 ```python
 from wecsim import (
-    DynamicPressureReliefValve, GasChargedAccumulator,
+    DynamicPressureReliefValve, FourValveRectifiedCylinder,
+    GasChargedAccumulator, IdealDoubleActingCylinder,
     ReverseOsmosisHydraulicNetwork, ReverseOsmosisMembrane,
 )
 
@@ -1033,11 +1034,22 @@ network = ReverseOsmosisHydraulicNetwork(
 state = network.initial_state()
 state = network.step(rod_speed=0.1, previous=state, dt=.01)
 print(state.pressure, state.permeate_flow, state.relief_flow)
+
+valves = FourValveRectifiedCylinder(
+    cylinder=IdealDoubleActingCylinder(.26, .26),
+    max_area=.05, leakage_area=1e-8,
+    discharge_coefficient=.7, fluid_density=850,
+)
+pressure_a, pressure_b = valves.chamber_pressures(0.1, state.pressure)
+rod_force = valves.cylinder.force(pressure_a, pressure_b)
 ```
 
-The paired 300 s test drives this network with the MATLAB cylinder's saved rod
-speed but no saved pressure or branch flow. It does not yet predict cylinder
-chamber pressures, rod force, or coupled flap motion; see [PARITY.md](PARITY.md).
+The paired 300 s test drives the network and valve model with MATLAB's saved
+rod speed, without saved pressure, flow, or force as inputs. The legacy source
+chamber pressure flips on alternating 0.01 s samples while valve flow stays
+smooth. The test therefore compares the resolved force over 0.1 s and total
+rod work, while reporting the raw discrepancy. Coupled flap motion remains an
+open gap; see [PARITY.md](PARITY.md).
 
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
