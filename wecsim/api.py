@@ -363,9 +363,10 @@ class WECResult:
 class WEC:
     """Build supported WEC motion/PTO layouts or fixed Morison bodies.
 
-    Rotations and PTO stroke are linearized about the reference pose. The
-    PTO axis stays fixed in world coordinates during a run. Hydrodynamic body
-    order must match the body order in the supplied HDF5 file.
+    Mapped-coordinate rotations and PTO stroke are linearized about the
+    reference pose. The fixed-hinge and floating-joint layouts use their
+    dedicated kinematics. Hydrodynamic body order must match the body order
+    in the supplied HDF5 file.
     """
 
     def __init__(self, name: str = "WEC", *, body_to_body: bool = False):
