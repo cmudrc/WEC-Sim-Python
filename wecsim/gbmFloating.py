@@ -84,7 +84,7 @@ def solve_floating_gbm_regular(
         return np.r_[speed, acceleration]
 
     time = np.arange(round(end_time / dt) + 1) * dt
-    if not np.isclose(time[-1], end_time, atol=1e-10):
+    if not np.isclose(time[-1], end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
     state = np.zeros((len(time), 2 * n))
     for index in range(len(time) - 1):
