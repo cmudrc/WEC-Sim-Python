@@ -638,6 +638,20 @@ for iCase = 1:numel(cases)
             if ~isempty(node)
                 fprintf(fid, '%s\n%s\n', selectedPaths{iBlock}, ...
                     evalc('print(node)'));
+                if contains(selectedPaths{iBlock}, 'Gas-Charged')
+                    export_simscape_trace(outDir, ...
+                        'OSWEC_DESALINATION_SOURCE_accumulator.csv', node, ...
+                        {'flow_rate', 'liquid_volume', 'liquid_pressure'});
+                elseif contains(selectedPaths{iBlock}, 'Double-Acting')
+                    export_simscape_trace(outDir, ...
+                        'OSWEC_DESALINATION_SOURCE_cylinder.csv', node, ...
+                        {'piston_pos', 'velocity', 'pressure_A', ...
+                         'pressure_B', 'flow_rate_A', 'flow_rate_B', 'force'});
+                elseif contains(selectedPaths{iBlock}, 'Relief')
+                    export_simscape_trace(outDir, ...
+                        'OSWEC_DESALINATION_SOURCE_relief.csv', node, ...
+                        {'pressure_drop', 'area_dynamic', 'flow_rate'});
+                end
             end
         end
         fclose(fid);
@@ -1758,6 +1772,30 @@ assert(numel(time) > 1 && size(values, 1) == numel(time) && ...
     all(isfinite(values), 'all'), ...
     'MPC diagnostic trace has invalid dimensions or values');
 writematrix([time, values], fullfile(outDir, filename));
+end
+
+function export_simscape_trace(outDir, filename, node, fields)
+% Save selected physical states at their native local-solver time stamps.
+valuesByField = [];
+for iField = 1:numel(fields)
+    series = node.(fields{iField}).series;
+    sampleTime = time(series);
+    sampleValues = values(series);
+    sampleTime = sampleTime(:);
+    sampleValues = sampleValues(:);
+    assert(numel(sampleTime) > 100 && ...
+        numel(sampleValues) == numel(sampleTime) && ...
+        all(isfinite(sampleValues)), ...
+        'A Desalination Simscape state is missing or nonfinite');
+    if iField == 1
+        traceTime = sampleTime;
+    else
+        assert(isequal(sampleTime, traceTime), ...
+            'Desalination Simscape state grids differ');
+    end
+    valuesByField(:, iField) = sampleValues; %#ok<AGROW>
+end
+writematrix([traceTime, valuesByField], fullfile(outDir, filename));
 end
 
 function export_moving_morison_source(outDir)
