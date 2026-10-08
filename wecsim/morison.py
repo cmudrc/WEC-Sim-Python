@@ -151,6 +151,98 @@ def regular_morison_source_force(
     return result
 
 
+def irregular_morison_source_drag(
+    elements: Sequence[MorisonElement], *, time: float,
+    position: Sequence[float], velocity: Sequence[float],
+    components: IrregularComponents, water_depth: float, ramp_time: float,
+    rho: float = 1000.0, g: float = 9.81,
+) -> np.ndarray:
+    """Replay the pinned single-heading Cartesian drag law at one body state.
+
+    This is a source diagnostic for the published Desalination flap's
+    zero-volume Morison elements. It retains ``irregWaveMorison.m``'s
+    rotation and local-point velocity conventions; physical body motion
+    need not use those conventions.
+    """
+    pose = np.asarray(position, dtype=float)
+    speed = np.asarray(velocity, dtype=float)
+    omega = np.asarray(components.omega, dtype=float).ravel()
+    spectrum = np.asarray(components.spectral_amplitude, dtype=float).ravel()
+    width = np.asarray(components.d_omega, dtype=float).ravel()
+    phase = np.asarray(components.phase, dtype=float)
+    heading = np.asarray(components.directions, dtype=float).ravel()
+    spread = np.asarray(components.spreading, dtype=float).ravel()
+    if (pose.shape != (6,) or speed.shape != (6,)
+            or heading.shape != (1,) or spread.shape != (1,)
+            or phase.shape != (len(omega), 1)
+            or spectrum.shape != omega.shape or width.shape != omega.shape
+            or not np.isfinite(pose).all() or not np.isfinite(speed).all()
+            or not np.isfinite(phase).all()
+            or not np.isfinite(spectrum).all()
+            or not np.isfinite(width).all()
+            or not np.isfinite(heading).all()
+            or not np.isfinite(spread).all()
+            or np.any(spectrum < 0) or np.any(width <= 0)
+            or not np.isfinite([time, water_depth, ramp_time, rho, g]).all()
+            or time < 0 or water_depth <= 0 or ramp_time < 0
+            or rho <= 0 or g <= 0 or spread[0] < 0):
+        raise ValueError("source drag needs one finite irregular heading and body state")
+    if not elements:
+        raise ValueError("source drag needs Morison elements")
+    k = finite_depth_wavenumber(omega, water_depth=water_depth, gravity=g)
+    ramp = ((1 - np.cos(np.pi * time / ramp_time)) / 2
+            if ramp_time and time < ramp_time else 1.)
+    amplitude = np.sqrt(spread[0] * spectrum * width) * ramp
+    roll, pitch, yaw = pose[3:]
+    c4, s4 = np.cos(roll), np.sin(roll)
+    c5, s5 = np.cos(pitch), np.sin(pitch)
+    c6, s6 = np.cos(yaw), np.sin(yaw)
+    rotation = np.array([
+        [c5 * c6, c4 * s6 + s4 * s5 * c6, s4 * s6 - c4 * s5 * s6],
+        [-c5 * s6, c4 * c6 - s4 * s5 * s6, s4 * c6 + c4 * s5 * s6],
+        [s5, -s4 * c5, c4 * c5],
+    ])
+    heading_rad = np.deg2rad(heading[0])
+    axis = np.array([np.cos(heading_rad), np.sin(heading_rad)])
+    result = np.zeros(6)
+    kh = k * water_depth
+    for element in elements:
+        point = np.asarray(element.point, dtype=float)
+        cd = np.asarray(element.drag_coefficient, dtype=float)
+        area = np.asarray(element.area, dtype=float)
+        ca = np.asarray(element.added_mass_coefficient, dtype=float)
+        if (any(value.shape != (3,) or not np.isfinite(value).all()
+                for value in (point, cd, area, ca))
+                or np.any(cd < 0) or np.any(area < 0)
+                or np.any(ca != 0) or element.volume != 0):
+            raise ValueError("source drag needs zero-volume, nonnegative elements")
+        rotated = rotation @ point
+        world = pose[:3] + rotated
+        if world[2] > 0:
+            continue
+        kz = k * world[2]
+        deep = kh > np.pi
+        horizontal = np.where(deep, np.exp(kz),
+                              np.cosh(kz + kh) / np.cosh(kh))
+        vertical = np.where(deep, np.exp(kz),
+                            np.sinh(kz + kh) / np.cosh(kh))
+        argument = omega * time - k * (world[:2] @ axis) + phase[:, 0]
+        fluid_horizontal = np.sum(
+            amplitude * horizontal * np.cos(argument) * g * k / omega
+        ) * axis
+        fluid_vertical = np.sum(
+            -amplitude * vertical * np.sin(argument) * g * k / omega
+        )
+        fluid_velocity = np.r_[fluid_horizontal, fluid_vertical]
+        body_velocity = speed[:3] + np.cross(speed[3:], point)
+        relative = fluid_velocity - body_velocity
+        force = (0.5 * rho * (np.abs(cd) @ rotation)
+                 * np.abs(area @ rotation) * relative * np.abs(relative))
+        result[:3] += force
+        result[3:] += np.cross(rotated, force)
+    return result
+
+
 def _axial_heave_element(element: MorisonElement):
     if not isinstance(element, MorisonElement):
         raise TypeError("elements must be MorisonElement values")

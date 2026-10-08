@@ -989,6 +989,13 @@ geometry. The adjustable-rod source controller commands negative electrical
 load resistance for much of its run, so trajectory agreement does not
 establish a passive load design.
 
+The published OSWEC Desalination rod uses a different attachment geometry.
+`PitchRodLinkage(anchor=(5.6021271782, -8.7), hinge=(0, -8.9),
+body_center=(0, -3.9), body_point=(0.9, -3.1))` specifies its fixed world
+anchor and flap-local endpoint in the x/z plane. Its stroke and speed pair
+with the 300 s MATLAB source trace; the reverse-osmosis fluid network and
+coupled response are still being validated (see [PARITY.md](PARITY.md)).
+
 For an imported full-directional spectrum, configure the Python case with
 `wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
 `wave.phase_file` CSV or an integer `wave.seed`. The default includes each
