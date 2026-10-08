@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim.hydraulic import CompressibleCylinder
+from wecsim.hydraulic import CompressibleCylinder, RectifyingCheckValve
 from wecsim.irregularWave import (
     pm_equal_energy_components, synthesize_irregular_response,
 )
@@ -84,3 +84,36 @@ def test_hydraulic_cylinder_pressure_and_force_balance():
                            (cylinder[:, 3], rate_b)):
         predicted = pressure[:-1] + dt * rate[:-1]
         assert np.max(np.abs(predicted - pressure[1:])) < 3e-6
+
+
+def test_hydraulic_rectifying_valve_port_flows():
+    cylinder = _load("cylinder")
+    valve_output = _load("valve")
+    high = _load("high_accumulator")
+    low = _load("low_accumulator")
+    pto = _load("RM3_cHydraulic_PTO_pto1")
+    area_max, area_min = .002, 1e-8
+    pressure_max, pressure_min = 1.5e6, 0
+    opening_gain = np.arctanh(
+        (area_min - (area_max - area_min) / 2)
+        * 2 / (area_max - area_min)
+    ) / (pressure_min - (pressure_max + pressure_min) / 2)
+    model = RectifyingCheckValve(
+        .61, area_max, area_min, pressure_max, pressure_min,
+        850, 200, opening_gain,
+    )
+    flows = np.column_stack(model.flows(
+        cylinder[:, 1], cylinder[:, 3], high[:, 1], low[:, 1],
+    ))
+    assert np.max(np.abs(valve_output[:, 1:])) > .01
+    assert np.max(np.abs(flows - valve_output[:, 1:])) < 1e-12
+
+    piston = CompressibleCylinder(.0378, .0378, 1.86e9, 70, 35)
+    rate_a, rate_b = piston.pressure_rates(
+        pto[:, 3], pto[:, 9], flows[:, 0], flows[:, 1],
+    )
+    dt = np.diff(cylinder[:, 0])
+    for pressure, rate in ((cylinder[:, 1], rate_a),
+                           (cylinder[:, 3], rate_b)):
+        assert np.max(np.abs(pressure[:-1] + dt * rate[:-1]
+                             - pressure[1:])) < 3e-6

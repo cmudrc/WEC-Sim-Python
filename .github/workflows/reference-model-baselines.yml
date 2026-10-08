@@ -41,6 +41,7 @@ on:
       - 'tests/test_rm3_direct_linear_generator_parity.py'
       - 'tests/test_rm3_hydraulic_source.py'
       - 'tests/test_hydraulic_cylinder.py'
+      - 'tests/test_hydraulic_valve.py'
       - 'tests/test_rm3_public_linear_generator_parity.py'
       - 'tests/test_gbm_source_parity.py'
       - 'tests/test_gbm_motion_parity.py'
