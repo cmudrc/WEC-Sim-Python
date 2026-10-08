@@ -24,7 +24,7 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def published():
     reference = Path(REFERENCE)
-    hydro = (Path(APPLICATIONS) / "_Common_Input_Files/OSWEC/hydroData/oswec.h5")
+    hydro = (Path(APPLICATIONS) / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
     components = []
     for number, direction in ((1, 0), (2, 90)):
         values = np.loadtxt(
