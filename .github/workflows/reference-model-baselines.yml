@@ -142,8 +142,9 @@ jobs:
           WEC_SIM_SPHERE_H5: applications/_Common_Input_Files/Sphere/hydroData/sphere.h5
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_ellipsoid_nonlinear_hydro_parity.py
-        if: matrix.model == 'ELLIPSOID_NLH_REG'
+        if: matrix.model == 'ELLIPSOID_NLH_REG' || matrix.model == 'ELLIPSOID_NLH_CIC'
         env:
+          WEC_SIM_REFERENCE_MODEL: ${{ matrix.model }}
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_live_current_h5.py

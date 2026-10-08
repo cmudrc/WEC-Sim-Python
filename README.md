@@ -439,8 +439,9 @@ reactive PI laws, and hydraulic PTO models are not implemented.
 
 ### Instantaneous nonlinear hydrodynamics for heave
 
-The Python builder supports the published `Nonlinear_Hydro/ode4/Regular`
-ellipsoid through a heave-only mesh mode. Supply the BEM HDF5 file and an STL
+The Python builder supports the published `Nonlinear_Hydro/ode4/Regular` and
+`ode4/RegularCIC` ellipsoid cases through a heave-only mesh mode. Supply the
+BEM HDF5 file and an STL
 whose triangle coordinates are relative to the body's center of gravity:
 
 ```python
@@ -462,12 +463,16 @@ result = wec.run(RegularWave(height=4, period=6), dt=0.05,
                  end_time=150, ramp_time=50, rho=1025)
 ```
 
+For convolution radiation, use `RegularCICWave(height=4, period=6)` and
+`radiation_memory=60` in `wec.run`.
+
 The mode integrates mesh buoyancy, instantaneous free-surface
 Froude–Krylov correction, heave quadratic drag, BEM diffraction/radiation,
 and the configured PTO. The STL determines equilibrium mass when
 `mass="equilibrium"`; this can differ from the HDF5 displaced volume.
 Current validation covers one pure-heave body with its center of gravity at
-horizontal origin in zero-direction regular waves.
+horizontal origin in zero-direction regular waves, with either constant or
+convolution radiation.
 Other motions and sea states raise an error until their mesh force and dynamics
 checks are paired with MATLAB.
 

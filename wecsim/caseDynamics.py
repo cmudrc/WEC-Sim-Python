@@ -795,13 +795,14 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         heave_map[2, 0] = 1
         if (len(bodies) != 1 or nonlinear_indices != [0] or n != 1
                 or not np.array_equal(maps[0], heave_map)
-                or wave["type"] != "regular" or direction != 0 or b2b
+                or wave["type"] not in ("regular", "regularCIC")
+                or direction != 0 or b2b
                 or bodies[0]["nonlinear_hydro"] != "instantaneous"
                 or bodies[0].get("mean_drift", "none") != "none"
                 or bodies[0].get("passive_yaw", False)):
             raise ValueError(
                 "instantaneous nonlinear hydro currently needs one pure-heave "
-                "body and a zero-direction regular wave"
+                "body and a zero-direction regular or regularCIC wave"
             )
     for spec in bodies:
         if spec.get("nonlinear_hydro") is None and any(

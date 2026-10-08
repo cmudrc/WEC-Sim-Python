@@ -5,14 +5,18 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.signal import fftconvolve
 
-from wecsim.api import RegularWave, WEC, WorldPoint
+from wecsim.api import RegularCICWave, RegularWave, WEC, WorldPoint
 from wecsim.bodyClass import BodyClass
 from wecsim.nonlinearHydro import HeaveMeshHydro
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
+MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL", "ELLIPSOID_NLH_REG")
+CASE = ("ode4_RegularCIC" if MODEL == "ELLIPSOID_NLH_CIC"
+        else "ode4_Regular")
 pytestmark = pytest.mark.skipif(
     not (APPLICATIONS and REFERENCE),
     reason="paired MATLAB nonlinear-hydro output and Applications absent",
@@ -21,11 +25,11 @@ pytestmark = pytest.mark.skipif(
 
 def _source():
     source = Path(REFERENCE)
-    body = np.loadtxt(source / "ELLIPSOID_NLH_REG_ode4_Regular_body1.csv",
+    body = np.loadtxt(source / f"{MODEL}_{CASE}_body1.csv",
                       delimiter=",")
-    pto = np.loadtxt(source / "ELLIPSOID_NLH_REG_ode4_Regular_pto1.csv",
+    pto = np.loadtxt(source / f"{MODEL}_{CASE}_pto1.csv",
                      delimiter=",")
-    mass = np.loadtxt(source / "ELLIPSOID_NLH_REG_mass.csv", delimiter=",")
+    mass = np.loadtxt(source / f"{MODEL}_mass.csv", delimiter=",")
     assert body.shape == (3001, 55) and pto.shape == (3001, 25)
     return body, pto, mass
 
@@ -70,9 +74,12 @@ def test_mesh_forces_on_matlab_trajectory():
                     "characteristicArea": np.zeros(6)}
     bem.linearDamping = np.zeros((6, 6))
     omega = 2 * np.pi / 6
-    bem.hydroForcePre(omega, [0], 1, np.array([0.0]), [], .05,
-                      1025, 9.81, "regular", np.zeros((2, 2)),
-                      1, 1, 0, 0, 0)
+    cic = MODEL == "ELLIPSOID_NLH_CIC"
+    convolution_time = np.arange(1201) * .05 if cic else np.array([0.0])
+    bem.hydroForcePre(omega, [0], len(convolution_time), convolution_time,
+                      [], .05, 1025, 9.81,
+                      "regularCIC" if cic else "regular",
+                      np.zeros((2, 2)), 1, 1, 0, 0, 0)
     re = np.asarray(bem.hydroForce["fExt"]["re"])[2]
     im = np.asarray(bem.hydroForce["fExt"]["im"])[2]
     ramp = np.array([mesh.ramp(t) for t in body[:, 0]])
@@ -80,6 +87,17 @@ def test_mesh_forces_on_matlab_trajectory():
                          - im * np.sin(omega * body[:, 0]))
     _max_error(linear + forces[:, 1], body[:, 21], 1e-5,
                "linear plus nonlinear Froude-Krylov excitation")
+    if cic:
+        kernel = np.asarray(bem.hydroForce["irkb"])[:, 2, 2]
+        velocity = body[:, 9]
+        radiation = .05 * fftconvolve(velocity, kernel)[:len(velocity)]
+        radiation -= .05 / 2 * kernel[0] * velocity
+        last_lag = np.minimum(np.arange(len(velocity)), len(kernel) - 1)
+        radiation -= .05 / 2 * kernel[last_lag] * (
+            velocity[np.arange(len(velocity)) - last_lag]
+        )
+        _max_error(radiation, body[:, 27], 1e-6,
+                   "regularCIC radiation convolution")
 
 
 def test_public_python_configuration_matches_matlab_motion_and_pto():
@@ -94,16 +112,20 @@ def test_public_python_configuration_matches_matlab_motion_and_pto():
     wec.coordinate("heave", ellipsoid.move("heave"))
     wec.pto("PTO1", WorldPoint(0, 0, -12.5), ellipsoid.at(0, 0, 0),
             damping=1_200_000)
-    result = wec.run(RegularWave(4, 6), dt=.05, end_time=150,
-                     ramp_time=50, rho=1025)
+    cic = MODEL == "ELLIPSOID_NLH_CIC"
+    result = wec.run(RegularCICWave(4, 6) if cic else RegularWave(4, 6),
+                     dt=.05, end_time=150, ramp_time=50,
+                     radiation_memory=60 if cic else None, rho=1025)
     np.testing.assert_allclose(result.time, body[:, 0], rtol=0, atol=1e-10)
+    limits = ((.0075, .0085, 10_000, 10_000) if cic
+              else (.006, .0065, 8_000, 8_000))
     _max_error(result.bodies["ellipsoid"].position[:, 2], body[:, 3],
-               .006, "heave position")
+               limits[0], "heave position")
     _max_error(result.bodies["ellipsoid"].velocity[:, 2], body[:, 9],
-               .0065, "heave velocity")
-    _max_error(result.ptos["PTO1"].stroke, pto[:, 3], .006,
+               limits[1], "heave velocity")
+    _max_error(result.ptos["PTO1"].stroke, pto[:, 3], limits[0],
                "PTO stroke")
-    _max_error(result.ptos["PTO1"].force, pto[:, 15], 8_000,
+    _max_error(result.ptos["PTO1"].force, pto[:, 15], limits[2],
                "PTO force")
     _max_error(result.ptos["PTO1"].absorbed_power,
-               -pto[:, 15] * pto[:, 9], 8_000, "PTO absorbed power")
+               -pto[:, 15] * pto[:, 9], limits[3], "PTO absorbed power")
