@@ -1,5 +1,6 @@
 """Check the suspect fitted radiation against the supplied source data."""
 
+import os
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,17 @@ from wecsim.rm3Regular import solve_rm3_regular
 
 RM3 = (Path(__file__).parent / "test_objects" / "test_bodyclass"
        / "testData" / "hydroData" / "rm3.h5")
+CURRENT_RM3 = os.environ.get("WEC_SIM_RM3_H5")
+
+
+@pytest.mark.skipif(not CURRENT_RM3, reason="current BEMIO RM3 HDF5 unavailable")
+def test_pinned_bemio_radiation_transfer_matches_diagnostic_fixture():
+    """Check the transfer, since equivalent state-space realizations may differ."""
+    for diagnostic in (common_surge_curves, active_mode_minimum_damping):
+        fixture = diagnostic(RM3)
+        current = diagnostic(CURRENT_RM3)
+        for expected, actual in zip(fixture, current):
+            np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-6)
 
 
 def test_fitted_common_surge_has_opposite_low_frequency_sign():

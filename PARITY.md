@@ -141,6 +141,14 @@ diagnostic transfer calculation reduces the negative zero-frequency values
 to −3.01 and −3.45 kN s/m, but does not make the fits passive. This is a
 low-frequency fit problem consistent with the drift, not proof that the
 full nonlinear trajectory has only one cause.
+The diagnostic fixture and a freshly BEMIO-generated HDF5 from the pinned
+RM3 Applications input have identical 260 frequency samples and source BEM
+damping. Their common-surge fitted transfer curves differ by at most
+`6.9e-9` N s/m and projected active-mode minimum damping by at most
+`3.0e-9` N s/m. The raw fitted A/B/C arrays differ because they encode
+equivalent state-space realizations; the paired gate compares the transfer
+responses. Thus the negative low-frequency fit is present in the current
+MATLAB case input as well as the historical fixture.
 The diagnostic also projects the BEM and fitted radiation matrices onto
 the RM3 joint's four moving coordinates: common surge, float heave, spar
 heave, and shared pitch. Pitch is expressed as travel at a 20 m lever for
