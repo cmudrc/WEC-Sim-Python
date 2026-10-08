@@ -26,7 +26,7 @@ from .irregularWave import (
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
-from .passiveYaw import PassiveYawExcitation
+from .passiveYaw import PassiveYawExcitation, SampledPassiveYawExcitation
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
 
@@ -270,7 +270,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if kind == "linear_subspace":
         return _run_linear_subspace(
             case, sim, wave, constraint, bodies, hydro, b2b,
-            dt, end_time, ramp_time, rho, g,
+            dt, end_time, ramp_time, rho, g, base,
         )
 
     if kind == "heave":
@@ -653,17 +653,22 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
 
 
 def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
-                         b2b, dt, end_time, ramp_time, rho, g):
-    """Run constant coordinate maps with regular, regularCIC, or no waves."""
+                         b2b, dt, end_time, ramp_time, rho, g, base_dir):
+    """Run mapped coordinates with regular, PM, or no incident waves."""
     if set(constraint) - {"kind", "initial_coordinate", "initial_speed",
                            "coordinates"}:
         raise ValueError("linear_subspace uses coordinate maps, not joint locations")
-    if wave["type"] not in ("regular", "regularCIC", "none"):
-        raise ValueError("linear_subspace supports regular, regularCIC, or no waves")
+    if wave["type"] not in ("regular", "regularCIC", "pm", "none"):
+        raise ValueError("linear_subspace supports regular, regularCIC, PM, or no waves")
     if b2b and len(set(hydro)) != 1:
         raise ValueError("body-to-body hydrodynamics need one shared HDF5 file")
     if wave["type"] == "none" and set(wave) != {"type"}:
         raise ValueError("no-wave cases have no wave height or period")
+    if (wave["type"] == "pm"
+            and any(body.get("mean_drift", "none") != "none" for body in bodies)):
+        raise ValueError("PM linear-subspace mean-drift forcing is not supported")
+    components = None
+    auxiliary_files = []
     if wave["type"] in ("regular", "regularCIC"):
         if set(wave) - {"type", "height", "period", "direction"}:
             raise ValueError("regular waves use height, period, and direction")
@@ -673,6 +678,33 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         frequency = 2 * np.pi / period
         if wave["type"] == "regular" and "radiation_memory" in sim:
             raise ValueError("regular-wave linear dynamics use constant radiation")
+    elif wave["type"] == "pm":
+        if set(wave) - {"type", "height", "period", "directions", "spreading",
+                         "seed", "phase_file", "frequency_count",
+                         "excitation_interpolation"}:
+            raise ValueError("PM waves use height, period, directions, and phase settings")
+        height = _number(wave.get("height"), "wave.height", positive=True)
+        period = _number(wave.get("period"), "wave.period", positive=True)
+        if "seed" in wave and "phase_file" in wave:
+            raise ValueError("supply either wave.seed or wave.phase_file")
+        if "phase_file" in wave:
+            if not isinstance(wave["phase_file"], str) or not wave["phase_file"]:
+                raise ValueError("wave.phase_file must be a file path")
+            phase_path = (base_dir / wave["phase_file"]).resolve(strict=True)
+            phase = np.loadtxt(phase_path, delimiter=",", ndmin=2)
+            auxiliary_files.append(phase_path)
+            seed = None
+        else:
+            phase = None
+            seed = wave.get("seed", 7)
+            if not isinstance(seed, int) or isinstance(seed, bool):
+                raise ValueError("wave.seed must be an integer")
+        components = pm_equal_energy_components(
+            hydro[0], significant_height=height, peak_period=period,
+            directions=wave.get("directions", [0.0]),
+            spreading=wave.get("spreading", [1.0]),
+            count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+        )
     else:
         if "ramp_time" in sim:
             raise ValueError("ramp_time is inapplicable to no-wave dynamics")
@@ -710,7 +742,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             raise ValueError(
                 "body.mean_drift must be none, control_surface, or momentum_conservation"
             )
-        if drift_option != "none" and wave["type"] == "none":
+        if drift_option != "none" and wave["type"] not in ("regular", "regularCIC"):
             raise ValueError("mean drift requires regular incident waves")
         body.meanDriftForce = drift_flags[drift_option]
         body.readH5file()
@@ -743,14 +775,14 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         yaw_map = np.zeros((6, 1))
         yaw_map[5, 0] = 1
         if (len(passive_indices) != 1 or n != 1 or b2b
-                or wave["type"] != "regular"
+                or wave["type"] not in ("regular", "pm")
                 or not np.array_equal(maps[passive_indices[0]], yaw_map)
                 or any(np.any(mapping) for index, mapping in enumerate(maps)
                        if index != passive_indices[0])
                 or bodies[passive_indices[0]].get("mean_drift", "none") != "none"):
             raise ValueError(
                 "passive yaw currently needs one pure-yaw body, stationary others, "
-                "regular waves, and independent radiation"
+                "regular or PM waves, and independent radiation"
             )
     initial_q = initial_coordinate(
         constraint.get("initial_coordinate", [0] * n), coordinate_names,
@@ -788,6 +820,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
 
     dynamic_bodies = []
     passive_model = None
+    pm_elevation = None
     for index, (body_spec, body, mapping) in enumerate(
             zip(bodies, loaded_bodies, maps), start=1):
         mass_setting = body_spec.get("mass", "equilibrium")
@@ -816,11 +849,16 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             if memory_time > np.max(irf_time) + 1e-10:
                 raise ValueError("radiation_memory exceeds the HDF5 kernel")
             regular_memory = wave["type"] == "regularCIC"
+            irregular = wave["type"] == "pm"
             body.hydroForcePre(
-                frequency if regular_memory else [],
-                [direction if regular_memory else 0],
-                len(convolution_time), convolution_time, [],
-                dt, rho, g, "regularCIC" if regular_memory else "noWaveCIC",
+                (frequency if regular_memory else
+                 components.omega if irregular else []),
+                ([direction] if regular_memory else
+                 components.directions if irregular else [0]),
+                len(convolution_time), convolution_time,
+                len(components.omega) if irregular else [],
+                dt, rho, g, ("regularCIC" if regular_memory else
+                             "irregular" if irregular else "noWaveCIC"),
                 wave_amp,
                 index, len(bodies), 0, 0, int(b2b),
             )
@@ -870,17 +908,43 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     real * np.cos(frequency * at_time)
                     - imaginary * np.sin(frequency * at_time)
                 ) + (height / 2)**2 * ramp * drift)
+        elif wave["type"] == "pm":
+            if body_spec.get("passive_yaw", False):
+                def excitation(at_time):
+                    return np.zeros(6)
+            else:
+                incident = synthesize_irregular_response(
+                    hydro[index - 1], components, dt=dt, end_time=end_time,
+                    ramp_time=ramp_time, body_number=index, rho=rho, g=g,
+                    excitation_interpolation=wave.get(
+                        "excitation_interpolation", "linear",
+                    ),
+                )
+                if pm_elevation is None:
+                    pm_elevation = incident.elevation
+                sampled_force = incident.excitation_force
+
+                def excitation(at_time, *, sampled_force=sampled_force):
+                    sample = round(at_time / dt)
+                    return sampled_force[sample]
         else:
             def excitation(at_time):
                 return np.zeros(6)
 
         state_excitation = None
         if body_spec.get("passive_yaw", False):
-            passive_model = PassiveYawExcitation.from_hydro_data(
-                body.hydroData, omega=frequency,
-                incident_direction=direction, amplitude=height / 2,
-                ramp_time=ramp_time, rho=rho, g=g,
-            )
+            if wave["type"] == "pm":
+                passive_model = SampledPassiveYawExcitation.from_hydro_data(
+                    body.hydroData, components, dt=dt, end_time=end_time,
+                    ramp_time=ramp_time, rho=rho, g=g,
+                )
+                pm_elevation = passive_model.elevation
+            else:
+                passive_model = PassiveYawExcitation.from_hydro_data(
+                    body.hydroData, omega=frequency,
+                    incident_direction=direction, amplitude=height / 2,
+                    ramp_time=ramp_time, rho=rho, g=g,
+                )
 
             def state_excitation(at_time, coordinate, speed, *,
                                  model=passive_model):
@@ -925,7 +989,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             ramp[early] = (1 - np.cos(np.pi * response.time[early] / ramp_time)) / 2
         elevation = height / 2 * ramp * np.cos(frequency * response.time)
     else:
-        elevation = None
+        elevation = pm_elevation
     coordinate_outputs = tuple(
         output for index, name in enumerate(coordinate_names)
         for output in (
@@ -978,6 +1042,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
+        auxiliary_files=tuple(auxiliary_files),
         pto_generalized_force=(
             generalized_pto if "pto" in case or "ptos" in case else None
         ),

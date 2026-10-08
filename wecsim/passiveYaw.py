@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 
 import numpy as np
+from scipy.interpolate import CubicSpline
+
+from .irregularWave import IrregularComponents
 
 
 @dataclass(frozen=True)
@@ -74,6 +77,123 @@ class PassiveYawExcitation:
             real * np.cos(self.omega * time)
             - imaginary * np.sin(self.omega * time)
         )
+        world = local.copy()
+        c, s = np.cos(yaw), np.sin(yaw)
+        for first in (0, 3):
+            world[first] = c * local[first] - s * local[first + 1]
+            world[first + 1] = s * local[first] + c * local[first + 1]
+        return world
+
+
+@dataclass(frozen=True)
+class SampledPassiveYawExcitation:
+    """Broadband force at each BEM heading, interpolated at the body's yaw.
+
+    Frequency interpolation and the irregular realization are prepared once.
+    The dynamics can then evaluate changing yaw during a sampled radiation
+    step without generating new random phases or recomputing the spectrum.
+    """
+
+    time: np.ndarray
+    directions: np.ndarray
+    incident_directions: np.ndarray
+    force_grid: np.ndarray  # time, incident direction, BEM heading, six DOFs
+    elevation: np.ndarray
+
+    @classmethod
+    def from_hydro_data(cls, hydro_data, components: IrregularComponents,
+                        *, dt: float, end_time: float, ramp_time: float,
+                        rho: float, g: float):
+        if not isinstance(components, IrregularComponents):
+            raise TypeError("components must be an irregular-wave realization")
+        if (not np.isfinite([dt, end_time, ramp_time, rho, g]).all()
+                or dt <= 0 or end_time < 0 or ramp_time < 0
+                or rho <= 0 or g <= 0):
+            raise ValueError("time and fluid parameters must be finite and valid")
+        count = round(end_time / dt) + 1
+        if not np.isclose((count - 1) * dt, end_time, rtol=0, atol=1e-10):
+            raise ValueError("end_time must be a multiple of dt")
+        omega = np.asarray(components.omega, dtype=float).ravel()
+        amplitude = np.asarray(components.spectral_amplitude, dtype=float).ravel()
+        width = np.asarray(components.d_omega, dtype=float).ravel()
+        incident = np.asarray(components.directions, dtype=float).ravel()
+        spread = np.asarray(components.spreading, dtype=float).ravel()
+        phase = np.asarray(components.phase, dtype=float)
+        if (len(omega) < 2 or len(incident) < 1
+                or amplitude.shape != omega.shape or width.shape != omega.shape
+                or spread.shape != incident.shape
+                or phase.shape != (len(omega), len(incident))
+                or not all(np.isfinite(values).all() for values in
+                           (omega, amplitude, width, incident, spread, phase))
+                or np.any(np.diff(omega) <= 0) or np.any(amplitude < 0)
+                or np.any(width <= 0) or np.any(spread < 0)
+                or not np.isclose(spread.sum(), 1, rtol=0, atol=1e-10)):
+            raise ValueError("irregular-wave components are inconsistent")
+        parameters = hydro_data["simulation_parameters"]
+        headings = np.asarray(parameters["wave_dir"], dtype=float).ravel()
+        frequency = np.asarray(parameters["w"], dtype=float).ravel()
+        if (headings.size < 3 or frequency.size < 2
+                or not np.isfinite(headings).all()
+                or not np.isfinite(frequency).all()
+                or not np.all(np.diff(headings) > 0)
+                or not np.all(np.diff(frequency) > 0)
+                or np.max(np.diff(np.r_[headings, headings[0] + 360])) >= 180
+                or omega[0] < frequency[0] or omega[-1] > frequency[-1]):
+            raise ValueError("irregular passive yaw needs full-circle BEM headings and frequencies")
+        excitation = hydro_data["hydro_coeffs"]["excitation"]
+
+        def frequency_samples(field):
+            raw = np.asarray(field, dtype=float)
+            if (raw.shape != (6, len(headings), len(frequency))
+                    or not np.isfinite(raw).all()):
+                raise ValueError("irregular passive-yaw excitation is incomplete")
+            return (CubicSpline(frequency, raw, axis=2)(omega)
+                    .transpose(2, 1, 0).reshape(len(omega), -1) * rho * g)
+
+        real = frequency_samples(excitation["re"])
+        imaginary = frequency_samples(excitation["im"])
+        time = np.arange(count) * dt
+        forces = np.empty((count, len(incident), len(headings), 6))
+        elevation = np.zeros(count)
+        for sea in range(len(incident)):
+            height = np.sqrt(amplitude * width * spread[sea])
+            for start in range(0, count, 128):
+                stop = min(start + 128, count)
+                angle = (time[start:stop, None] * omega[None, :]
+                         + phase[None, :, sea])
+                cosine = np.cos(angle) * height[None, :]
+                sine = np.sin(angle) * height[None, :]
+                forces[start:stop, sea] = (
+                    cosine @ real - sine @ imaginary
+                ).reshape(stop - start, len(headings), 6)
+                elevation[start:stop] += cosine.sum(axis=1)
+        ramp = np.ones(count)
+        if ramp_time > 0:
+            early = time < ramp_time
+            ramp[early] = (1 - np.cos(np.pi * time[early] / ramp_time)) / 2
+        return cls(time, headings, incident, forces * ramp[:, None, None, None],
+                   elevation * ramp)
+
+    def force(self, at_time: float, yaw: float) -> np.ndarray:
+        """Return world-frame excitation at one sample and yaw angle."""
+        dt = self.time[1] - self.time[0] if len(self.time) > 1 else None
+        index = round(at_time / dt) if dt is not None else 0
+        if (index < 0 or index >= len(self.time)
+                or not np.isclose(self.time[index], at_time, rtol=0, atol=1e-8)):
+            raise ValueError("sampled passive-yaw force needs a grid time")
+        local = np.zeros(6)
+        start = self.directions[0]
+        for sea, heading in enumerate(self.incident_directions):
+            relative = ((heading - np.degrees(yaw) - start) % 360) + start
+            left = np.searchsorted(self.directions, relative, side="right") - 1
+            right = (left + 1) % len(self.directions)
+            next_heading = (self.directions[right] if right > left
+                            else self.directions[0] + 360)
+            fraction = (relative - self.directions[left]) / (
+                next_heading - self.directions[left]
+            )
+            local += ((1 - fraction) * self.force_grid[index, sea, left]
+                      + fraction * self.force_grid[index, sea, right])
         world = local.copy()
         c, s = np.cos(yaw), np.sin(yaw)
         for first in (0, 3):

@@ -37,6 +37,7 @@ on:
       - 'tests/test_oswec_full_directional_source.py'
       - 'tests/test_oswec_full_directional_parity.py'
       - 'tests/test_oswec_passive_yaw_parity.py'
+      - 'tests/test_oswec_passive_yaw_irregular_parity.py'
       - 'tests/test_passive_yaw_configuration.py'
       - 'tests/test_sphere_dynamics_parity.py'
       - 'wecsim/linearHeave.py'
@@ -239,6 +240,16 @@ jobs:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_oswec_passive_yaw_parity.py
         if: matrix.model == 'OSWEC_PASSIVE_YAW'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_oswec_passive_yaw_irregular_parity.py::test_published_irregular_passive_yaw_with_source_force
+        if: matrix.model == 'OSWEC_PASSIVE_YAW_IRR'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_oswec_passive_yaw_irregular_parity.py::test_continuous_heading_irregular_passive_yaw
+        if: matrix.model == 'OSWEC_PASSIVE_YAW_IRR_CONT'
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output

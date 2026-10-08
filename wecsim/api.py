@@ -125,6 +125,36 @@ class RegularCICWave:
 
 
 @dataclass(frozen=True)
+class PMWave:
+    """Pierson–Moskowitz sea with convolution radiation.
+
+    ``height`` is significant wave height in metres, ``period`` is peak
+    period in seconds, and ``direction`` is the incident heading in degrees.
+    A saved phase CSV replays a MATLAB realization. Without one, ``seed``
+    selects a reproducible Python realization rather than MATLAB's RNG stream.
+    """
+
+    height: float
+    period: float
+    direction: float = 0.0
+    seed: int | None = None
+    phase_file: str | Path | None = None
+    frequency_count: int = 500
+
+    def as_case(self) -> dict:
+        if self.seed is not None and self.phase_file is not None:
+            raise ValueError("PMWave uses either seed or phase_file")
+        wave = {"type": "pm", "height": self.height,
+                "period": self.period, "directions": [self.direction],
+                "spreading": [1.0], "frequency_count": self.frequency_count}
+        if self.seed is not None:
+            wave["seed"] = self.seed
+        if self.phase_file is not None:
+            wave["phase_file"] = str(self.phase_file)
+        return wave
+
+
+@dataclass(frozen=True)
 class NoWave:
     def as_case(self) -> dict:
         return {"type": "none"}
@@ -251,7 +281,7 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | RegularCICWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
@@ -260,8 +290,8 @@ class WEC:
         initial_speed: Mapping[str, float] | Sequence[float] | None = None,
     ) -> dict:
         """Return the case mapping used by the validated dynamics runner."""
-        if not isinstance(wave, (RegularWave, RegularCICWave, NoWave)):
-            raise TypeError("wave must be RegularWave, RegularCICWave, or NoWave")
+        if not isinstance(wave, (RegularWave, RegularCICWave, PMWave, NoWave)):
+            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, or NoWave")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -320,7 +350,7 @@ class WEC:
         return case
 
     def run(
-        self, wave: RegularWave | RegularCICWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
