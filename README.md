@@ -544,8 +544,33 @@ print(result.absorbed_power.mean(), result.electrical_power.mean())
 The negative load resistance and friction follow the source PTO-Sim block's
 sign convention. `absorbed_power` and `electrical_power` are positive when
 the device absorbs mechanical power and delivers power to the load. This
-runner represents the published vertical two-body layout; it does not add a
-general electrical PTO option to `WEC.pto`.
+runner represents the published vertical two-body layout.
+
+The same generator can be configured on body-local PTO endpoints in a
+`WEC` with named motions:
+
+```python
+from wecsim import DirectLinearGenerator, RegularWave, WEC
+
+generator = DirectLinearGenerator(
+    stator_resistance=4.58, friction=-100, pole_pitch=.072,
+    magnet_flux=8, inductance=.285, load_resistance=-117.6471,
+)
+wec = WEC("RM3 with linear generator")
+float_body = wec.body("float", "rm3.h5")
+spar = wec.body("spar", "rm3.h5")
+wec.coordinate("float_heave", float_body.move("heave"))
+wec.coordinate("spar_heave", spar.move("heave"))
+wec.pto("PTO1", spar.at(0, 0, 0), float_body.at(0, 0, 0),
+        axis=(0, 0, 1), linear_generator=generator)
+result = wec.run(RegularWave(height=2.5, period=8),
+                 dt=.0005, end_time=400, ramp_time=100)
+phase_current = result.ptos["PTO1"].linear_generator.phase_current
+```
+
+This public configuration is currently limited to constant-radiation
+regular waves and cannot be combined with sampled PTO controls. The
+attachment points use the existing small-motion, fixed-axis PTO geometry.
 
 ### Instantaneous nonlinear hydrodynamics for heave
 

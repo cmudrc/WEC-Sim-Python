@@ -111,7 +111,7 @@ def _endpoint(spec, name, maps, centers, names):
 
 
 def build_linear_ptos(specs, maps, centers, names, coordinate_names=None, *,
-                      allow_direct_drive=False):
+                      allow_direct_drive=False, allow_linear_generator=False):
     """Return connections and their total linear generalized force law.
 
     ``K``, ``C``, and ``bias`` satisfy ``F = -K q - C q_dot + bias``.
@@ -131,7 +131,8 @@ def build_linear_ptos(specs, maps, centers, names, coordinate_names=None, *,
                        {"name", "kind", "from", "to", "axis", "damping",
                         "stiffness", "equilibrium_position", "pretension",
                         "control", "coordinate"}
-                       | ({"direct_drive"} if allow_direct_drive else set()))
+                       | ({"direct_drive"} if allow_direct_drive else set())
+                       | ({"linear_generator"} if allow_linear_generator else set()))
         name = spec["name"]
         if (not isinstance(name, str)
                 or re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", name) is None
@@ -173,12 +174,19 @@ def build_linear_ptos(specs, maps, centers, names, coordinate_names=None, *,
         spring = _number(spec.get("stiffness", 0),
                          f"ptos[{position}].stiffness", nonnegative=True)
         if not coefficient and not spring and not (
-                allow_direct_drive and "direct_drive" in spec):
+                (allow_direct_drive and "direct_drive" in spec)
+                or (allow_linear_generator and "linear_generator" in spec)):
             raise ValueError("PTO actuator needs damping or stiffness")
         if "direct_drive" in spec and (
                 coefficient or spring or "control" in spec
-                or "equilibrium_position" in spec or "pretension" in spec):
+                or "equilibrium_position" in spec or "pretension" in spec
+                or "linear_generator" in spec):
             raise ValueError("direct drive supplies its own PTO force")
+        if "linear_generator" in spec and (
+                spec["kind"] != "linear_actuator" or coefficient or spring
+                or "control" in spec or "equilibrium_position" in spec
+                or "pretension" in spec):
+            raise ValueError("linear generator supplies its own actuator force")
         if "equilibrium_position" in spec and "pretension" in spec:
             raise ValueError("specify either PTO equilibrium_position or pretension")
         if "pretension" in spec:

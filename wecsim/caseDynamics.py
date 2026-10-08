@@ -15,6 +15,7 @@ from scipy.io import loadmat
 
 from .bodyClass import BodyClass
 from .directDrive import integrate_direct_drive_heave
+from .directLinearGenerator import DirectLinearGenerator
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .gbmFloating import solve_floating_gbm_regular
 from .hardStops import LinearHardStops
@@ -1393,7 +1394,33 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     if "ptos" in case:
         connections, stiffness, damping, pto_bias = build_linear_ptos(
             case["ptos"], maps, centers, body_names, coordinate_names,
+            allow_linear_generator=True,
         )
+    generator_specs = {
+        spec["name"]: spec["linear_generator"]
+        for spec in case.get("ptos", []) if "linear_generator" in spec
+    }
+    if generator_specs and wave["type"] != "regular":
+        raise ValueError("linear generator currently needs regular-wave constant radiation")
+    linear_generators = []
+    for connection in connections:
+        if connection.name not in generator_specs:
+            continue
+        name = f"pto.{connection.name}.linear_generator"
+        spec = _section(
+            generator_specs[connection.name], name,
+            {"stator_resistance", "friction", "pole_pitch", "magnet_flux",
+             "inductance", "load_resistance"},
+            {"stator_resistance", "friction", "pole_pitch", "magnet_flux",
+             "inductance", "load_resistance", "initial_angle",
+             "initial_flux_d", "initial_flux_q"},
+        )
+        settings = {
+            key: _number(value, f"{name}.{key}")
+            for key, value in spec.items() if value is not None
+        }
+        linear_generators.append((connection, DirectLinearGenerator(**settings)))
+    linear_generators = tuple(linear_generators)
     controlled_connections = tuple(
         connection for connection in connections if connection.control is not None
     )
@@ -1402,6 +1429,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         pto_damping=damping, pto_equilibrium=equilibrium,
         pto_bias=pto_bias,
         controlled_ptos=controlled_connections,
+        linear_generators=linear_generators,
     )
     response = system.integrate(
         dt=dt, end_time=end_time,
@@ -1427,18 +1455,49 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
          for index, connection in enumerate(controlled_connections)}
         if controlled_connections else {}
     )
+    generator_forces = (
+        {connection.name: response.linear_generator_force[:, index]
+         for index, (connection, _) in enumerate(linear_generators)}
+        if linear_generators else {}
+    )
     pto_outputs = tuple(
         output for connection in connections
         for output in connection.outputs(
             response.coordinate, response.speed,
-            force_override=controlled_forces.get(connection.name),
+            force_override=(controlled_forces | generator_forces).get(connection.name),
         )
     )
+    generator_outputs = []
+    for index, (connection, generator) in enumerate(linear_generators):
+        states = response.linear_generator_state[:, index]
+        stroke_speed = response.speed @ connection.stroke_jacobian
+        electrical_power = np.empty(len(response.time))
+        phase_current = np.empty((len(response.time), 3))
+        phase_voltage = np.empty_like(phase_current)
+        for step, (speed, state) in enumerate(zip(stroke_speed, states)):
+            signals = generator.signals(float(speed), state)
+            electrical_power[step] = signals.electrical_power
+            phase_current[step] = signals.phase_current
+            phase_voltage[step] = signals.phase_voltage
+        prefix = f"pto_{connection.name}_generator_"
+        generator_outputs.extend((
+            (prefix + "flux_d", states[:, 0]),
+            (prefix + "flux_q", states[:, 1]),
+            (prefix + "angle", states[:, 2]),
+            (prefix + "friction_force", generator.friction * stroke_speed),
+            (prefix + "electrical_power", electrical_power),
+            (prefix + "phase_current", phase_current),
+            (prefix + "phase_voltage", phase_voltage),
+        ))
     generalized_pto = (-(response.coordinate - equilibrium) @ stiffness.T
                        - response.speed @ damping.T + pto_bias)
     for connection in controlled_connections:
         generalized_pto += np.outer(
             controlled_forces[connection.name], connection.stroke_jacobian,
+        )
+    for connection, _ in linear_generators:
+        generalized_pto += np.outer(
+            generator_forces[connection.name], connection.stroke_jacobian,
         )
     drift_outputs = tuple(
         output
@@ -1487,6 +1546,6 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         pto_generalized_force=(
             generalized_pto if "pto" in case or "ptos" in case else None
         ),
-        extra_outputs=(coordinate_outputs + pto_outputs + drift_outputs
+        extra_outputs=(coordinate_outputs + pto_outputs + tuple(generator_outputs) + drift_outputs
                        + passive_outputs + nonlinear_outputs),
     )

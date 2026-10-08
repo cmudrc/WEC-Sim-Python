@@ -16,6 +16,7 @@ import numpy as np
 
 from .caseDynamics import CaseResponse, run_case
 from .controls import DeclutchingControl, LatchingControl
+from .directLinearGenerator import DirectLinearGenerator
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,7 @@ class LinearPTO:
     pretension: float | None = None
     control: DeclutchingControl | LatchingControl | None = None
     direct_drive: SimpleDirectDrive | None = None
+    linear_generator: DirectLinearGenerator | None = None
 
 
 @dataclass(frozen=True)
@@ -241,6 +243,17 @@ class DirectDriveHistory:
 
 
 @dataclass(frozen=True)
+class LinearGeneratorHistory:
+    flux_d: np.ndarray
+    flux_q: np.ndarray
+    electrical_angle: np.ndarray
+    friction_force: np.ndarray
+    electrical_power: np.ndarray
+    phase_current: np.ndarray
+    phase_voltage: np.ndarray
+
+
+@dataclass(frozen=True)
 class PTOHistory:
     """PTO stroke in metres, or angle in radians for a rotational PTO."""
 
@@ -249,6 +262,7 @@ class PTOHistory:
     force: np.ndarray
     absorbed_power: np.ndarray
     direct_drive: DirectDriveHistory | None = None
+    linear_generator: LinearGeneratorHistory | None = None
 
 
 @dataclass(frozen=True)
@@ -362,7 +376,8 @@ class WEC:
             equilibrium_position: float | None = None,
             pretension: float | None = None,
             control: DeclutchingControl | LatchingControl | None = None,
-            direct_drive: SimpleDirectDrive | None = None) -> LinearPTO:
+            direct_drive: SimpleDirectDrive | None = None,
+            linear_generator: DirectLinearGenerator | None = None) -> LinearPTO:
         if any(existing.name == name for existing in
                (*self.ptos, *self.rotational_ptos)):
             raise ValueError(f"PTO name already exists: {name}")
@@ -381,13 +396,20 @@ class WEC:
             if not isinstance(direct_drive, SimpleDirectDrive):
                 raise TypeError("direct_drive must be SimpleDirectDrive")
             if (control is not None or damping or stiffness
-                    or equilibrium_position is not None or pretension is not None):
+                    or equilibrium_position is not None or pretension is not None
+                    or linear_generator is not None):
                 raise ValueError("direct drive supplies its own PTO force")
+        if linear_generator is not None:
+            if not isinstance(linear_generator, DirectLinearGenerator):
+                raise TypeError("linear_generator must be DirectLinearGenerator")
+            if (control is not None or damping or stiffness
+                    or equilibrium_position is not None or pretension is not None):
+                raise ValueError("linear generator supplies its own PTO force")
         pto = LinearPTO(
             name, from_point, to_point,
             tuple(axis) if axis is not None else None,
             damping, stiffness, equilibrium_position, pretension, control,
-            direct_drive,
+            direct_drive, linear_generator,
         )
         self.ptos.append(pto)
         return pto
@@ -553,6 +575,13 @@ class WEC:
                     )
                 )) if isinstance(pto, LinearPTO) and pto.direct_drive is not None
                  else None),
+                (LinearGeneratorHistory(*(
+                    extras[f"pto_{pto.name}_generator_{key}"] for key in (
+                        "flux_d", "flux_q", "angle", "friction_force",
+                        "electrical_power", "phase_current", "phase_voltage",
+                    )
+                )) if isinstance(pto, LinearPTO) and pto.linear_generator is not None
+                 else None),
             )
             for pto in (*self.ptos, *self.rotational_ptos)
         }
@@ -603,6 +632,8 @@ class WEC:
             item["pretension"] = pto.pretension
         if pto.direct_drive is not None:
             item["direct_drive"] = vars(pto.direct_drive).copy()
+        if pto.linear_generator is not None:
+            item["linear_generator"] = vars(pto.linear_generator).copy()
         return item
 
     @staticmethod
