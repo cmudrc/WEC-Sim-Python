@@ -51,6 +51,23 @@ class Motion:
 
 
 @dataclass(frozen=True)
+class HydroState:
+    """One BEM dataset and rigid properties for a variable-draft body."""
+
+    hydro_file: str | Path
+    mass: str | float = "equilibrium"
+    inertia: tuple[float, float, float] = (0, 0, 0)
+
+
+@dataclass(frozen=True)
+class VariableHydro:
+    """Ordered states; each switch time activates the next state."""
+
+    states: tuple[HydroState, ...]
+    switch_times: tuple[float, ...]
+
+
+@dataclass(frozen=True)
 class Body:
     name: str
     hydro_file: str | Path
@@ -63,6 +80,7 @@ class Body:
     nonlinear_hydro: str | None = None
     drag_coefficient: float = 0.0
     drag_area: float = 0.0
+    variable_hydro: VariableHydro | None = None
 
     def at(self, x: float, y: float, z: float) -> BodyPoint:
         """Locate a PTO endpoint or rotation pivot relative to this body's CG."""
@@ -229,6 +247,25 @@ class WEC:
         self.bodies.append(body)
         return body
 
+    def variable_body(self, name: str, states: Sequence[HydroState], *,
+                      switch_times: Sequence[float]) -> Body:
+        """Add a body whose draft, mass, and BEM data switch together.
+
+        Current dynamics support one heave-only body in regular waves.
+        ``switch_times`` must contain one grid-aligned time per transition.
+        """
+        ordered = tuple(states)
+        if (len(ordered) < 2 or not all(isinstance(s, HydroState) for s in ordered)
+                or len(switch_times) != len(ordered) - 1):
+            raise ValueError("variable body needs states and one fewer switch times")
+        if any(existing.name == name for existing in self.bodies):
+            raise ValueError(f"body name already exists: {name}")
+        first = ordered[0]
+        body = Body(name, first.hydro_file, first.mass, first.inertia,
+                    variable_hydro=VariableHydro(ordered, tuple(switch_times)))
+        self.bodies.append(body)
+        return body
+
     def coordinate(self, name: str, *motions: Motion) -> Coordinate:
         if any(existing.name == name for existing in self.coordinates):
             raise ValueError(f"coordinate name already exists: {name}")
@@ -328,6 +365,16 @@ class WEC:
             if body.drag_coefficient or body.drag_area:
                 body_case["drag_coefficient"] = body.drag_coefficient
                 body_case["drag_area"] = body.drag_area
+            if body.variable_hydro is not None:
+                body_case["variable_hydro"] = {
+                    "states": [
+                        {"hydro_file": str(state.hydro_file),
+                         "mass": state.mass,
+                         "inertia": list(state.inertia)}
+                        for state in body.variable_hydro.states
+                    ],
+                    "switch_times": list(body.variable_hydro.switch_times),
+                }
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
         for coordinate in self.coordinates:

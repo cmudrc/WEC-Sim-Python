@@ -480,6 +480,41 @@ diagnostics in [PARITY.md](PARITY.md), not as ode45 numerical parity.
 Other motions and sea states raise an error until their mesh force and dynamics
 checks are paired with MATLAB.
 
+### Variable draft and mass in heave
+
+The published `Variable_Hydro/Variable_Mass` sphere switches among nine BEM
+datasets, masses, and draft equilibria every 100 seconds. Define those states
+in Python after generating `draft1.h5` through `draft9.h5` with its `bemio.m`:
+
+```python
+import numpy as np
+from wecsim import HydroState, RegularWave, WEC, WorldPoint
+
+rho = 1025
+drafts = range(1, 10)
+states = [
+    HydroState(
+        f"hydroData/draft{draft}.h5",
+        mass=rho * np.pi / 3 * draft**2 * (15 - draft),
+    )
+    for draft in drafts
+]
+wec = WEC("variable mass sphere")
+sphere = wec.variable_body("sphere", states, switch_times=range(100, 900, 100))
+wec.coordinate("heave", sphere.move("heave"))
+wec.pto("PTO1", WorldPoint(0, 0, 2), sphere.at(0, 0, 0),
+        axis=(0, 0, 1), damping=200_000)
+result = wec.run(RegularWave(height=1, period=8), dt=0.01,
+                 end_time=900, ramp_time=0, rho=rho)
+```
+
+Each HDF5 file supplies the corresponding equilibrium center, displaced
+volume, added mass, radiation damping, restoring stiffness, and excitation.
+The mass and PTO settings come from the Python configuration. Validation covers
+one pure-heave body, a regular zero-heading wave, and one passive vertical PTO.
+The source model's large late-time excursions are outside the small-motion
+range in which linear BEM coefficients can be trusted.
+
 The published Sphere free-decay cases can also be calculated with the focused solver:
 
 ```python

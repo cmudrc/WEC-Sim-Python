@@ -30,6 +30,7 @@ on:
       - 'tests/test_sphere_latching_parity.py'
       - 'tests/test_case_dynamics_parity.py'
       - 'tests/test_ellipsoid_nonlinear_hydro_parity.py'
+      - 'tests/test_sphere_variable_mass_parity.py'
       - 'tests/test_oswec_hinge_dynamics_parity.py'
       - 'tests/test_oswec_nonhydro_parity.py'
       - 'tests/test_oswec_irregular_wave_parity.py'
@@ -53,6 +54,7 @@ on:
       - 'wecsim/ptoConnections.py'
       - 'wecsim/passiveYaw.py'
       - 'wecsim/nonlinearHydro.py'
+      - 'wecsim/variableHydro.py'
       - 'wecsim/api.py'
       - 'wecsim/__init__.py'
       - 'wecsim/cli.py'
@@ -146,6 +148,11 @@ jobs:
         if: matrix.model == 'ELLIPSOID_NLH_REG' || matrix.model == 'ELLIPSOID_NLH_CIC' || matrix.model == 'ELLIPSOID_NLH_ODE45'
         env:
           WEC_SIM_REFERENCE_MODEL: ${{ matrix.model }}
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_sphere_variable_mass_parity.py
+        if: matrix.model == 'SPHERE_VARIABLE_MASS'
+        env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_live_current_h5.py
