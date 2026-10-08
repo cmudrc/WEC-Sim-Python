@@ -30,7 +30,10 @@ from .irregularWave import (
 )
 from .linearCoordinates import build_coordinate_maps, initial_coordinate
 from .linearHeave import solve_heave_free_decay
-from .morison import MorisonElement, solve_fixed_morison_irregular
+from .morison import (
+    MorisonElement, no_wave_heave_morison_terms,
+    solve_fixed_morison_irregular,
+)
 from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import (
     HeldPassiveYawExcitation, PassiveYawExcitation, SampledPassiveYawExcitation,
@@ -81,6 +84,26 @@ def _number(value, name, *, positive=False, nonnegative=False):
     return number
 
 
+def _morison_elements(specs):
+    if not isinstance(specs, list):
+        raise ValueError("morison_elements must be a list")
+    elements = []
+    for spec in specs:
+        spec = _section(
+            spec, "morison element",
+            {"point", "drag_coefficient", "added_mass_coefficient",
+             "area", "volume"},
+            {"point", "drag_coefficient", "added_mass_coefficient",
+             "area", "volume", "phase_mode"},
+        )
+        elements.append(MorisonElement(
+            tuple(spec["point"]), tuple(spec["drag_coefficient"]),
+            tuple(spec["added_mass_coefficient"]), tuple(spec["area"]),
+            spec["volume"], spec.get("phase_mode", "directional"),
+        ))
+    return tuple(elements)
+
+
 def _hydro_file(body, base_dir):
     if isinstance(body, Mapping) and body.get("nonhydro", False):
         _section(body, "fixed nonhydrodynamic body",
@@ -104,7 +127,7 @@ def _hydro_file(body, base_dir):
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name", "mean_drift", "fixed",
               "passive_yaw", "passive_yaw_threshold", "geometry_file", "nonlinear_hydro",
-              "drag_coefficient", "drag_area", "variable_hydro"})
+              "drag_coefficient", "drag_area", "variable_hydro", "morison_elements"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -1060,23 +1083,7 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
         if not isinstance(name, str) or not name or any(
                 entry[0] == f"morison_force_{name}" for entry in force_outputs):
             raise ValueError("fixed Morison body names must be nonempty and unique")
-        specs = body.get("morison_elements", [])
-        if not isinstance(specs, list):
-            raise ValueError("morison_elements must be a list")
-        elements = []
-        for spec in specs:
-            spec = _section(
-                spec, "morison element",
-                {"point", "drag_coefficient", "added_mass_coefficient",
-                 "area", "volume"},
-                {"point", "drag_coefficient", "added_mass_coefficient",
-                 "area", "volume", "phase_mode"},
-            )
-            elements.append(MorisonElement(
-                tuple(spec["point"]), tuple(spec["drag_coefficient"]),
-                tuple(spec["added_mass_coefficient"]), tuple(spec["area"]),
-                spec["volume"], spec.get("phase_mode", "directional"),
-            ))
+        elements = _morison_elements(body.get("morison_elements", []))
         if elements:
             solved = solve_fixed_morison_irregular(
                 components, elements, center_gravity=center,
@@ -1214,6 +1221,30 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         constraint, bodies, body_names, centers,
     )
     n = maps[0].shape[1]
+    moving_morison = tuple(
+        index for index, spec in enumerate(bodies)
+        if spec.get("morison_elements")
+    )
+    moving_elements = ()
+    if moving_morison:
+        heave_map = np.zeros((6, 1))
+        heave_map[2, 0] = 1
+        if (len(bodies) != 1 or moving_morison != (0,) or n != 1
+                or not np.array_equal(maps[0], heave_map)
+                or wave["type"] != "none" or b2b
+                or any(key in case for key in ("pto", "ptos"))
+                or bodies[0].get("nonlinear_hydro") is not None
+                or bodies[0].get("passive_yaw", False)
+                or bodies[0].get("mean_drift", "none") != "none"):
+            raise ValueError(
+                "moving Morison currently needs one pure-heave hydrodynamic "
+                "body in still water without a PTO"
+            )
+        moving_elements = _morison_elements(bodies[0]["morison_elements"])
+        no_wave_heave_morison_terms(
+            moving_elements, center_z=centers[0][2],
+            heave=0, speed=0, rho=rho,
+        )
     passive_indices = [
         index for index, spec in enumerate(bodies)
         if spec.get("passive_yaw", False) is True
@@ -1477,6 +1508,20 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 result[2] += buoyancy + fk + drag
                 return result
 
+        state_inertia = None
+        if moving_elements:
+            def state_inertia(at_time, coordinate, speed, *,
+                              elements=moving_elements, center_z=center[2]):
+                drag, added = no_wave_heave_morison_terms(
+                    elements, center_z=center_z, heave=coordinate[0],
+                    speed=speed[0], rho=rho,
+                )
+                force = np.zeros(6)
+                force[2] = drag
+                matrix = np.zeros((6, 6))
+                matrix[2, 2] = added
+                return force, matrix
+
         dynamic_bodies.append(DynamicBody(
             rigid_mass=rigid_mass,
             added_mass=tuple(added_mass),
@@ -1493,6 +1538,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             excitation=excitation,
             radiation_kernel=kernel,
             state_excitation=state_excitation,
+            state_inertia=state_inertia,
         ))
     if "ptos" in case:
         connections, stiffness, damping, pto_bias = build_linear_ptos(
@@ -1642,6 +1688,18 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             ("body1_nonlinear_fk_correction", components[:, 1]),
             ("body1_quadratic_drag_force", components[:, 2]),
         )
+    morison_outputs = ()
+    if moving_elements:
+        terms = np.array([
+            no_wave_heave_morison_terms(
+                moving_elements, center_z=centers[0][2], heave=q[0],
+                speed=v[0], rho=rho,
+            )
+            for q, v in zip(response.coordinate, response.speed)
+        ])
+        force = np.zeros((len(response.time), 6))
+        force[:, 2] = terms[:, 0] - terms[:, 1] * response.acceleration[:, 0]
+        morison_outputs = ((f"morison_force_{body_names[0]}", force),)
     return CaseResponse(
         response.time, response.body_position, response.body_velocity,
         hydro, wave_elevation=elevation,
@@ -1650,5 +1708,5 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             generalized_pto if "pto" in case or "ptos" in case else None
         ),
         extra_outputs=(coordinate_outputs + pto_outputs + tuple(generator_outputs) + drift_outputs
-                       + passive_outputs + nonlinear_outputs),
+                       + passive_outputs + nonlinear_outputs + morison_outputs),
     )

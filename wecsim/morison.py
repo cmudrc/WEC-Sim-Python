@@ -148,6 +148,42 @@ def regular_morison_source_force(
     return result
 
 
+def no_wave_heave_morison_terms(
+    elements: Sequence[MorisonElement], *, center_z: float,
+    heave: float, speed: float, rho: float,
+) -> tuple[float, float]:
+    """Return drag force and added mass for submerged axial heave elements.
+
+    In still water, Cartesian option 1 reduces to ``-Cd*A*rho*v*|v|/2``
+    plus ``-Ca*V*rho*a``. The latter belongs on the equation's mass side.
+    Submergence follows WEC-Sim's mean-waterline switch at the element point.
+    """
+    if (not np.isfinite([center_z, heave, speed, rho]).all() or rho <= 0):
+        raise ValueError("Morison heave state and density must be finite")
+    drag_force = 0.0
+    added_mass = 0.0
+    for element in elements:
+        if not isinstance(element, MorisonElement):
+            raise TypeError("elements must be MorisonElement values")
+        point = np.asarray(element.point, dtype=float)
+        cd = np.asarray(element.drag_coefficient, dtype=float)
+        ca = np.asarray(element.added_mass_coefficient, dtype=float)
+        area = np.asarray(element.area, dtype=float)
+        if (any(value.shape != (3,) or not np.isfinite(value).all()
+                for value in (point, cd, ca, area))
+                or not np.allclose(point[:2], 0, rtol=0, atol=1e-12)
+                or any(not np.allclose(value[:2], 0, rtol=0, atol=1e-12)
+                       for value in (cd, ca, area))
+                or np.any(cd < 0) or np.any(ca < 0) or np.any(area < 0)
+                or not np.isfinite(element.volume) or element.volume <= 0):
+            raise ValueError("heave Morison elements need axial, nonnegative geometry")
+        if center_z + heave + point[2] > 0:
+            continue
+        drag_force -= 0.5 * rho * cd[2] * area[2] * speed * abs(speed)
+        added_mass += rho * element.volume * ca[2]
+    return drag_force, added_mass
+
+
 def solve_fixed_morison_irregular(
     components: IrregularComponents,
     elements: Sequence[MorisonElement],

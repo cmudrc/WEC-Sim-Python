@@ -384,9 +384,13 @@ class WEC:
                         added_mass_coefficient: Sequence[float],
                         area: Sequence[float], volume: float,
                         phase_mode: str = "directional") -> MorisonElement:
-        """Attach a Cartesian Morison element at a body-local point."""
-        if not any(body is item for item in self.bodies) or not body.fixed:
-            raise ValueError("this Morison element needs a fixed body in the WEC")
+        """Attach a Cartesian Morison element at a body-local point.
+
+        Moving hydrodynamic bodies currently support axial heave elements in
+        still water; the case runner validates that restricted layout.
+        """
+        if not any(body is item for item in self.bodies):
+            raise ValueError("Morison body must belong to this WEC")
         if not isinstance(point, BodyPoint) or point.body is not body:
             raise ValueError("Morison point must belong to its body")
         element = MorisonElement(
@@ -554,6 +558,17 @@ class WEC:
                     ],
                     "switch_times": list(body.variable_hydro.switch_times),
                 }
+            elements = [element for attached, element in self._morison_elements
+                        if attached is body]
+            if elements:
+                body_case["morison_elements"] = [
+                    {"point": list(element.point),
+                     "drag_coefficient": list(element.drag_coefficient),
+                     "added_mass_coefficient": list(element.added_mass_coefficient),
+                     "area": list(element.area), "volume": element.volume,
+                     "phase_mode": element.phase_mode}
+                    for element in elements
+                ]
             bodies.append(body_case)
         constraint = {"kind": "linear_subspace", "coordinates": []}
         if any(body.fixed for body in self.bodies):
@@ -671,7 +686,9 @@ class WEC:
         } if self._floating_gbm_body is not None else {})
         body_forces = {
             body.name: extras[f"morison_force_{body.name}"]
-            for body in self.bodies if body.fixed
+            for body in self.bodies
+            if body.fixed or any(attached is body
+                                 for attached, _ in self._morison_elements)
         }
         return WECResult(response.time, bodies, coordinates, ptos,
                          response.wave_elevation, case, response,

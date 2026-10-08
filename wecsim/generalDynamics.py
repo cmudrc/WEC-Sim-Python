@@ -37,6 +37,7 @@ class DynamicBody:
     excitation: Callable[[float], np.ndarray]
     radiation_kernel: np.ndarray | None = None  # (lag, 6, 6 * body_count)
     state_excitation: Callable[[float, np.ndarray, np.ndarray], np.ndarray] | None = None
+    state_inertia: Callable[[float, np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]] | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +134,8 @@ class GeneralizedDynamics:
         for body in self.bodies:
             if body.state_excitation is not None and not callable(body.state_excitation):
                 raise TypeError("state_excitation must be callable")
+            if body.state_inertia is not None and not callable(body.state_inertia):
+                raise TypeError("state_inertia must be callable")
             if (len(body.added_mass) != len(bodies)
                     or len(body.damping) != len(bodies)):
                 raise ValueError("each body needs one hydrodynamic block per body")
@@ -229,6 +232,18 @@ class GeneralizedDynamics:
                           - body.restoring @ motion.displacement
                           - rigid_mass @ motion.bias_acceleration)
             mass += j.T @ rigid_mass @ j
+            if body.state_inertia is not None:
+                extra_force, extra_mass = body.state_inertia(
+                    at_time, coordinate, speed,
+                )
+                extra_force = np.asarray(extra_force, dtype=float)
+                extra_mass = np.asarray(extra_mass, dtype=float)
+                if (extra_force.shape != (6,) or extra_mass.shape != (6, 6)
+                        or not np.isfinite(extra_force).all()
+                        or not np.isfinite(extra_mass).all()):
+                    raise ValueError("state inertia needs a finite force and 6x6 mass")
+                body_force += extra_force - extra_mass @ motion.bias_acceleration
+                mass += j.T @ extra_mass @ j
             for k, other in enumerate(motions):
                 if self.added_mass_delay is None:
                     a = body.added_mass[k]
