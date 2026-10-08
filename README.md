@@ -198,7 +198,7 @@ Supported combinations are:
 | `fixed_hinge` | `pm` or `pm_multi` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Directional PM excitation and radiation convolution; `pm_multi` sums independently phased seas |
 | `fixed_hinge` | `spectrumImportFullDir` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Imported frequency-dependent directional spectrum and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
-| `fixed_morison` | `pm` | Stationary bodies without HDF5; body-local Cartesian Morison elements; no PTO | Directional irregular-wave velocity, acceleration, and six-component Morison force |
+| `fixed_morison` | `pm` | Stationary bodies without HDF5; body-local Cartesian Morison elements; no PTO | Directional irregular-wave velocity, acceleration, and six-component Morison force; optional single-heading current |
 | `linear_subspace` | `none` or zero-heading `regular` | One hydrodynamic body with axial body-local Morison elements; pure heave, or surge/heave/pitch in regular waves; no PTO | Radiation convolution or constant-frequency radiation, relative-fluid drag, fluid inertia, and Morison added mass in the acceleration solve |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
@@ -307,6 +307,27 @@ result = wec.run(sea, dt=.01, end_time=400, ramp_time=100, rho=1025)
 force_and_moment = result.body_forces["monopile"]  # time × 6, N and N m
 ```
 
+For a fixed Morison body in a **single-heading** PM sea, set a horizontal
+current on the wave. Its direction is in world coordinates; `depth` is the
+distance below the surface where the profile reaches zero. Current and wave
+velocity use the same startup ramp, and current contributes drag but no fluid
+acceleration:
+
+```python
+from wecsim import Current, PMWave
+
+sea = PMWave(2, 5, directions=(30,), spreading=(1,),
+             frequency_range=(.001, 10), water_depth=30,
+             current=Current(speed=.8, direction=45,
+                             profile="power", depth=30))
+result = wec.run(sea, dt=.01, end_time=20, ramp_time=10)
+```
+
+`profile` may be `"uniform"`, `"power"` (the one-seventh law), or `"linear"`.
+The latter two require `depth`. Active current with multiple wave headings
+raises an error because the pinned MATLAB force function adds the current
+once per heading. Moving-body current loading is not yet supported.
+
 The pinned MATLAB function uses the first phase column for Morison force at
 every heading, while wave elevation uses each heading's own phase.
 `phase_mode="matlab_shared"` selects that source behavior; the default
@@ -339,7 +360,7 @@ uses `NoWave()` and `radiation_memory=15`. These moving-body layouts have
 no PTO; regular waves require zero heading and a body centered at x=y=0.
 The three-DOF Morison force uses a proper pitch rotation and does not copy
 the pinned MATLAB source function's nonorthogonal rotation. Other moving
-Morison layouts, current profiles, and the normal/tangential coefficient
+Morison layouts, moving-body currents, and the normal/tangential coefficient
 mode remain unsupported.
 
 For a heave or other `linear_subspace` device, `JONSWAPWave(2.5, 8,

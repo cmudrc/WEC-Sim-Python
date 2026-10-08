@@ -1148,7 +1148,7 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
     if (wave["type"] != "pm"
             or set(wave) - {"type", "height", "period", "directions",
                             "spreading", "seed", "phase_file", "frequency_count",
-                            "frequency_range", "water_depth"}
+                            "frequency_range", "water_depth", "current"}
             or "frequency_range" not in wave or "water_depth" not in wave):
         raise ValueError("fixed Morison bodies need a PM sea, frequency range, and water depth")
     if "phase_file" in wave and "seed" in wave:
@@ -1168,6 +1168,21 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
         if not isinstance(seed, int) or isinstance(seed, bool):
             raise ValueError("wave.seed must be an integer")
     depth = _number(wave["water_depth"], "wave.water_depth", positive=True)
+    if "current" in wave:
+        current = wave["current"]
+        current = _section(current, "wave.current", {"speed", "direction", "profile"},
+                           {"speed", "direction", "profile", "depth"})
+        speed = _number(current["speed"], "wave.current.speed", nonnegative=True)
+        current_direction = _number(current["direction"], "wave.current.direction")
+        profile = current["profile"]
+        if profile not in ("uniform", "power", "linear"):
+            raise ValueError("wave.current.profile must be uniform, power, or linear")
+        current_depth = (None if "depth" not in current else
+                         _number(current["depth"], "wave.current.depth", positive=True))
+        if profile != "uniform" and current_depth is None:
+            raise ValueError("depth-varying current needs wave.current.depth")
+    else:
+        speed, current_direction, profile, current_depth = 0.0, 0.0, "uniform", None
     components = pm_equal_energy_components(
         None,
         significant_height=_number(wave.get("height"), "wave.height", positive=True),
@@ -1199,6 +1214,8 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
                 components, elements, center_gravity=center,
                 water_depth=depth, dt=dt, end_time=end_time,
                 ramp_time=ramp_time, rho=rho, g=g,
+                current_speed=speed, current_direction=current_direction,
+                current_profile=profile, current_depth=current_depth,
             )
             elevation = solved.wave_elevation
             force = solved.force

@@ -201,6 +201,39 @@ class RegularCICWave:
 
 
 @dataclass(frozen=True)
+class Current:
+    """Horizontal current for a fixed Morison body in a single-heading sea.
+
+    ``profile`` is ``uniform``, ``power`` (the 1/7 law), or ``linear``.
+    The latter two profiles need the current depth in metres.
+    """
+
+    speed: float
+    direction: float = 0.0
+    profile: str = "uniform"
+    depth: float | None = None
+
+    def as_case(self) -> dict:
+        try:
+            speed = float(self.speed)
+            direction = float(self.direction)
+            depth = None if self.depth is None else float(self.depth)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("current needs numeric speed, direction, and depth") from exc
+        if (not np.isfinite([speed, direction]).all()
+                or speed < 0 or not -360 <= direction <= 360
+                or self.profile not in ("uniform", "power", "linear")
+                or (depth is not None and (not np.isfinite(depth) or depth <= 0))
+                or (self.profile != "uniform" and depth is None)):
+            raise ValueError("current needs valid speed, direction, profile, and depth")
+        result = {"speed": speed, "direction": direction,
+                  "profile": self.profile}
+        if depth is not None:
+            result["depth"] = depth
+        return result
+
+
+@dataclass(frozen=True)
 class PMWave:
     """Pierson–Moskowitz sea for supported hydrodynamic or Morison bodies.
 
@@ -222,6 +255,7 @@ class PMWave:
     spreading: tuple[float, ...] | None = None
     frequency_range: tuple[float, float] | None = None
     water_depth: float | None = None
+    current: Current | None = None
 
     def as_case(self) -> dict:
         if self.seed is not None and self.phase_file is not None:
@@ -239,6 +273,10 @@ class PMWave:
             wave["frequency_range"] = list(self.frequency_range)
         if self.water_depth is not None:
             wave["water_depth"] = self.water_depth
+        if self.current is not None:
+            if not isinstance(self.current, Current):
+                raise TypeError("PMWave.current must be Current")
+            wave["current"] = self.current.as_case()
         if self.seed is not None:
             wave["seed"] = self.seed
         if self.phase_file is not None:

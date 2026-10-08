@@ -333,6 +333,10 @@ def solve_fixed_morison_irregular(
     ramp_time: float,
     rho: float = 1025.0,
     g: float = 9.81,
+    current_speed: float = 0.0,
+    current_direction: float = 0.0,
+    current_profile: str = "uniform",
+    current_depth: float | None = None,
 ) -> FixedMorisonResponse:
     """Evaluate a stationary body's Cartesian Morison force at every sample."""
     center = np.asarray(center_gravity, dtype=float)
@@ -341,6 +345,13 @@ def solve_fixed_morison_irregular(
     if (not np.isfinite([dt, end_time, ramp_time, rho, g]).all()
             or dt <= 0 or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0):
         raise ValueError("fixed Morison time and fluid settings are invalid")
+    if (not np.isfinite([current_speed, current_direction]).all()
+            or current_speed < 0 or not -360 <= current_direction <= 360
+            or current_profile not in ("uniform", "power", "linear")
+            or (current_profile != "uniform" and
+                (current_depth is None or not np.isfinite(current_depth)
+                 or current_depth <= 0))):
+        raise ValueError("fixed Morison current settings are invalid")
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be a multiple of dt")
@@ -379,8 +390,10 @@ def solve_fixed_morison_irregular(
             or np.any(width <= 0) or np.any(spreading < 0)
             or not np.isclose(spreading.sum(), 1, atol=1e-12)):
         raise ValueError("invalid directional irregular-wave components")
+    if current_speed and len(directions) != 1:
+        raise ValueError("fixed Morison current currently needs one incident heading")
     k = finite_depth_wavenumber(omega, water_depth=water_depth, gravity=g)
-    time = np.arange(steps + 1) * dt
+    time = np.arange(steps + 1, dtype=float) * dt
     ramp = np.ones_like(time)
     if ramp_time:
         before = time < ramp_time
@@ -388,6 +401,8 @@ def solve_fixed_morison_irregular(
     elevation = np.zeros_like(time)
     force = np.zeros((len(time), 6))
     headings = np.deg2rad(directions)
+    current_heading = np.deg2rad(current_direction)
+    current_axis = np.array([np.cos(current_heading), np.sin(current_heading), 0.0])
 
     for start in range(0, len(time), 512):
         stop = min(start + 512, len(time))
@@ -439,6 +454,16 @@ def solve_fixed_morison_irregular(
                     horizontal_velocity * direction[1],
                     vertical_velocity,
                 ))
+                if current_speed:
+                    if current_profile == "uniform":
+                        current_at_point = current_speed
+                    elif world[2] <= -current_depth:
+                        current_at_point = 0.0
+                    else:
+                        fraction = 1 + world[2] / current_depth
+                        exponent = 1 / 7 if current_profile == "power" else 1
+                        current_at_point = current_speed * fraction**exponent
+                    velocity += local_ramp[:, None] * current_at_point * current_axis
                 acceleration = np.column_stack((
                     horizontal_acceleration * direction[0],
                     horizontal_acceleration * direction[1],
