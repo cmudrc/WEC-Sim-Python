@@ -442,7 +442,9 @@ class GeneralizedDynamics:
                 self.delayed_body_acceleration = tuple(delayed)
             known = known_radiation(step)
             trial_speed = v[step - 1].copy()
-            for _ in range(12):
+            # Mesh-pressure forces can make the trapezoidal fixed point
+            # slower to converge near the instantaneous waterline.
+            for _ in range(30):
                 trial_coordinate = q[step - 1] + dt * (v[step - 1] + trial_speed) / 2
                 trial_acceleration = self.acceleration(
                     time[step], trial_coordinate, trial_speed,

@@ -1,7 +1,8 @@
 """Instantaneous free-surface forces on a triangulated heaving body.
 
 This implements WEC-Sim's nonlinearHydro=2 regular-wave force construction
-for a body constrained to heave. Mesh triangles are in body coordinates about
+for a body constrained to heave, with constant or convolution radiation.
+Mesh triangles are in body coordinates about
 the center of gravity, as required by WEC-Sim's geometry import.
 """
 
