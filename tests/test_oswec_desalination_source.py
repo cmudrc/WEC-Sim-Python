@@ -50,6 +50,9 @@ def test_published_250_bin_wave():
     assert wave.shape == (30_001, 2)
     np.testing.assert_allclose(sea.elevation, wave[:, 1], rtol=0,
                                atol=2e-12)
+    body = _source("Desalination_body1")
+    np.testing.assert_allclose(sea.excitation_force[:, :6], body[:, 19:25],
+                               rtol=0, atol=1e-6)
 
 
 def test_published_body_local_rod_motion():
