@@ -1,6 +1,7 @@
 """Pair the published Sphere Mean_Drift application with pinned MATLAB."""
 
 import os
+import json
 from pathlib import Path
 
 import h5py
@@ -10,6 +11,7 @@ from scipy.interpolate import CubicSpline
 from scipy.signal import fftconvolve
 
 from wecsim import RegularCICWave, WEC
+from wecsim.cli import main as cli_main
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
@@ -118,3 +120,24 @@ def test_sphere_control_surface_drift_matches_matlab_motion_and_forces():
             f"{('surge', 'heave', 'pitch')[(0, 2, 4).index(axis)]} "
             f"radiation force {error}"
         )
+
+
+def test_sphere_mean_drift_cli_labels_each_force_component(tmp_path):
+    hydro = (Path(APPLICATIONS) / "Mean_Drift/hydroData/sphere.h5").resolve()
+    wec = WEC("Sphere mean drift")
+    sphere = wec.body("sphere", hydro, inertia=(837.75804096,) * 3,
+                      mean_drift="control_surface")
+    for axis in ("surge", "heave", "pitch"):
+        wec.coordinate(axis, sphere.move(axis))
+    case = wec.to_case(RegularCICWave(0.1, 2), dt=0.01,
+                       end_time=0, ramp_time=20, radiation_memory=10)
+    case_file = tmp_path / "case.json"
+    case_file.write_text(json.dumps(case), encoding="utf-8")
+    output = tmp_path / "motion.csv"
+    cli_main([str(case_file), "--output", str(output)])
+    header = output.read_text(encoding="utf-8").splitlines()[0].split(",")
+    values = np.loadtxt(output, delimiter=",", skiprows=1)
+    assert len(header) == values.size
+    for kind in ("mean_drift_force", "excitation_force"):
+        for axis in ("surge", "sway", "heave", "roll", "pitch", "yaw"):
+            assert f"body1_{kind}_{axis}" in header

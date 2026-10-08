@@ -78,8 +78,16 @@ def main(argv=None):
         columns.append("body1_total_heave_force")
         arrays.append(response.total_heave_force)
     for name, values in response.extra_outputs:
-        columns.append(name)
-        arrays.append(values)
+        values = np.asarray(values)
+        if values.shape == (len(response.time),):
+            columns.append(name)
+            arrays.append(values)
+        elif values.shape == (len(response.time), 6):
+            for dof, axis in enumerate(AXES):
+                columns.append(f"{name}_{axis}")
+                arrays.append(values[:, dof])
+        else:
+            raise ValueError(f"extra output {name} has unsupported shape")
     values = np.column_stack(arrays)
     if not np.isfinite(values).all():
         raise RuntimeError("the dynamics produced nonfinite output")
