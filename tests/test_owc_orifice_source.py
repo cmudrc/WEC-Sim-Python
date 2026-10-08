@@ -239,6 +239,14 @@ def test_owc_coupled_motion_before_source_air_flag(tmp_path):
                unwrapped_pitch[early], 0.010, "OWC early physical pitch")
     _max_error(result.flexible_modes["OWC"].position[early, 0],
                flexible[early, 0], 0.0075, "OWC early flexible mode")
+    _max_error(result.bodies["OWC"].position[:, 4], source[:, 5],
+               0.013, "OWC Euler pitch branch")
+    assert np.count_nonzero(
+        np.abs(result.bodies["OWC"].position[:, 3] - source[:, 4]) > 1
+    ) <= 2
+    assert np.count_nonzero(
+        np.abs(result.bodies["OWC"].position[:, 5] - source[:, 6]) > 1
+    ) <= 2
     pto = result.ptos["orifice"]
     _max_error(pto.absorbed_power, -pto.force * pto.velocity,
                1e-8, "coupled orifice passivity")
