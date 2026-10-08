@@ -16,7 +16,8 @@ from .caseDynamics import CaseResponse, run_case
 from .hardStops import LinearHardStops
 from .hydraulic import (
     CompressibleCylinder, ConstantEfficiencyHydraulicMotor,
-    GasChargedAccumulator, RectifiedHydraulicPTO, RectifyingCheckValve,
+    GasChargedAccumulator, IdealDoubleActingCylinder, RectifiedHydraulicPTO,
+    RectifyingCheckValve,
 )
 from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 from .morison import MorisonElement
@@ -49,7 +50,8 @@ __all__ = [
     "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
     "AdjustableRodCrank", "FixedRodCrank", "PitchRodLinkage",
     "ReverseOsmosisMembrane",
-    "GasChargedAccumulator", "RectifiedHydraulicPTO", "RectifyingCheckValve",
+    "GasChargedAccumulator", "IdealDoubleActingCylinder",
+    "RectifiedHydraulicPTO", "RectifyingCheckValve",
     "DiscretePILoadController", "EquivalentCircuitGenerator",
     "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",
     "OSWECHydraulicResponse", "run_oswec_rectified_hydraulic",
