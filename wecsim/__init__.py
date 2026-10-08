@@ -27,6 +27,7 @@ from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenera
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
+from .oswecDesalination import OSWECDesalinationResponse, run_oswec_desalination
 from .irregularWave import (
     FullDirectionalComponents, IrregularResponse,
     imported_full_directional_components, synthesize_full_directional_response,
@@ -61,5 +62,6 @@ __all__ = [
     "DiscretePILoadController", "EquivalentCircuitGenerator",
     "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",
     "OSWECHydraulicResponse", "run_oswec_rectified_hydraulic",
+    "OSWECDesalinationResponse", "run_oswec_desalination",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]

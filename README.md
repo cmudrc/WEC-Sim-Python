@@ -996,8 +996,7 @@ anchor and flap-local endpoint in the x/z plane. Its stroke and speed pair
 with the 300 s MATLAB source trace.
 `ReverseOsmosisMembrane` also exposes the published osmotic valve and linear
 hydraulic-resistance settings as a Python object. Given an inlet pressure,
-`permeate_flow(pressure)` solves their series pressure drop. It does not
-predict that pressure or the coupled flap motion.
+`permeate_flow(pressure)` solves their series pressure drop.
 `GasChargedAccumulator` accepts optional atmospheric pressure, dead gas
 volume, and hard-stop settings for the published Desalination accumulator.
 Given its measured inlet flow and startup pressure, the Python component
@@ -1043,6 +1042,40 @@ valves = FourValveRectifiedCylinder(
 pressure_a, pressure_b = valves.chamber_pressures(0.1, state.pressure)
 rod_force = valves.cylinder.force(pressure_a, pressure_b)
 ```
+
+For the coupled published flap and desalination PTO, pass those configured
+`network` and `valves` objects to the runner with the body-local rod endpoint
+and Morison elements:
+
+```python
+from wecsim import MorisonElement, PitchRodLinkage, run_oswec_desalination
+from wecsim.irregularWave import pm_equal_energy_components
+
+hydro_file = "path/to/oswec.h5"
+sea = pm_equal_energy_components(
+    hydro_file, significant_height=2.64, peak_period=9.86,
+    directions=(0,), spreading=(1,), count=250, seed=7,
+)
+linkage = PitchRodLinkage(
+    anchor=(5.6021271782, -8.7), hinge=(0, -8.9),
+    body_center=(0, -3.9), body_point=(.9, -3.1),
+)
+morison = [MorisonElement(
+    point=(0, 0, z), drag_coefficient=(1, 1, 1),
+    added_mass_coefficient=(0, 0, 0), area=(32.4, 0, 32.4), volume=0,
+) for z in (-3, -1.2, .6, 2.4, 4.2)]
+response = run_oswec_desalination(
+    hydro_file, sea, network, valves, linkage, morison,
+)
+print(response.pitch, response.high_pressure, response.permeate_flow)
+```
+
+The runner advances incident waves, flap motion, radiation memory, Morison
+drag, chamber force, and hydraulic pressure together. Its Morison drag follows
+the published source convention for this case. For a paired MATLAB comparison,
+pass the source's saved phase matrix instead of a Python seed. The raw chamber
+force in the pinned Simscape run alternates at the 0.01 s output interval, so
+the paired force check uses a 0.1 s mean and a separate total-work check.
 
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source

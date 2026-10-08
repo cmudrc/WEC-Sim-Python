@@ -10,8 +10,10 @@ from scipy.ndimage import uniform_filter1d
 from wecsim import (
     DynamicPressureReliefValve, FourValveRectifiedCylinder,
     GasChargedAccumulator, IdealDoubleActingCylinder,
-    ReverseOsmosisHydraulicNetwork, ReverseOsmosisMembrane,
+    MorisonElement, PitchRodLinkage, ReverseOsmosisHydraulicNetwork,
+    ReverseOsmosisMembrane, run_oswec_desalination,
 )
+from wecsim.irregularWave import pm_equal_energy_components
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -159,3 +161,65 @@ def test_published_chamber_force_without_matching_pressure_chatter(
     np.testing.assert_array_equal(valve[:, 0], hydraulic[:, 0])
     np.testing.assert_array_equal(valve[:, 1] > 0, cylinder[:, 2] > 0)
     assert np.mean(valve[:, 2] * valve[:, 3] < -1e-6) > .2
+
+
+def test_published_fully_coupled_flap_and_desalination():
+    hydro_file = os.environ.get("WEC_SIM_OSWEC_H5")
+    if not hydro_file:
+        pytest.skip("pinned OSWEC hydrodynamics absent")
+    source_components = _source("components")
+    components = pm_equal_energy_components(
+        hydro_file, significant_height=2.64, peak_period=9.86,
+        directions=(0,), spreading=(1,), count=250,
+        phase=source_components[:, 3:4],
+    )
+    linkage = PitchRodLinkage(
+        anchor=(5.6021271782, -8.7), hinge=(0, -8.9),
+        body_center=(0, -3.9), body_point=(.9, -3.1),
+    )
+    elements = [MorisonElement(
+        point=(0, 0, z), drag_coefficient=(1, 1, 1),
+        added_mass_coefficient=(0, 0, 0), area=(32.4, 0, 32.4),
+        volume=0,
+    ) for z in (-3, -1.2, .6, 2.4, 4.2)]
+    response = run_oswec_desalination(
+        hydro_file, components, _network(),
+        FourValveRectifiedCylinder(
+            cylinder=IdealDoubleActingCylinder(.26, .26),
+            max_area=.05, leakage_area=1e-8,
+            discharge_coefficient=.7, fluid_density=850,
+        ),
+        linkage, elements,
+    )
+    body, cylinder, hydraulic, wave = (
+        _source("Desalination_body1"), _source("cylinder"),
+        _source("simout1"), _source("wave"),
+    )
+    assert response.time.shape == (30_001,)
+    np.testing.assert_allclose(response.time, body[:, 0], rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.wave_elevation, wave[:, 1],
+                               rtol=0, atol=2e-12)
+    np.testing.assert_allclose(response.excitation_force, body[:, 19:25],
+                               rtol=0, atol=1e-6)
+    assert np.max(np.abs(response.pitch - body[:, 5])) < .02
+    assert np.max(np.abs(response.pitch_velocity - body[:, 11])) < .01
+    assert np.max(np.abs(response.body_position - body[:, 1:4])) < .1
+    assert np.max(np.abs(response.body_velocity - body[:, 7:10])) < .05
+    assert np.max(np.abs(response.rod_speed - cylinder[:, 2])) < .02
+    assert np.max(np.abs(response.high_pressure - hydraulic[:, 6])) < 40_000
+    stroke, _ = linkage.stroke_and_jacobian(response.pitch)
+    source_stroke, _ = linkage.stroke_and_jacobian(body[:, 5])
+    assert np.max(np.abs(stroke - source_stroke)) < .05
+
+    # A 0.1 s mean removes the legacy source's alternating chamber-pressure
+    # artifact; total work remains a separate energy check.
+    force_error = (
+        uniform_filter1d(response.rod_force, size=10, mode="nearest")
+        - uniform_filter1d(cylinder[:, 7], size=10, mode="nearest")
+    )
+    assert np.sqrt(np.mean(force_error ** 2)) < 150_000
+    source_work = np.trapezoid(cylinder[:, 7] * cylinder[:, 2], body[:, 0])
+    python_work = np.trapezoid(
+        response.rod_force * response.rod_speed, response.time,
+    )
+    assert abs(python_work - source_work) / abs(source_work) < .02
