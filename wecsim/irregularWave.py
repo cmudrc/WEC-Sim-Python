@@ -331,7 +331,7 @@ def synthesize_irregular_response(
     g: float = 9.81,
     excitation_interpolation: str = "linear",
 ) -> IrregularResponse:
-    """Return wave elevation and six-component excitation at uniform times."""
+    """Return wave elevation and all body-DOF excitation at uniform times."""
     if not np.isfinite([dt, end_time, ramp_time, rho, g]).all():
         raise ValueError("time and fluid parameters must be finite")
     if dt <= 0 or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0:
@@ -360,6 +360,7 @@ def synthesize_irregular_response(
     body = BodyClass(str(h5_file))
     body.bodyNumber = body_number
     body.readH5file()
+    body_dof = int(np.asarray(body.dof).item())
     if excitation_interpolation == "linear":
         body.irrExcitation(omega, len(omega), direction, rho, g)
         real = np.transpose(body.hydroForce["fExt"]["re"], (1, 0, 2))
@@ -378,7 +379,7 @@ def synthesize_irregular_response(
                       hydro["excitation"]["im"],
                       hydro["mean_drift"]):
             values = np.asarray(field, dtype=float)
-            samples = np.empty((len(omega), len(direction), 6))
+            samples = np.empty((len(omega), len(direction), body_dof))
             for index, heading in enumerate(direction):
                 matches = np.flatnonzero(np.isclose(
                     bem_direction, heading, rtol=0, atol=1e-10,
@@ -398,7 +399,7 @@ def synthesize_irregular_response(
 
     time = np.arange(steps + 1) * dt
     elevation = np.zeros(len(time))
-    excitation = np.zeros((len(time), 6))
+    excitation = np.zeros((len(time), body_dof))
     for start in range(0, len(time), 128):
         stop = min(start + 128, len(time))
         t = time[start:stop]
