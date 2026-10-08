@@ -387,7 +387,8 @@ class WEC:
         """Attach a Cartesian Morison element at a body-local point.
 
         Moving hydrodynamic bodies currently support axial heave elements in
-        still water; the case runner validates that restricted layout.
+        still water or zero-heading regular waves; the case runner validates
+        that restricted layout.
         """
         if not any(body is item for item in self.bodies):
             raise ValueError("Morison body must belong to this WEC")
