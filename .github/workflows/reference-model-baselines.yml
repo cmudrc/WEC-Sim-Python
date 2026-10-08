@@ -43,6 +43,7 @@ on:
       - 'tests/test_rm3_hydraulic_parity.py'
       - 'tests/test_oswec_hydraulic_source.py'
       - 'tests/test_oswec_hydraulic_parity.py'
+      - 'tests/test_oswec_desalination_source.py'
       - 'tests/test_crank.py'
       - 'tests/test_hydraulic_cylinder.py'
       - 'tests/test_hydraulic_valve.py'
@@ -239,6 +240,11 @@ jobs:
           WEC_SIM_RM3_H5: applications/_Common_Input_Files/RM3/hydroData/rm3.h5
       - run: python -m pytest -q tests/test_crank.py tests/test_oswec_hydraulic_source.py tests/test_oswec_hydraulic_parity.py
         if: matrix.model == 'OSWEC_HYDRAULIC_SOURCE'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+          WEC_SIM_OSWEC_H5: applications/_Common_Input_Files/OSWEC/hydroData/oswec.h5
+      - run: python -m pytest -q tests/test_crank.py tests/test_oswec_desalination_source.py
+        if: matrix.model == 'OSWEC_DESALINATION_SOURCE'
         env:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
           WEC_SIM_OSWEC_H5: applications/_Common_Input_Files/OSWEC/hydroData/oswec.h5

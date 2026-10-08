@@ -6,7 +6,7 @@ from .api import (
     PTOHistory, RegularCICWave, RegularWave, SimpleDirectDrive, VariableHydro, WEC, WECResult, WorldPoint,
 )
 from .controls import DeclutchingControl, LatchingControl
-from .crank import AdjustableRodCrank, FixedRodCrank
+from .crank import AdjustableRodCrank, FixedRodCrank, PitchRodLinkage
 from .directLinearGenerator import (
     DirectLinearGenerator, DirectLinearGeneratorSignals,
     RM3DirectGeneratorResponse, run_rm3_direct_linear_generator,
@@ -46,7 +46,7 @@ __all__ = [
     "run_case", "solve_rm3_regular", "SphereMPCResult", "run_sphere_mpc",
     "RM3DirectGeneratorResponse", "run_rm3_direct_linear_generator",
     "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
-    "AdjustableRodCrank", "FixedRodCrank",
+    "AdjustableRodCrank", "FixedRodCrank", "PitchRodLinkage",
     "GasChargedAccumulator", "RectifiedHydraulicPTO", "RectifyingCheckValve",
     "DiscretePILoadController", "EquivalentCircuitGenerator",
     "RM3HydraulicResponse", "run_rm3_rectified_hydraulic",

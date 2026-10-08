@@ -3,7 +3,7 @@
 import numpy as np
 import pytest
 
-from wecsim.crank import AdjustableRodCrank, FixedRodCrank
+from wecsim.crank import AdjustableRodCrank, FixedRodCrank, PitchRodLinkage
 
 
 @pytest.mark.parametrize("linkage", [
@@ -26,3 +26,20 @@ def test_fixed_rod_rejects_unreachable_angle():
     linkage = FixedRodCrank(3, 1.3, 2)
     with pytest.raises(ValueError, match="outside"):
         linkage.stroke_and_jacobian(np.pi)
+
+
+def test_body_local_pitch_rod_jacobian():
+    linkage = PitchRodLinkage(
+        anchor=(5.6021271782, -8.7), hinge=(0, -8.9),
+        body_center=(0, -3.9), body_point=(.9, -3.1),
+    )
+    angles = np.linspace(-.7, .7, 31)
+    stroke, jacobian = linkage.stroke_and_jacobian(angles)
+    delta = 1e-6
+    finite_difference = (
+        linkage.stroke_and_jacobian(angles + delta)[0]
+        - linkage.stroke_and_jacobian(angles - delta)[0]
+    ) / (2 * delta)
+    np.testing.assert_allclose(stroke[15], 0, rtol=0, atol=1e-14)
+    np.testing.assert_allclose(jacobian, finite_difference,
+                               rtol=0, atol=1e-9)
