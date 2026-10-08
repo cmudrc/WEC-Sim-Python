@@ -126,3 +126,15 @@ def test_published_owc_wave_and_seventh_excitation_channel():
     _max_error(np.asarray(force["linearHydroRestCoef"]),
                _load("hydrostatic_stiffness"), 1e-9,
                "hydrostatic stiffness")
+
+    # The source flexible state equation applies the orifice reaction in
+    # addition to its logged hydrodynamic force balance.
+    total = flexible[:, 3]
+    hydro_terms = flexible[:, 4:]
+    _max_error(total, hydro_terms[:, 0] - hydro_terms[:, 1:].sum(axis=1),
+               1e-8, "source flexible hydrodynamic force balance")
+    source_orifice = _load("orifice")
+    reaction = np.interp(wave[:, 0], source_orifice[:, 0], source_orifice[:, 1])
+    mass = float(np.asarray(force["gbm"]["mass_ff"])[0, 0])
+    _max_error(mass * flexible[:, 2], total + reaction, 1e-6,
+               "source flexible acceleration and orifice balance")
