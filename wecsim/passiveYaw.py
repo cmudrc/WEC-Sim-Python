@@ -34,7 +34,7 @@ class PassiveYawExcitation:
                 or not np.isfinite(frequency).all()
                 or not np.all(np.diff(headings) > 0)
                 or not np.all(np.diff(frequency) > 0)
-                or np.max(np.diff(np.r_[headings, headings[0] + 360])) > 15
+                or np.max(np.diff(np.r_[headings, headings[0] + 360])) >= 180
                 or omega < frequency[0] or omega > frequency[-1]):
             raise ValueError(
                 "passive yaw needs full-circle BEM headings and an in-range frequency"
