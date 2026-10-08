@@ -40,16 +40,21 @@ switch string(model)
         end
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
-    case "ELLIPSOID_NLH_REG"
+    case {"ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC"}
         hydroDir = fullfile(repoRoot, 'applications', 'Nonlinear_Hydro', ...
             'hydroData');
         cd(hydroDir);
         if ~isfile('ellipsoid.h5')
             bemio;
         end
-        cases = "ode4_Regular";
+        if string(model) == "ELLIPSOID_NLH_REG"
+            waveDir = "Regular";
+        else
+            waveDir = "RegularCIC";
+        end
+        cases = "ode4_" + waveDir;
         caseDirs = string(fullfile(repoRoot, 'applications', ...
-            'Nonlinear_Hydro', 'ode4', 'Regular'));
+            'Nonlinear_Hydro', 'ode4', waveDir));
     case "SPHERE_MEAN_DRIFT"
         hydroDir = fullfile(repoRoot, 'applications', 'Mean_Drift', 'hydroData');
         cd(hydroDir);
@@ -403,18 +408,23 @@ for iCase = 1:numel(cases)
             fullfile(outDir, 'OSWEC_wave_directions.csv'));
         writematrix(waves.waveAmpTime, fullfile(outDir, 'OSWEC_wave_elevation.csv'));
     end
-    if string(model) == "ELLIPSOID_NLH_REG"
+    if any(string(model) == ["ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC"])
+        if string(model) == "ELLIPSOID_NLH_REG"
+            waveType = 'regular';
+        else
+            waveType = 'regularCIC';
+        end
         assert(simu.dt == 0.05 && simu.endTime == 150 && ...
             simu.rampTime == 50 && simu.rho == 1025 && ...
-            strcmp(waves.type, 'regular') && waves.height == 4 && ...
+            strcmp(waves.type, waveType) && waves.height == 4 && ...
             waves.period == 6 && body(1).nonlinearHydro == 2 && ...
             pto(1).damping == 1200000 && ...
             isequal(constraint(1).location, [0 0 -12.5]), ...
             'The pinned nonlinear-hydro input changed');
         writematrix([output.wave.time(:), output.wave.elevation(:)], ...
-            fullfile(outDir, 'ELLIPSOID_NLH_REG_wave.csv'));
+            fullfile(outDir, string(model) + '_wave.csv'));
         writematrix([body(1).mass, body(1).inertia], ...
-            fullfile(outDir, 'ELLIPSOID_NLH_REG_mass.csv'));
+            fullfile(outDir, string(model) + '_mass.csv'));
     end
     if string(model) == "OSWEC_MULTI_WAVE"
         assert(simu.dt == 0.1 && simu.endTime == 100 && ...
@@ -608,7 +618,7 @@ for iCase = 1:numel(cases)
             values = [values, response.forceRadiationDamping, ...
                 response.forceAddedMass, response.forceRestoring];
         end
-        if string(model) == "ELLIPSOID_NLH_REG"
+        if any(string(model) == ["ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC"])
             values = [values, response.forceRadiationDamping, ...
                 response.forceAddedMass, response.forceRestoring, ...
                 response.forceMorisonAndViscous, response.acceleration];
