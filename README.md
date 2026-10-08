@@ -207,6 +207,13 @@ keeps continuous interpolation. The sampled setting is available for PM waves
 with one incident direction; small trajectory differences can change its
 update sample and accumulate over long runs.
 
+For the published `Variable_Hydro/Passive_Yaw` regular-wave case, pass
+`yaw_heading_bank=range(-40, 41, 2)` alongside `passive_yaw=True` on the
+flap. This chooses the nearest 2° BEM heading from the wave direction relative
+to yaw. The source-path force and heading selection are paired to MATLAB;
+the long trajectory remains sensitive to one-sample heading changes (see
+[`PARITY.md`](PARITY.md)).
+
 The published `Morison_Element/morisonElement` application has a fixed
 monopile and tower without HDF5 hydrodynamic bodies. Its nonlinear drag and
 fluid-inertia force can be configured with a body-local point:
