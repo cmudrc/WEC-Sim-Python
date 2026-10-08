@@ -5,7 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 from scipy.optimize import brentq
 
-from .hydraulic import GasChargedAccumulator
+from .hydraulic import GasChargedAccumulator, IdealDoubleActingCylinder
 
 
 @dataclass(frozen=True)
@@ -229,3 +229,91 @@ class ReverseOsmosisHydraulicNetwork:
             pressure, previous.liquid_volume + dt * accumulator, area,
             feed_flow, permeate, brine, recovered, accumulator, relief,
         )
+
+
+@dataclass(frozen=True)
+class FourValveRectifiedCylinder:
+    """Two chamber pressures from prescribed rod speed and high/low lines.
+
+    Each chamber connects to both lines through a two-way directional valve.
+    Positive rod speed opens B-to-high and A-to-low; negative speed reverses
+    the paths. This solves the documented passive orifice law, without the
+    alternating pressure artifact in the pinned legacy Simscape trace.
+    """
+
+    cylinder: IdealDoubleActingCylinder
+    max_area: float
+    leakage_area: float
+    discharge_coefficient: float
+    fluid_density: float
+    laminar_pressure_ratio: float = .999
+    atmospheric_pressure: float = 101_325.
+
+    def __post_init__(self):
+        values = np.asarray((
+            self.max_area, self.leakage_area, self.discharge_coefficient,
+            self.fluid_density, self.laminar_pressure_ratio,
+            self.atmospheric_pressure,
+        ), dtype=float)
+        if (not isinstance(self.cylinder, IdealDoubleActingCylinder)
+                or not np.isfinite(values).all() or np.any(values <= 0)
+                or self.leakage_area > self.max_area
+                or not 0 < self.laminar_pressure_ratio < 1):
+            raise ValueError("rectified cylinder valve settings are invalid")
+
+    def _flow(self, pressure_drop: float, area: float,
+              average_pressure: float) -> float:
+        critical = ((self.atmospheric_pressure + average_pressure)
+                    * (1 - self.laminar_pressure_ratio))
+        return (self.discharge_coefficient * area
+                * np.sqrt(2 / self.fluid_density) * pressure_drop
+                / (pressure_drop * pressure_drop + critical * critical) ** .25)
+
+    def chamber_pressures(self, rod_speed: float, high_pressure: float,
+                          low_pressure: float = 0.) -> tuple[float, float]:
+        """Solve A/B pressures from the two incompressible chamber balances."""
+        values = np.asarray((rod_speed, high_pressure, low_pressure), dtype=float)
+        if not np.isfinite(values).all() or high_pressure < low_pressure:
+            raise ValueError("rod speed and ordered line pressures must be finite")
+
+        if rod_speed > 0:
+            area_a_high, area_a_low = self.leakage_area, self.max_area
+            area_b_high, area_b_low = self.max_area, self.leakage_area
+        else:
+            area_a_high, area_a_low = self.max_area, self.leakage_area
+            area_b_high, area_b_low = self.leakage_area, self.max_area
+
+        def solve(target_flow, high_area, low_area):
+            def balance(pressure):
+                return (
+                    self._flow(pressure - high_pressure, high_area,
+                               (pressure + high_pressure) / 2)
+                    + self._flow(pressure - low_pressure, low_area,
+                                 (pressure + low_pressure) / 2)
+                    - target_flow
+                )
+
+            span = max(high_pressure - low_pressure, 1e6)
+            lower, upper = low_pressure - span, high_pressure + span
+            for _ in range(32):
+                if balance(lower) <= 0 and balance(upper) >= 0:
+                    break
+                span *= 2
+                lower, upper = low_pressure - span, high_pressure + span
+            else:
+                raise ValueError("could not bracket cylinder chamber pressure")
+            return brentq(balance, lower, upper)
+
+        pressure_a = solve(-self.cylinder.area_a * rod_speed,
+                           area_a_high, area_a_low)
+        pressure_b = solve(self.cylinder.area_b * rod_speed,
+                           area_b_high, area_b_low)
+        return pressure_a, pressure_b
+
+    def rod_force(self, rod_speed: float, high_pressure: float,
+                  low_pressure: float = 0.) -> float:
+        """Cylinder rod force in newtons from the solved chamber pressures."""
+        pressure_a, pressure_b = self.chamber_pressures(
+            rod_speed, high_pressure, low_pressure,
+        )
+        return float(self.cylinder.force(pressure_a, pressure_b))

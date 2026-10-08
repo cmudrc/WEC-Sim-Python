@@ -8,7 +8,8 @@ from .api import (
 from .controls import DeclutchingControl, LatchingControl
 from .crank import AdjustableRodCrank, FixedRodCrank, PitchRodLinkage
 from .desalination import (
-    DynamicPressureReliefValve, ReverseOsmosisHydraulicNetwork,
+    DynamicPressureReliefValve, FourValveRectifiedCylinder,
+    ReverseOsmosisHydraulicNetwork,
     ReverseOsmosisHydraulicState, ReverseOsmosisMembrane,
 )
 from .directLinearGenerator import (
@@ -53,6 +54,7 @@ __all__ = [
     "CompressibleCylinder", "ConstantEfficiencyHydraulicMotor",
     "AdjustableRodCrank", "FixedRodCrank", "PitchRodLinkage",
     "ReverseOsmosisMembrane", "DynamicPressureReliefValve",
+    "FourValveRectifiedCylinder",
     "ReverseOsmosisHydraulicNetwork", "ReverseOsmosisHydraulicState",
     "GasChargedAccumulator", "IdealDoubleActingCylinder",
     "RectifiedHydraulicPTO", "RectifyingCheckValve",

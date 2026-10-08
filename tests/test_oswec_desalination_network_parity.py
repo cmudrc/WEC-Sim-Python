@@ -5,9 +5,11 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from scipy.ndimage import uniform_filter1d
 
 from wecsim import (
-    DynamicPressureReliefValve, GasChargedAccumulator,
+    DynamicPressureReliefValve, FourValveRectifiedCylinder,
+    GasChargedAccumulator, IdealDoubleActingCylinder,
     ReverseOsmosisHydraulicNetwork, ReverseOsmosisMembrane,
 )
 
@@ -89,7 +91,8 @@ def test_published_network_from_source_feed_flow():
                                rtol=0, atol=1e-2)
 
 
-def test_published_network_from_rod_speed_alone():
+@pytest.fixture(scope="module")
+def rod_driven_trace():
     hydraulic, cylinder, relief = (
         _source("simout1"), _source("cylinder"), _source("relief")
     )
@@ -109,6 +112,11 @@ def test_published_network_from_rod_speed_alone():
             state.recovered_feed_flow, state.accumulator_flow,
             state.relief_flow,
         )
+    return hydraulic, cylinder, relief, predicted
+
+
+def test_published_network_from_rod_speed_alone(rod_driven_trace):
+    hydraulic, _, relief, predicted = rod_driven_trace
     references = np.column_stack((
         hydraulic[:, 6], hydraulic[:, 2], hydraulic[:, 3],
         hydraulic[:, 4], hydraulic[:, 7], relief[:, 3],
@@ -116,3 +124,38 @@ def test_published_network_from_rod_speed_alone():
     limits = [500, 1e-5, 1e-5, 1e-5, 3e-3, 3e-3]
     assert np.all(np.max(np.abs(predicted - references), axis=0) < limits)
     assert np.max(predicted[:, 0]) > 5e6
+
+
+def test_published_chamber_force_without_matching_pressure_chatter(
+        rod_driven_trace):
+    hydraulic, cylinder, _, predicted = rod_driven_trace
+    valves = FourValveRectifiedCylinder(
+        cylinder=IdealDoubleActingCylinder(.26, .26),
+        max_area=.05, leakage_area=1e-8,
+        discharge_coefficient=.7, fluid_density=850,
+    )
+    force = np.array([
+        valves.rod_force(speed, pressure)
+        for speed, pressure in zip(cylinder[:, 2], predicted[:, 0])
+    ])
+    source_force = cylinder[:, 7]
+    # The pinned legacy solver alternates chamber pressure every 0.01 s;
+    # smoothing both signals over 0.1 s tests their resolved force. The raw
+    # mismatch remains explicit so this cannot be read as pointwise parity.
+    raw_rms = np.sqrt(np.mean((force - source_force) ** 2))
+    smooth_error = (
+        uniform_filter1d(force, size=10, mode="nearest")
+        - uniform_filter1d(source_force, size=10, mode="nearest")
+    )
+    assert raw_rms > 1e6
+    assert np.sqrt(np.mean(smooth_error ** 2)) < 1e5
+    source_work = np.trapezoid(source_force * cylinder[:, 2], hydraulic[:, 0])
+    python_work = np.trapezoid(force * cylinder[:, 2], hydraulic[:, 0])
+    assert abs(python_work - source_work) / abs(source_work) < .03
+
+    # The valve log confirms why a raw-pressure gate would be misleading:
+    # signed flow and logged pressure drop oppose each other in many samples.
+    valve = _source("valve1")
+    np.testing.assert_array_equal(valve[:, 0], hydraulic[:, 0])
+    np.testing.assert_array_equal(valve[:, 1] > 0, cylinder[:, 2] > 0)
+    assert np.mean(valve[:, 2] * valve[:, 3] < -1e-6) > .2
