@@ -148,6 +148,24 @@ def regular_morison_source_force(
     return result
 
 
+def _axial_heave_element(element: MorisonElement):
+    if not isinstance(element, MorisonElement):
+        raise TypeError("elements must be MorisonElement values")
+    point = np.asarray(element.point, dtype=float)
+    cd = np.asarray(element.drag_coefficient, dtype=float)
+    ca = np.asarray(element.added_mass_coefficient, dtype=float)
+    area = np.asarray(element.area, dtype=float)
+    if (any(value.shape != (3,) or not np.isfinite(value).all()
+            for value in (point, cd, ca, area))
+            or not np.allclose(point[:2], 0, rtol=0, atol=1e-12)
+            or any(not np.allclose(value[:2], 0, rtol=0, atol=1e-12)
+                   for value in (cd, ca, area))
+            or np.any(cd < 0) or np.any(ca < 0) or np.any(area < 0)
+            or not np.isfinite(element.volume) or element.volume <= 0):
+        raise ValueError("heave Morison elements need axial, nonnegative geometry")
+    return point[2], cd[2], ca[2], area[2], element.volume
+
+
 def no_wave_heave_morison_terms(
     elements: Sequence[MorisonElement], *, center_z: float,
     heave: float, speed: float, rho: float,
@@ -163,25 +181,63 @@ def no_wave_heave_morison_terms(
     drag_force = 0.0
     added_mass = 0.0
     for element in elements:
-        if not isinstance(element, MorisonElement):
-            raise TypeError("elements must be MorisonElement values")
-        point = np.asarray(element.point, dtype=float)
-        cd = np.asarray(element.drag_coefficient, dtype=float)
-        ca = np.asarray(element.added_mass_coefficient, dtype=float)
-        area = np.asarray(element.area, dtype=float)
-        if (any(value.shape != (3,) or not np.isfinite(value).all()
-                for value in (point, cd, ca, area))
-                or not np.allclose(point[:2], 0, rtol=0, atol=1e-12)
-                or any(not np.allclose(value[:2], 0, rtol=0, atol=1e-12)
-                       for value in (cd, ca, area))
-                or np.any(cd < 0) or np.any(ca < 0) or np.any(area < 0)
-                or not np.isfinite(element.volume) or element.volume <= 0):
-            raise ValueError("heave Morison elements need axial, nonnegative geometry")
-        if center_z + heave + point[2] > 0:
+        point_z, cd, ca, area, volume = _axial_heave_element(element)
+        if center_z + heave + point_z > 0:
             continue
-        drag_force -= 0.5 * rho * cd[2] * area[2] * speed * abs(speed)
-        added_mass += rho * element.volume * ca[2]
+        drag_force -= 0.5 * rho * cd * area * speed * abs(speed)
+        added_mass += rho * volume * ca
     return drag_force, added_mass
+
+
+def regular_wave_heave_morison_terms(
+    elements: Sequence[MorisonElement], *, center_z: float,
+    heave: float, speed: float, time: float, wave_height: float,
+    wave_period: float, ramp_time: float, water_depth: float,
+    rho: float, g: float = 9.81,
+) -> tuple[float, float]:
+    """Return axial regular-wave Morison force without body acceleration and mass.
+
+    The element follows the moving heave coordinate. The fluid vertical
+    velocity and acceleration are evaluated at its current submerged point.
+    The returned added mass multiplies body acceleration in the dynamics.
+    """
+    if (not np.isfinite([center_z, heave, speed, time, wave_height,
+                         wave_period, ramp_time, rho, g]).all()
+            or time < 0 or wave_height < 0 or wave_period <= 0
+            or ramp_time < 0 or rho <= 0 or g <= 0
+            or not (np.isfinite(water_depth) or np.isposinf(water_depth))
+            or water_depth <= 0):
+        raise ValueError("regular-wave Morison heave settings are invalid")
+    omega = 2 * np.pi / wave_period
+    k = (omega * omega / g if np.isposinf(water_depth) else
+         finite_depth_wavenumber(
+             np.array([omega]), water_depth=water_depth, gravity=g,
+         )[0])
+    amplitude = wave_height / 2
+    if ramp_time and time < ramp_time:
+        amplitude *= (1 - np.cos(np.pi * time / ramp_time)) / 2
+    force = 0.0
+    added_mass = 0.0
+    for element in elements:
+        point_z, cd, ca, area, volume = _axial_heave_element(element)
+        world_z = center_z + heave + point_z
+        if world_z > 0:
+            continue
+        if k * water_depth > np.pi:
+            vertical = np.exp(k * world_z)
+        else:
+            kh = k * water_depth
+            vertical = np.sinh(k * world_z + kh) / np.cosh(kh)
+        phase = omega * time
+        fluid_speed = (-amplitude * vertical * np.sin(phase)
+                       * g * k / omega)
+        fluid_acceleration = (-amplitude * vertical * np.cos(phase)
+                              * g * k)
+        relative_speed = fluid_speed - speed
+        force += (0.5 * rho * cd * area * relative_speed * abs(relative_speed)
+                  + rho * volume * (1 + ca) * fluid_acceleration)
+        added_mass += rho * volume * ca
+    return force, added_mass
 
 
 def solve_fixed_morison_irregular(
