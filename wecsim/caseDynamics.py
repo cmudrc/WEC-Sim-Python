@@ -1,9 +1,9 @@
 """Case-driven entry point for the currently supported device layouts.
 
 The case describes wave, body, constraint, and PTO properties rather than
-naming RM3, OSWEC, or Sphere. Each supported layout feeds the common
-``GeneralizedDynamics`` engine through a validated adapter. Unsupported
-physics fails explicitly instead of silently omitting a force or DOF.
+naming RM3, OSWEC, or Sphere. Dynamic layouts feed the common
+``GeneralizedDynamics`` engine through a validated adapter; a fixed Morison
+layout evaluates stationary-body forces. Unsupported physics fails explicitly.
 """
 
 from dataclasses import dataclass
@@ -48,7 +48,7 @@ class CaseResponse:
     time: np.ndarray
     body_position: np.ndarray  # (time, body, six WEC-Sim coordinates)
     body_velocity: np.ndarray
-    hydro_files: tuple[Path, ...]
+    hydro_files: tuple[Path | None, ...]
     pto_force: np.ndarray | None = None
     pto_label: str | None = None
     wave_elevation: np.ndarray | None = None
@@ -223,11 +223,9 @@ def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
 def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     """Run one explicitly supported wave/device configuration.
 
-    ``base_dir`` resolves relative hydro and phase file paths. The accepted
-    layouts are one-body heave free decay, one-body fixed-hinge pitch, a
-    two-body floating joint, and mapped linear coordinates for compatible
-    bodies and PTO matrices.
-    Every one of these layouts uses the generalized dynamics engine.
+    ``base_dir`` resolves relative hydro and phase file paths. Supported
+    layouts include heave free decay, a fixed hinge, a floating joint, mapped
+    linear coordinates, and fixed bodies with Cartesian Morison elements.
     """
     case = _section(
         case, "case", {"simulation", "wave", "bodies", "constraint"},

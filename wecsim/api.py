@@ -171,7 +171,7 @@ class RegularCICWave:
 
 @dataclass(frozen=True)
 class PMWave:
-    """Pierson–Moskowitz sea with convolution radiation.
+    """Pierson–Moskowitz sea for supported hydrodynamic or Morison bodies.
 
     ``height`` is significant wave height in metres, ``period`` is peak
     period in seconds, and ``direction`` is the incident heading in degrees.
@@ -298,7 +298,7 @@ class WECResult:
 
 
 class WEC:
-    """Build and run a WEC with named linearized motions and PTO connections.
+    """Build supported WEC motion/PTO layouts or fixed Morison bodies.
 
     Rotations and PTO stroke are linearized about the reference pose. The
     PTO axis stays fixed in world coordinates during a run. Hydrodynamic body

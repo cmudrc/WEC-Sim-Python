@@ -210,7 +210,8 @@ force_and_moment = result.body_forces["monopile"]  # time × 6, N and N m
 The pinned MATLAB function uses the first phase column for Morison force at
 every heading, while wave elevation uses each heading's own phase.
 `phase_mode="matlab_shared"` selects that source behavior; the default
-`"directional"` uses each heading's own phase for force. Supply a saved
+`"directional"` uses each heading's own phase for force. Both modes retain
+WEC-Sim's per-heading drag calculation. Supply a saved
 three-column phase CSV to reproduce a MATLAB realization exactly.
 Moving Morison bodies, current profiles, and the function's alternative
 normal/tangential coefficient mode are not yet supported.
