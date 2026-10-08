@@ -30,6 +30,7 @@ from .nonlinearHydro import HeaveMeshHydro
 from .passiveYaw import PassiveYawExcitation, SampledPassiveYawExcitation
 from .ptoConnections import build_linear_ptos
 from .rm3Regular import solve_rm3_regular
+from .variableHydro import HeaveHydroState, integrate_variable_heave
 
 
 AXES = ("surge", "sway", "heave", "roll", "pitch", "yaw")
@@ -94,7 +95,7 @@ def _hydro_file(body, base_dir):
              {"hydro_file", "hydro_body", "mass", "pitch_inertia",
               "inertia", "coordinate_map", "name", "mean_drift", "fixed",
               "passive_yaw", "geometry_file", "nonlinear_hydro",
-              "drag_coefficient", "drag_area"})
+              "drag_coefficient", "drag_area", "variable_hydro"})
     raw = body["hydro_file"]
     if not isinstance(raw, str) or not raw:
         raise ValueError("body.hydro_file must be a file path")
@@ -268,6 +269,14 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("body.mean_drift currently requires linear_subspace")
     if "mooring" in case and kind != "floating_joint":
         raise ValueError("the joint surge mooring requires a floating_joint")
+
+    if any("variable_hydro" in body for body in bodies):
+        if kind != "linear_subspace":
+            raise ValueError("variable hydrodynamics need linear_subspace coordinates")
+        return _run_variable_heave(
+            case, sim, wave, constraint, bodies, hydro, b2b,
+            dt, end_time, ramp_time, rho, g, base,
+        )
 
     if kind == "linear_subspace":
         return _run_linear_subspace(
@@ -652,6 +661,153 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")
+
+
+def _run_variable_heave(case, sim, wave, constraint, bodies, hydro,
+                        b2b, dt, end_time, ramp_time, rho, g, base_dir):
+    """Run the published variable-draft mode with one active heave coordinate."""
+    heave_map = np.zeros((6, 1))
+    heave_map[2, 0] = 1
+    if (len(bodies) != 1 or b2b or wave["type"] != "regular"
+            or _number(wave.get("direction", 0), "wave.direction") != 0
+            or set(wave) - {"type", "height", "period", "direction"}
+            or set(constraint) - {"kind", "coordinates", "initial_coordinate",
+                                  "initial_speed"}
+            or "radiation_memory" in sim or "pto" in case
+            or "mooring" in case):
+        raise ValueError("variable hydro currently needs one heave body, regular zero-heading waves, and linear PTO connections")
+    spec = bodies[0]
+    if (set(spec) - {"name", "hydro_file", "hydro_body", "mass",
+                     "inertia", "variable_hydro"}
+            or "variable_hydro" not in spec):
+        raise ValueError("variable heave body only uses its ordered hydro states")
+    _body_number(spec, 1)
+    variable = _section(spec["variable_hydro"], "body.variable_hydro",
+                        {"states", "switch_times"}, {"states", "switch_times"})
+    raw_states = variable["states"]
+    if not isinstance(raw_states, list) or len(raw_states) < 2:
+        raise ValueError("body.variable_hydro.states needs at least two datasets")
+    if not isinstance(variable["switch_times"], list):
+        raise ValueError("body.variable_hydro.switch_times must be a list")
+    paths = []
+    for number, entry in enumerate(raw_states, start=1):
+        entry = _section(entry, f"body.variable_hydro.states[{number}]",
+                         {"hydro_file", "mass"},
+                         {"hydro_file", "mass", "inertia"})
+        raw = entry["hydro_file"]
+        if not isinstance(raw, str) or not raw:
+            raise ValueError("hydro state file must be a path")
+        path = (base_dir / raw).expanduser().resolve(strict=True)
+        if not path.is_file():
+            raise ValueError(f"hydro state file is not a file: {path}")
+        inertia = np.asarray(entry.get("inertia", [0, 0, 0]), dtype=float)
+        if (inertia.shape != (3,) or not np.isfinite(inertia).all()
+                or np.any(inertia < 0)):
+            raise ValueError("hydro state inertia needs three nonnegative values")
+        paths.append(path)
+    if paths[0] != hydro[0]:
+        raise ValueError("body.hydro_file must be the first variable hydro state")
+
+    height = _number(wave.get("height"), "wave.height", nonnegative=True)
+    period = _number(wave.get("period"), "wave.period", positive=True)
+    frequency = 2 * np.pi / period
+    loaded = []
+    for path in paths:
+        body = BodyClass(str(path))
+        body.bodyNumber = 1
+        body.bodyTotal = 1
+        body.readH5file()
+        if int(np.asarray(body.dof).item()) != 6:
+            raise ValueError("variable heave needs six-DOF BEM datasets")
+        loaded.append(body)
+    centers = [np.asarray(loaded[0].cg, dtype=float).ravel()]
+    if centers[0].shape != (3,) or not np.isfinite(centers[0]).all():
+        raise ValueError("variable heave needs a finite initial center")
+    names = [spec.get("name", "body1")]
+    maps, coordinate_names = build_coordinate_maps(
+        constraint, bodies, names, centers,
+    )
+    if len(maps) != 1 or not np.array_equal(maps[0], heave_map):
+        raise ValueError("variable hydro currently supports pure heave motion")
+    if "ptos" not in case or len(case["ptos"]) != 1:
+        raise ValueError("variable heave needs one linear PTO connection")
+    connections, stiffness, damping, bias = build_linear_ptos(
+        case["ptos"], maps, centers, names, coordinate_names,
+    )
+    connection = connections[0]
+    if connection.control is not None or not np.isclose(abs(connection.stroke_jacobian[0]), 1):
+        raise ValueError("variable heave needs a passive vertical PTO")
+    initial_q = initial_coordinate(
+        constraint.get("initial_coordinate", [0]), coordinate_names,
+        "constraint.initial_coordinate",
+    )
+    initial_v = initial_coordinate(
+        constraint.get("initial_speed", [0]), coordinate_names,
+        "constraint.initial_speed",
+    )
+
+    states = []
+    for entry, body in zip(raw_states, loaded):
+        mass = (rho * float(np.asarray(body.dispVol).item())
+                if entry["mass"] == "equilibrium" else
+                _number(entry["mass"], "hydro state mass", positive=True))
+        body.mass = mass
+        body.hydroStiffness = np.zeros((6, 6))
+        body.viscDrag = {"Drag": np.zeros((6, 6)), "cd": np.zeros(6),
+                         "characteristicArea": np.zeros(6)}
+        body.linearDamping = np.zeros((6, 6))
+        body.hydroForcePre(
+            frequency, [0], 1, np.array([0.0]), [], dt, rho, g,
+            "regular", np.zeros((2, 1)), 1, 1, 0, 0, 0,
+        )
+        force = body.hydroForce
+        center = np.asarray(body.cg, dtype=float).ravel()
+        if center.shape != (3,) or not np.isfinite(center).all():
+            raise ValueError("hydro state center must be finite")
+        states.append(HeaveHydroState(
+            mass=mass,
+            displaced_volume=float(np.asarray(body.dispVol).item()),
+            equilibrium_z=float(center[2]),
+            added_mass=float(force["fAddedMass"][2, 2]),
+            radiation_damping=float(force["fDamping"][2, 2]),
+            hydrostatic_stiffness=float(force["linearHydroRestCoef"][2, 2]),
+            excitation_real=float(force["fExt"]["re"][2]),
+            excitation_imaginary=float(force["fExt"]["im"][2]),
+        ))
+    response = integrate_variable_heave(
+        tuple(states), tuple(variable["switch_times"]),
+        dt=dt, end_time=end_time, height=height, period=period,
+        ramp_time=ramp_time, rho=rho, g=g,
+        pto_stiffness=float(stiffness[0, 0]),
+        pto_damping=float(damping[0, 0]), pto_bias=float(bias[0]),
+        initial_position=states[0].equilibrium_z + initial_q[0],
+        initial_velocity=initial_v[0],
+    )
+    coordinates = (response.position - states[0].equilibrium_z)[:, None]
+    speeds = response.velocity[:, None]
+    positions = np.zeros((len(response.time), 1, 6))
+    velocities = np.zeros_like(positions)
+    positions[:, 0, 2] = response.position
+    velocities[:, 0, 2] = response.velocity
+    ramp = np.ones(len(response.time))
+    if ramp_time:
+        early = response.time < ramp_time
+        ramp[early] = (1 - np.cos(np.pi * response.time[early] / ramp_time)) / 2
+    elevation = height / 2 * ramp * np.cos(frequency * response.time)
+    extras = (
+        (f"coordinate_{coordinate_names[0]}_position", coordinates[:, 0]),
+        (f"coordinate_{coordinate_names[0]}_velocity", speeds[:, 0]),
+        ("body1_hydro_state", response.active_state + 1),
+        ("body1_excitation_heave", response.excitation),
+        ("body1_radiation_heave", response.radiation),
+        ("body1_restoring_heave", response.restoring),
+    ) + connection.outputs(coordinates, speeds)
+    return CaseResponse(
+        response.time, positions, velocities, (paths[0],),
+        wave_elevation=elevation, auxiliary_files=tuple(paths[1:]),
+        pto_generalized_force=response.pto_force[:, None],
+        extra_outputs=extras,
+    )
 
 
 def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
