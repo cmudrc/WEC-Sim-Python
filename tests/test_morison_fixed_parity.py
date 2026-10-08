@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim import PMWave, WEC
+from wecsim import Current, PMWave, WEC
 from wecsim.irregularWave import IrregularComponents, pm_equal_energy_components
 from wecsim.morison import (
     MorisonElement, finite_depth_wavenumber, solve_fixed_morison_irregular,
@@ -125,3 +125,55 @@ def test_directional_morison_phase_is_the_default():
     _max_error(directional.wave_elevation, source_shared.wave_elevation,
                1e-12, "phase mode must not alter the sea")
     assert np.max(np.abs(directional.force - source_shared.force)) > .01
+
+
+@pytest.mark.parametrize("profile,depth,scale", [
+    ("uniform", None, 1),
+    ("power", 10, .5**(1 / 7)),
+    ("linear", 10, .5),
+    ("linear", 4, 0),
+])
+def test_fixed_morison_current_drag_profile_and_ramp(profile, depth, scale):
+    components = IrregularComponents(
+        omega=np.array([1., 2.]), spectral_amplitude=np.zeros(2),
+        d_omega=np.ones(2), directions=np.array([0.]),
+        spreading=np.ones(1), phase=np.zeros((2, 1)),
+    )
+    element = MorisonElement(
+        point=(0, 0, 10), drag_coefficient=(1, 0, 0),
+        added_mass_coefficient=(0, 0, 0), area=(2, 0, 0), volume=1,
+    )
+    result = solve_fixed_morison_irregular(
+        components, [element], center_gravity=(0, 0, -15),
+        water_depth=30, dt=1, end_time=2, ramp_time=2, rho=1000,
+        current_speed=2, current_profile=profile, current_depth=depth,
+    )
+    full_force = .5 * 1000 * 2 * (2 * scale)**2
+    np.testing.assert_allclose(result.force[:, 0],
+                               full_force * np.array([0, .25, 1]), atol=1e-12)
+    np.testing.assert_allclose(result.force[:, 4], 10 * result.force[:, 0])
+    np.testing.assert_allclose(result.force[:, [1, 2, 3, 5]], 0)
+
+
+def test_current_public_api_and_multiheading_limit():
+    wave = PMWave(2, 5, current=Current(.8, 45, "power", 30))
+    assert wave.as_case()["current"] == {
+        "speed": .8, "direction": 45, "profile": "power", "depth": 30,
+    }
+    with pytest.raises(ValueError, match="depth"):
+        Current(.8, profile="power").as_case()
+    components = IrregularComponents(
+        omega=np.array([1., 2.]), spectral_amplitude=np.zeros(2),
+        d_omega=np.ones(2), directions=np.array([0., 90.]),
+        spreading=np.array([.5, .5]), phase=np.zeros((2, 2)),
+    )
+    element = MorisonElement(
+        point=(0, 0, 0), drag_coefficient=(1, 0, 0),
+        added_mass_coefficient=(0, 0, 0), area=(1, 0, 0), volume=1,
+    )
+    with pytest.raises(ValueError, match="one incident heading"):
+        solve_fixed_morison_irregular(
+            components, [element], center_gravity=(0, 0, -5),
+            water_depth=30, dt=.1, end_time=.1, ramp_time=0,
+            current_speed=.8,
+        )
