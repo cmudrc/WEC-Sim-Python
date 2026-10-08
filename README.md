@@ -109,6 +109,7 @@ Supported combinations are:
 | `fixed_hinge` | `pm` | One body, explicit mass and pitch inertia, pitch PTO | Directional PM excitation and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
+| `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
 | `linear_subspace` | `regular` or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear PTO matrices or body-local PTO connections | Constant-frequency radiation or convolution |
 
@@ -122,6 +123,13 @@ discrete FIR calculation; `"convolution"` remains the default. The same
 setting is available for no-wave free decay, without a paired FIR baseline. Both use
 `radiation_memory` (60 s by default). The general dynamics module
 assembles the supported body and PTO forces; it does not parse Simscape models.
+The inherited `WaveClass` now uses the pinned MATLAB PM and JONSWAP spectrum
+definitions, including height-dependent PM energy and JONSWAP's inferred
+`gamma` when it is unspecified. Its seeded phases use a local NumPy generator;
+MATLAB's Threefry substreams produce different realizations for the same
+integer seed. Paired irregular trajectories therefore replay saved source
+phases. The historical BS fixture remains a compatibility check for the
+original Python port; current MATLAB WEC-Sim rejects BS inputs.
 For this RM3 convolution layout, the solver follows the published pitched
 slider geometry and uses an implicit effective added mass by default. To
 reproduce the pinned MATLAB/Simulink numerical trajectory, set
