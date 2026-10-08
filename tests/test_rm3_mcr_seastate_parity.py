@@ -9,7 +9,8 @@ import pytest
 from scipy.interpolate import CubicSpline
 from scipy.signal import fftconvolve
 
-from wecsim import mcr_spectrum_files, run_rm3_spectrum_mcr
+from wecsim import (ImportedSpectrumWave, WEC, mcr_spectrum_files,
+                    run_rm3_spectrum_mcr)
 from wecsim.irregularWave import imported_spectrum_components, synthesize_irregular_response
 
 
@@ -237,6 +238,41 @@ def test_all_three_imported_waves_and_excitation_against_matlab():
                 _max_error(incident.excitation_force[:, dof],
                            expected[:, 19 + dof], force_limit,
                            f"case {index} body {body} {name} excitation")
+
+
+def test_public_python_wec_replays_published_imported_seas():
+    """Exercise the Python builder against the three saved MATLAB sea states.
+
+    This checks imported-wave propagation through the general WEC runner;
+    the one-body heave motion here is not the published RM3 four-DOF joint.
+    """
+    root = Path(APPLICATIONS)
+    reference = Path(REFERENCE)
+    hydro = "_Common_Input_Files/RM3/hydroData/rm3.h5"
+    inputs = root / "Multiple_Condition_Runs/RM3_MCROPT3_SeaState"
+    for index in (1, 2, 3):
+        wec = WEC(f"Imported RM3 sea {index}")
+        body = wec.body("float", hydro)
+        wec.coordinate("heave", body.move("heave"))
+        wave = ImportedSpectrumWave(
+            f"Multiple_Condition_Runs/RM3_MCROPT3_SeaState/"
+            f"spectrumData{index}.mat"
+        )
+        result = wec.run(
+            wave, dt=0.1, end_time=400, ramp_time=100,
+            radiation_memory=15, base_dir=root,
+        )
+        source = np.loadtxt(
+            reference / f"RM3_MCR_SEASTATE_case{index}_wave.csv",
+            delimiter=",",
+        )[:len(result.time)]
+        _max_error(result.time, source[:, 0], 1e-10,
+                   f"case {index} public WEC time")
+        _max_error(result.wave_elevation, source[:, 1], 1e-10,
+                   f"case {index} public WEC imported elevation")
+        assert result.raw.auxiliary_files == (
+            (inputs / f"spectrumData{index}.mat").resolve(),
+        )
 
 
 def test_matlab_radiation_force_on_matlab_velocities():
