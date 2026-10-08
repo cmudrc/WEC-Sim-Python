@@ -263,9 +263,11 @@ def test_oswec_general_runner(tmp_path):
 
     configured = WEC("Published OSWEC")
     flap = configured.body("flap", hydro, mass=127_000,
-                           inertia=(0, 1.85e6, 0))
+                           inertia=(1.85e6,) * 3)
+    base = configured.body("base", hydro, mass=999,
+                           inertia=(999,) * 3)
     configured.fixed_hinge(
-        flap, location=WorldPoint(0, 0, -8.9),
+        flap, base, location=WorldPoint(0, 0, -10),
         pto_location=WorldPoint(0, 0, -8.9), damping=12_000,
     )
     public = configured.run(
@@ -283,6 +285,13 @@ def test_oswec_general_runner(tmp_path):
     _max_error(-public.ptos["hinge"].absorbed_power, pto[:, 23],
                max(25, 0.06 * np.max(np.abs(pto[:, 23]))),
                "configured OSWEC PTO power")
+    expected_base = np.loadtxt(
+        reference / "OSWEC_OSWEC_body2.csv", delimiter=",",
+    )
+    np.testing.assert_allclose(public.bodies["base"].position,
+                               expected_base[:, 1:7], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(public.bodies["base"].velocity,
+                               expected_base[:, 7:13], rtol=0, atol=1e-10)
     np.testing.assert_allclose(public.coordinates["pitch"].position,
                                public.ptos["hinge"].stroke, rtol=0, atol=0)
 

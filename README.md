@@ -169,8 +169,9 @@ from wecsim import PMWave, WEC, WorldPoint
 
 wec = WEC("OSWEC pitch flap")
 flap = wec.body("flap", "oswec.h5", mass=127_000,
-                inertia=(0, 1.85e6, 0))
-wec.fixed_hinge(flap, location=WorldPoint(0, 0, -8.9),
+                inertia=(1.85e6,) * 3)
+base = wec.body("base", "oswec.h5", mass=999, inertia=(999,) * 3)
+wec.fixed_hinge(flap, base, location=WorldPoint(0, 0, -10),
                 pto_location=WorldPoint(0, 0, -8.9), damping=12_000)
 sea = PMWave(2.5, 8, directions=(0, 30, 90),
              spreading=(0.1, 0.2, 0.7), seed=1)
