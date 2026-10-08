@@ -1243,6 +1243,9 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             )
         if wave["type"] == "regular" and direction != 0:
             raise ValueError("moving Morison heave needs zero-heading regular waves")
+        if (wave["type"] == "regular"
+                and not np.allclose(centers[0][:2], 0, rtol=0, atol=1e-10)):
+            raise ValueError("moving Morison heave needs a body centered at x=y=0")
         moving_elements = _morison_elements(bodies[0]["morison_elements"])
         if wave["type"] == "regular":
             raw_depth = loaded_bodies[0].hydroData[
