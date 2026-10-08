@@ -152,9 +152,14 @@ changing the incompressible law. Paired motion is gated only through 6 s;
 the Python and MATLAB heave and flexible trajectories diverge later. In the
 pinned OWC Simulink model, the piston reaction enters the reported flexible
 acceleration but does not enter the flexible state-space integrator. Python
-applies that reaction to the flexible motion. The published MATLAB air model
-also first exceeds its Mach threshold at 10.13 s, so its later trajectory is
-not a physical-accuracy target.
+applies that reaction to the flexible motion by default. For a paired source
+comparison, pass `orifice_force_path="published_owc"` to `floating_gbm`; this
+reproduces the published force routing and keeps the source's omitted piston
+force explicit in the case provenance. The published MATLAB air model also
+first exceeds its Mach threshold at 10.13 s, so its later trajectory is not a
+physical-accuracy target. In the source-compatible setting, reported PTO power
+is the source algebraic power signal, not energy removed from the simulated
+flexible state.
 
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
