@@ -523,6 +523,30 @@ positive when mechanical power enters the PTO. Current validation covers one
 pure-heave body, zero-heading regular waves, and one vertical direct-drive
 connection. The model does not impose voltage, current, or stroke limits.
 
+### RM3 direct linear generator
+
+The published `PTO-Sim/RM3/RM3_DD_PTO` case uses a three-phase linear
+generator between the float and spar. Its flux states, electrical angle,
+phase currents and voltages, friction, and generated power are available
+through a focused two-heave runner:
+
+```python
+from wecsim import DirectLinearGenerator, run_rm3_direct_linear_generator
+
+generator = DirectLinearGenerator(
+    stator_resistance=4.58, friction=-100, pole_pitch=.072,
+    magnet_flux=8, inductance=.285, load_resistance=-117.6471,
+)
+result = run_rm3_direct_linear_generator("rm3.h5", generator=generator)
+print(result.absorbed_power.mean(), result.electrical_power.mean())
+```
+
+The negative load resistance and friction follow the source PTO-Sim block's
+sign convention. `absorbed_power` and `electrical_power` are positive when
+the device absorbs mechanical power and delivers power to the load. This
+runner represents the published vertical two-body layout; it does not add a
+general electrical PTO option to `WEC.pto`.
+
 ### Instantaneous nonlinear hydrodynamics for heave
 
 The Python builder supports the published `Nonlinear_Hydro/ode4/Regular` and

@@ -61,6 +61,18 @@ def test_constant_speed_flux_and_power_balance():
         * (result.current_d**2 + result.current_q**2),
         rtol=1e-13, atol=1e-10,
     )
+    flux_rate = generator.state_rate(speed, solution.y[:, -1])
+    magnetic_energy_rate = (
+        result.current_d * flux_rate[0] + result.current_q * flux_rate[1]
+    )
+    stator_loss = generator.stator_resistance * (
+        result.current_d**2 + result.current_q**2
+    )
+    np.testing.assert_allclose(
+        -result.electromagnetic_force * speed,
+        magnetic_energy_rate + stator_loss + result.electrical_power,
+        rtol=1e-12, atol=1e-9,
+    )
 
 
 def test_unforced_rm3_generator_stays_at_equilibrium():

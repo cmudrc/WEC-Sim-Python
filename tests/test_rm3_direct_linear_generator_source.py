@@ -43,3 +43,13 @@ def test_published_direct_generator_source_signals():
     np.testing.assert_allclose(electrical_power,
                                -np.sum(voltage * current, axis=1),
                                rtol=1e-9, atol=1e-4)
+    np.testing.assert_allclose(pto[:, 3],
+                               bodies[0][:, 3] - bodies[1][:, 3]
+                               - (bodies[0][0, 3] - bodies[1][0, 3]),
+                               rtol=0, atol=1e-9)
+    np.testing.assert_allclose(pto[:, 9],
+                               bodies[0][:, 9] - bodies[1][:, 9],
+                               rtol=0, atol=1e-9)
+    np.testing.assert_allclose(velocity, pto[:, 9], rtol=0, atol=1e-9)
+    np.testing.assert_allclose(pto[:, 15], 0, rtol=0, atol=1e-7)
+    np.testing.assert_allclose(pto[:, 21], 0, rtol=0, atol=1e-7)
