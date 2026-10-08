@@ -35,6 +35,7 @@ on:
       - 'tests/test_oswec_multi_wave_source.py'
       - 'tests/test_oswec_multi_wave_parity.py'
       - 'tests/test_oswec_full_directional_source.py'
+      - 'tests/test_oswec_full_directional_parity.py'
       - 'tests/test_sphere_dynamics_parity.py'
       - 'wecsim/linearHeave.py'
       - 'wecsim/hingePitch.py'
@@ -65,7 +66,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        model: ${{ fromJSON(inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_MULTI_WAVE", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
+        model: ${{ fromJSON(inputs.model == 'OSWEC_FULL_DIR' && '["OSWEC_FULL_DIR"]' || inputs.model == 'OSWEC_MULTI_WAVE' && '["OSWEC_MULTI_WAVE"]' || inputs.model == 'RM3_B2B' && '["RM3_B2B"]' || inputs.model == 'RM3_MOORING_MATRIX' && '["RM3_MOORING_MATRIX"]' || inputs.model == 'SPHERE_MEAN_DRIFT' && '["SPHERE_MEAN_DRIFT"]' || inputs.model == 'RM3_MCR_SEASTATE' && '["RM3_MCR_SEASTATE"]' || inputs.model == 'RM3_END_STOPS' && '["RM3_END_STOPS"]' || inputs.model == 'RM3_END_STOPS_STEP' && '["RM3_END_STOPS_STEP"]' || inputs.model == 'RM3_END_STOPS_STEP_FINE' && '["RM3_END_STOPS_STEP_FINE"]' || inputs.model == 'RM3_END_STOPS_STEP_FINER' && '["RM3_END_STOPS_STEP_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_FINE' && '["RM3_END_STOPS_FULL_FINE"]' || inputs.model == 'RM3_END_STOPS_FULL_FINER' && '["RM3_END_STOPS_FULL_FINER"]' || inputs.model == 'RM3_END_STOPS_FULL_PAIR' && '["RM3_END_STOPS_FULL_FINE", "RM3_END_STOPS_FULL_FINER"]' || '["RM3", "OSWEC", "OSWEC_Nonhydro", "OSWEC_FULL_DIR", "OSWEC_MULTI_WAVE", "Sphere", "SPHERE_MEAN_DRIFT", "RM3_B2B", "RM3_END_STOPS", "RM3_PTO_Extension", "RM3_Radiation_Options", "Sphere_Passive", "Sphere_PTO_Config", "Sphere_Reactive_PI", "Sphere_Declutching", "Sphere_Latching", "RM3_MCR", "RM3_MCR_ARRAY", "RM3_MCR_EXCEL", "RM3_MCR_MAT", "RM3_MCR_SEASTATE"]') }}
     name: ${{ matrix.model }}
     steps:
       - uses: actions/checkout@v7
@@ -249,6 +250,12 @@ jobs:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_oswec_full_directional_source.py
+        if: matrix.model == 'OSWEC_FULL_DIR'
+        env:
+          WEC_SIM_REFERENCE_MODEL: OSWEC_FULL_DIR
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_oswec_full_directional_parity.py
         if: matrix.model == 'OSWEC_FULL_DIR'
         env:
           WEC_SIM_REFERENCE_MODEL: OSWEC_FULL_DIR

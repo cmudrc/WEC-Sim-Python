@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
-from scipy.interpolate import CubicSpline
+from scipy.interpolate import CubicSpline, RegularGridInterpolator
 from scipy.io import loadmat
 
 from .bodyClass import BodyClass
@@ -28,10 +28,93 @@ class IrregularComponents:
 
 
 @dataclass(frozen=True)
+class FullDirectionalComponents:
+    """Frequency-by-heading imported spectrum with angular bin widths."""
+
+    omega: np.ndarray
+    spectral_amplitude: np.ndarray  # (frequency, heading), m² s/rad²
+    d_omega: np.ndarray
+    directions: np.ndarray  # degrees
+    d_theta: np.ndarray  # radians
+    phase: np.ndarray  # (frequency, heading)
+
+
+@dataclass(frozen=True)
 class IrregularResponse:
     time: np.ndarray
     elevation: np.ndarray
     excitation_force: np.ndarray
+
+
+def imported_full_directional_components(
+    h5_file: str | Path,
+    spectrum_file: str | Path,
+    *,
+    phase: np.ndarray | None = None,
+    seed: int | None = None,
+) -> FullDirectionalComponents:
+    """Load WEC-Sim's frequency-resolved directional MAT spectrum.
+
+    Imported ``spread`` is a density per heading radian, so its row integral
+    uses ``d_theta``. A supplied phase matrix replays a MATLAB realization;
+    ``seed`` makes an independent reproducible Python realization.
+    """
+    source = loadmat(spectrum_file)
+    required = ("frequencies", "spectrum", "spread", "directions")
+    if any(name not in source for name in required):
+        raise ValueError("full-directional MAT file needs frequencies, spectrum, spread, and directions")
+    frequency = np.asarray(source["frequencies"], dtype=float).ravel()
+    density = np.asarray(source["spectrum"], dtype=float).ravel()
+    heading = np.asarray(source["directions"], dtype=float).ravel()
+    spread = np.asarray(source["spread"], dtype=float)
+    if (len(frequency) < 2 or len(heading) < 2
+            or spread.shape != (len(frequency), len(heading))
+            or not all(np.isfinite(values).all()
+                       for values in (frequency, density, heading, spread))
+            or density.shape != frequency.shape
+            or np.any(density < 0) or np.any(spread < 0)
+            or np.any(np.diff(frequency) <= 0)
+            or np.any(np.diff(heading) <= 0)):
+        raise ValueError("full-directional spectrum has invalid frequency, direction, or density")
+    body = BodyClass(str(h5_file))
+    body.bodyNumber = 1
+    body.readH5file()
+    bem_omega = np.asarray(body.hydroData["simulation_parameters"]["w"]).ravel()
+    selected = ((frequency * 2 * np.pi >= bem_omega.min())
+                & (frequency * 2 * np.pi <= bem_omega.max()))
+    omega = frequency[selected] * (2 * np.pi)
+    if len(omega) < 2:
+        raise ValueError("full-directional spectrum needs two BEM-range frequencies")
+    width = np.empty(len(omega))
+    width[0] = omega[1] - omega[0]
+    width[-1] = omega[-1] - omega[-2]
+    width[1:-1] = (omega[2:] - omega[:-2]) / 2
+    direction_radians = np.deg2rad(heading)
+    angle_width = np.empty(len(heading))
+    angle_width[0] = direction_radians[1] - direction_radians[0]
+    angle_width[-1] = direction_radians[-1] - direction_radians[-2]
+    angle_width[1:-1] = (direction_radians[2:] - direction_radians[:-2]) / 2
+    if (np.any(width <= 0) or np.any(angle_width <= 0)
+            or not np.allclose(spread[selected] @ angle_width, 1,
+                               rtol=0, atol=1e-6)):
+        raise ValueError("directional spread must integrate to one at each frequency")
+    if phase is not None and seed is not None:
+        raise ValueError("supply either phase or seed")
+    shape = (len(omega), len(heading))
+    if phase is None:
+        phases = 2 * np.pi * np.random.default_rng(seed).random(shape)
+    else:
+        phases = np.asarray(phase, dtype=float)
+        if phases.shape != shape or not np.isfinite(phases).all():
+            raise ValueError("phase must match the selected frequency-by-heading grid")
+    return FullDirectionalComponents(
+        omega=omega,
+        spectral_amplitude=density[selected, None] * spread[selected] / np.pi,
+        d_omega=width,
+        directions=heading,
+        d_theta=angle_width,
+        phase=phases,
+    )
 
 
 def imported_spectrum_components(
@@ -255,6 +338,125 @@ def synthesize_irregular_response(
         time=time, elevation=ramp * elevation,
         excitation_force=ramp[:, None] * excitation,
     )
+
+
+def synthesize_full_directional_response(
+    h5_file: str | Path,
+    components: FullDirectionalComponents,
+    *,
+    dt: float,
+    end_time: float,
+    ramp_time: float,
+    body_number: int = 1,
+    rho: float = 1000.0,
+    g: float = 9.81,
+    excitation_interpolation: str = "linear",
+    force_quadrature: str = "integrated",
+) -> IrregularResponse:
+    """Synthesize elevation and excitation from a full directional spectrum.
+
+    Both wave and force quadrature use frequency and heading bin widths by
+    default. ``force_quadrature="matlab_omitted"`` reproduces the pinned
+    MATLAB full-directional force block's omission of heading width; it is a
+    source diagnostic, not the physical default. The optional
+    ``spline_frequency`` interpolation also reproduces its BEM preprocessing.
+    """
+    if not isinstance(components, FullDirectionalComponents):
+        raise TypeError("components must be FullDirectionalComponents")
+    if excitation_interpolation not in ("linear", "spline_frequency"):
+        raise ValueError("excitation_interpolation must be linear or spline_frequency")
+    if force_quadrature not in ("integrated", "matlab_omitted"):
+        raise ValueError("force_quadrature must be integrated or matlab_omitted")
+    if (not np.isfinite([dt, end_time, ramp_time, rho, g]).all()
+            or dt <= 0 or end_time < 0 or ramp_time < 0 or rho <= 0 or g <= 0):
+        raise ValueError("time and fluid parameters must be finite and valid")
+    steps = round(end_time / dt)
+    if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
+        raise ValueError("end_time must be an integer multiple of dt")
+    omega = np.asarray(components.omega, dtype=float).ravel()
+    heading = np.asarray(components.directions, dtype=float).ravel()
+    spectrum = np.asarray(components.spectral_amplitude, dtype=float)
+    d_omega = np.asarray(components.d_omega, dtype=float).ravel()
+    d_theta = np.asarray(components.d_theta, dtype=float).ravel()
+    phase = np.asarray(components.phase, dtype=float)
+    shape = (len(omega), len(heading))
+    if (len(omega) < 2 or len(heading) < 2
+            or spectrum.shape != shape or phase.shape != shape
+            or d_omega.shape != (len(omega),)
+            or d_theta.shape != (len(heading),)
+            or not all(np.isfinite(values).all()
+                       for values in (omega, heading, spectrum, d_omega,
+                                      d_theta, phase))
+            or np.any(spectrum < 0) or np.any(d_omega <= 0)
+            or np.any(d_theta <= 0) or np.any(np.diff(omega) <= 0)
+            or np.any(np.diff(heading) <= 0)):
+        raise ValueError("full-directional components have invalid dimensions or values")
+
+    body = BodyClass(str(h5_file))
+    body.bodyNumber = body_number
+    body.readH5file()
+    hydro = body.hydroData["hydro_coeffs"]
+    bem = body.hydroData["simulation_parameters"]
+    bem_omega = np.asarray(bem["w"], dtype=float).ravel()
+    bem_heading = np.mod(np.asarray(bem["wave_dir"], dtype=float).ravel(), 360)
+    order = np.argsort(bem_heading)
+    bem_heading = bem_heading[order]
+    if (len(bem_heading) < 2 or np.any(np.diff(bem_heading) <= 0)
+            or np.any(np.diff(bem_omega) <= 0)):
+        raise ValueError("BEM frequency and heading grids must increase")
+    query_heading = ((heading - bem_heading[0]) % 360) + bem_heading[0]
+    query_frequency, query_direction = np.meshgrid(omega, query_heading,
+                                                   indexing="ij")
+    query = np.column_stack((query_direction.ravel(),
+                             query_frequency.ravel()))
+
+    def interpolate(field):
+        values = np.asarray(field, dtype=float)
+        if excitation_interpolation == "spline_frequency":
+            values = CubicSpline(bem_omega, values, axis=2)(omega)
+            frequency_grid = omega
+        else:
+            frequency_grid = bem_omega
+        values = np.transpose(values, (1, 2, 0))[order]
+        extended = np.concatenate((values, values[:1]), axis=0)
+        grid = np.r_[bem_heading, bem_heading[0] + 360]
+        return RegularGridInterpolator(
+            (grid, frequency_grid), extended, bounds_error=True,
+        )(query).reshape(*shape, 6) * rho * g
+
+    real = interpolate(hydro["excitation"]["re"])
+    imaginary = interpolate(hydro["excitation"]["im"])
+    mean_drift = interpolate(hydro["mean_drift"])
+    energy = spectrum * d_omega[:, None] * d_theta[None, :]
+    height = np.sqrt(energy).ravel()
+    force_energy = (energy if force_quadrature == "integrated"
+                    else spectrum * d_omega[:, None])
+    force_height = np.sqrt(force_energy).ravel()
+    drift_force = np.einsum("fd,fdc->c", force_energy, mean_drift)
+    omega_flat = np.repeat(omega, len(heading))
+    phase_flat = phase.ravel()
+    real_flat = real.reshape(-1, 6)
+    imaginary_flat = imaginary.reshape(-1, 6)
+
+    time = np.arange(steps + 1) * dt
+    elevation = np.zeros(len(time))
+    excitation = np.zeros((len(time), 6))
+    for start in range(0, len(time), 128):
+        stop = min(start + 128, len(time))
+        angle = time[start:stop, None] * omega_flat[None] + phase_flat[None]
+        cosine = np.cos(angle)
+        sine = np.sin(angle)
+        elevation[start:stop] = (cosine * height[None]).sum(axis=1)
+        excitation[start:stop] = (
+            drift_force + (cosine * force_height[None]) @ real_flat
+            - (sine * force_height[None]) @ imaginary_flat
+        )
+    ramp = np.ones(len(time))
+    if ramp_time > 0:
+        early = time < ramp_time
+        ramp[early] = (1 - np.cos(np.pi * time[early] / ramp_time)) / 2
+    return IrregularResponse(time, ramp * elevation,
+                             ramp[:, None] * excitation)
 
 
 def synthesize_multiple_irregular_response(

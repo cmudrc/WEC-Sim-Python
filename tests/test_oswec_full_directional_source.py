@@ -68,8 +68,7 @@ def test_imported_directional_spectrum_and_wave_replay():
         assert body.shape == (8001, 25)
         assert np.isfinite(body).all()
         if number == 2:
-            np.testing.assert_allclose(body[:, 1:13], body[0, 1:13],
-                                       rtol=0, atol=1e-10)
+            assert np.max(np.abs(body[:, 1:13] - body[0, 1:13])) < 1e-10
     pto = np.loadtxt(
         reference / "OSWEC_FULL_DIR_Full_Directional_Waves_pto1.csv",
         delimiter=",",
