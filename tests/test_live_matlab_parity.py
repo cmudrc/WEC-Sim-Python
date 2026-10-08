@@ -53,12 +53,15 @@ def test_finite_depth_against_executed_matlab():
 
 
 @pytest.mark.parametrize("spectrum,height", [("PM", 2.5), ("JS", 4.0)])
-def test_current_irregular_spectrum_against_executed_matlab(spectrum, height):
+@pytest.mark.parametrize("discretization", ["Traditional", "EqualEnergy"])
+def test_current_irregular_spectrum_against_executed_matlab(
+    spectrum, height, discretization,
+):
     wave = WaveClass("irregular")
     wave.T = 8
     wave.H = height
     wave.spectrumType = spectrum
-    wave.freqDisc = "Traditional"
+    wave.freqDisc = discretization
     wave.numFreq = 64
     wave.phaseSeed = 1
     if spectrum == "PM":
@@ -68,26 +71,31 @@ def test_current_irregular_spectrum_against_executed_matlab(spectrum, height):
     wave.wavegauge2loc = [10, 0]
     wave.wavegauge3loc = [0, -10]
     reference = Path(REFERENCE)
-    wave.phaseData = np.loadtxt(reference / f"{spectrum.lower()}_phase.csv",
+    label = spectrum.lower() + ("_equal" if discretization == "EqualEnergy" else "")
+    wave.phaseData = np.loadtxt(reference / f"{label}_phase.csv",
                                 delimiter=",")
     wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 
-    expected = np.loadtxt(reference / f"{spectrum.lower()}_spectrum.csv",
-                          delimiter=",")
-    np.testing.assert_allclose(np.column_stack((wave.w, wave.S)), expected,
+    if discretization == "EqualEnergy":
+        expected = np.loadtxt(reference / f"{label}_bins.csv", delimiter=",")
+        actual = np.column_stack((wave.w, wave.dw, wave.S))
+    else:
+        expected = np.loadtxt(reference / f"{label}_spectrum.csv", delimiter=",")
+        actual = np.column_stack((wave.w, wave.S))
+    np.testing.assert_allclose(actual, expected,
                                rtol=2e-12, atol=1e-14)
-    power = np.loadtxt(reference / f"{spectrum.lower()}_power.csv",
+    power = np.loadtxt(reference / f"{label}_power.csv",
                        delimiter=",")
     np.testing.assert_allclose(wave.Pw, power, rtol=2e-12, atol=1e-9)
     if spectrum == "JS":
-        gamma = np.loadtxt(reference / "js_gamma.csv", delimiter=",")
+        gamma = np.loadtxt(reference / f"{label}_gamma.csv", delimiter=",")
         np.testing.assert_allclose(wave.gamma, gamma, rtol=2e-12)
     source_elevation = np.loadtxt(
-        reference / f"{spectrum.lower()}_elevation.csv", delimiter=",")
+        reference / f"{label}_elevation.csv", delimiter=",")
     np.testing.assert_allclose(np.asarray(wave.waveAmpTime).T,
                                source_elevation, rtol=0, atol=2e-12)
     source_markers = np.loadtxt(
-        reference / f"{spectrum.lower()}_markers.csv", delimiter=",")
+        reference / f"{label}_markers.csv", delimiter=",")
     for index, attribute in enumerate(("waveAmpTime1", "waveAmpTime2",
                                        "waveAmpTime3")):
         np.testing.assert_allclose(

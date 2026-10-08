@@ -27,37 +27,45 @@ writematrix([finite.wavenumber, finite.power], ...
 
 % Current IEC PM and JONSWAP spectra with replayable Threefry phases.
 for spectrum = ["PM", "JS"]
-    irregular = waveClass('irregular');
-    irregular.period = 8;
-    irregular.height = 2.5;
-    if spectrum == "JS"
-        irregular.height = 4;
-    end
-    irregular.spectrumType = char(spectrum);
-    irregular.bem.option = 'Traditional';
-    irregular.bem.count = 64;
-    irregular.phaseSeed = 1;
-    irregular.marker.location = [5 5; 10 0; 0 -10];
-    if spectrum == "PM"
-        irregular.direction = [0 30 90];
-        irregular.spread = [0.1 0.2 0.7];
-    end
-    irregular.setup([0.4, 2.0], 'infinite', 1, 0.1, 20, ...
-        (0:0.1:2)', 9.81, 1000);
-    label = lower(char(spectrum));
-    writematrix([irregular.omega, irregular.spectrum], ...
-        fullfile(outputDir, sprintf('%s_spectrum.csv', label)));
-    writematrix(irregular.power, ...
-        fullfile(outputDir, sprintf('%s_power.csv', label)));
-    writematrix(irregular.phase, ...
-        fullfile(outputDir, sprintf('%s_phase.csv', label)));
-    writematrix(irregular.waveAmpTime, ...
-        fullfile(outputDir, sprintf('%s_elevation.csv', label)));
-    writematrix(irregular.waveAmpTimeViz, ...
-        fullfile(outputDir, sprintf('%s_markers.csv', label)));
-    if spectrum == "JS"
-        writematrix(irregular.gamma, ...
-            fullfile(outputDir, 'js_gamma.csv'));
+    for discretization = ["Traditional", "EqualEnergy"]
+        irregular = waveClass('irregular');
+        irregular.period = 8;
+        irregular.height = 2.5;
+        if spectrum == "JS"
+            irregular.height = 4;
+        end
+        irregular.spectrumType = char(spectrum);
+        irregular.bem.option = char(discretization);
+        irregular.bem.count = 64;
+        irregular.phaseSeed = 1;
+        irregular.marker.location = [5 5; 10 0; 0 -10];
+        if spectrum == "PM"
+            irregular.direction = [0 30 90];
+            irregular.spread = [0.1 0.2 0.7];
+        end
+        irregular.setup([0.4, 2.0], 'infinite', 1, 0.1, 20, ...
+            (0:0.1:2)', 9.81, 1000);
+        label = lower(char(spectrum));
+        if discretization == "EqualEnergy"
+            label = label + "_equal";
+            writematrix([irregular.omega, irregular.dOmega, irregular.spectrum], ...
+                fullfile(outputDir, sprintf('%s_bins.csv', label)));
+        else
+            writematrix([irregular.omega, irregular.spectrum], ...
+                fullfile(outputDir, sprintf('%s_spectrum.csv', label)));
+        end
+        writematrix(irregular.power, ...
+            fullfile(outputDir, sprintf('%s_power.csv', label)));
+        writematrix(irregular.phase, ...
+            fullfile(outputDir, sprintf('%s_phase.csv', label)));
+        writematrix(irregular.waveAmpTime, ...
+            fullfile(outputDir, sprintf('%s_elevation.csv', label)));
+        writematrix(irregular.waveAmpTimeViz, ...
+            fullfile(outputDir, sprintf('%s_markers.csv', label)));
+        if spectrum == "JS"
+            writematrix(irregular.gamma, ...
+                fullfile(outputDir, sprintf('%s_gamma.csv', label)));
+        end
     end
 end
 
