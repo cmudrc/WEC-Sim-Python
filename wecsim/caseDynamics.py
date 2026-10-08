@@ -16,6 +16,7 @@ from scipy.io import loadmat
 from .bodyClass import BodyClass
 from .directDrive import integrate_direct_drive_heave
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
+from .gbmFloating import solve_floating_gbm_regular
 from .hardStops import LinearHardStops
 from .hingePitch import (
     solve_hinged_pitch_from_excitation, solve_hinged_pitch_regular,
@@ -289,6 +290,45 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         return _run_variable_heave(
             case, sim, wave, constraint, bodies, hydro, b2b,
             dt, end_time, ramp_time, rho, g, base,
+        )
+
+    if kind == "floating_gbm":
+        if (len(bodies) != 1 or wave["type"] != "regular" or b2b
+                or "pto" in case or "ptos" in case):
+            raise ValueError("floating GBM needs one body, regular waves, and no PTO")
+        if set(sim) - {"dt", "end_time", "ramp_time", "rho", "g"}:
+            raise ValueError("floating GBM does not use radiation memory or source delay")
+        if set(wave) - {"type", "height", "period", "direction"}:
+            raise ValueError("floating GBM uses one regular wave direction")
+        if _number(wave.get("direction", 0), "wave.direction") != 0:
+            raise ValueError("floating GBM currently needs a zero-degree wave")
+        if set(constraint) - {"kind", "location"} or np.any(_location(constraint)):
+            raise ValueError("floating GBM needs a joint at the body origin")
+        if set(bodies[0]) - {"hydro_file", "hydro_body", "mass", "inertia", "name"}:
+            raise ValueError("floating GBM uses body mass and inertia only")
+        _body_number(bodies[0], 1)
+        inertia = np.asarray(bodies[0].get("inertia"), dtype=float)
+        if inertia.shape != (3,) or not np.isfinite(inertia).all() or np.any(inertia <= 0):
+            raise ValueError("floating GBM needs three positive body inertia values")
+        body_mass = bodies[0].get("mass", "equilibrium")
+        if body_mass != "equilibrium":
+            body_mass = _number(body_mass, "body.mass", positive=True)
+        result = solve_floating_gbm_regular(
+            hydro[0], dt=dt, end_time=end_time,
+            height=_number(wave.get("height"), "wave.height", nonnegative=True),
+            period=_number(wave.get("period"), "wave.period", positive=True),
+            pitch_inertia=float(inertia[1]), mass=body_mass,
+            ramp_time=ramp_time, rho=rho, g=g,
+        )
+        return CaseResponse(
+            result.time, result.body_position[:, None, :],
+            result.body_velocity[:, None, :], hydro,
+            wave_elevation=result.wave_elevation,
+            extra_outputs=(
+                ("flex_position", result.mode_position),
+                ("flex_velocity", result.mode_velocity),
+                ("flex_acceleration", result.mode_acceleration),
+            ),
         )
 
     if kind == "linear_subspace":
