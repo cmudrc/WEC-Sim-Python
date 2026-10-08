@@ -41,6 +41,33 @@ switch string(model)
         end
         cases = ["0m", "1m", "1m-ME", "3m", "5m"];
         caseDirs = fullfile(repoRoot, 'applications', 'Free_Decay', cases);
+    case "SPHERE_ELEVATION_IMPORT"
+        hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
+            'Sphere', 'hydroData');
+        cd(hydroDir);
+        if ~isfile('sphere.h5')
+            bemio;
+        end
+        cases = "0m";
+        caseDirs = string(fullfile(repoRoot, 'applications', 'Free_Decay', cases));
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        oldWave = "waves = waveClass('noWaveCIC');";
+        assert(contains(contents, oldWave), ...
+            'The pinned Sphere free-decay wave input changed');
+        newWave = sprintf(['waves = waveClass(''elevationImport'');\n' ...
+            'waves.elevationFile = ''etaData.mat'';\n' ...
+            'simu.rampTime = 10;\n' ...
+            'simu.solver = ''ode4'';']);
+        contents = strrep(contents, char(oldWave), char(newWave));
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not edit the Sphere elevation input');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
+        sampleTime = (0:0.01:40)';
+        etaData = [sampleTime, 0.6*cos(2*pi*sampleTime/8) + ...
+            0.2*cos(2*pi*sampleTime/3)];
+        save(fullfile(caseDirs, 'etaData.mat'), 'etaData');
     case {"SPHERE_MOVING_MORISON", "SPHERE_MOVING_MORISON_WAVE"}
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
             'Sphere', 'hydroData');
@@ -935,6 +962,17 @@ for iCase = 1:numel(cases)
             fullfile(outDir, 'RM3_MOORING_MATRIX_wave.csv'));
         writematrix(stiffness, fullfile(outDir, ...
             'RM3_MOORING_MATRIX_stiffness.csv'));
+    end
+    if string(model) == "SPHERE_ELEVATION_IMPORT"
+        assert(simu.dt == 0.01 && simu.endTime == 40 && ...
+            simu.rampTime == 10 && simu.cicEndTime == 15 && ...
+            strcmp(simu.solver, 'ode4') && ...
+            strcmp(waves.type, 'elevationImport'), ...
+            'The derived Sphere imported-elevation settings changed');
+        writematrix([output.wave.time(:), output.wave.elevation(:)], ...
+            fullfile(outDir, 'SPHERE_ELEVATION_IMPORT_wave.csv'));
+        writematrix(etaData, ...
+            fullfile(outDir, 'SPHERE_ELEVATION_IMPORT_input.csv'));
     end
     if string(model) == "SPHERE_MEAN_DRIFT"
         assert(simu.dt == 0.01 && simu.endTime == 100 && ...

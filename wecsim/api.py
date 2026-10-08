@@ -244,6 +244,24 @@ class ImportedSpectrumWave:
 
 
 @dataclass(frozen=True)
+class ImportedElevationWave:
+    """Sampled time/elevation MAT record in WEC-Sim's ``elevationImport`` mode.
+
+    ``file`` resolves from ``WEC.run(base_dir=...)``. The named MAT variable
+    contains increasing time and elevation columns in seconds and metres.
+    """
+
+    file: str | Path
+    variable: str = "etaData"
+    reapply_force_ramp: bool = False
+
+    def as_case(self) -> dict:
+        return {"type": "elevationImport", "file": str(self.file),
+                "variable": self.variable,
+                "reapply_force_ramp": self.reapply_force_ramp}
+
+
+@dataclass(frozen=True)
 class NoWave:
     def as_case(self) -> dict:
         return {"type": "none"}
@@ -506,7 +524,7 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
@@ -516,8 +534,9 @@ class WEC:
     ) -> dict:
         """Return the case mapping used by the validated dynamics runner."""
         if not isinstance(wave, (RegularWave, RegularCICWave, PMWave,
-                                 JONSWAPWave, ImportedSpectrumWave, NoWave)):
-            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, ImportedSpectrumWave, or NoWave")
+                                 JONSWAPWave, ImportedSpectrumWave,
+                                 ImportedElevationWave, NoWave)):
+            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, ImportedSpectrumWave, ImportedElevationWave, or NoWave")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -639,7 +658,7 @@ class WEC:
         return case
 
     def run(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,

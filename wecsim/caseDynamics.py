@@ -193,8 +193,8 @@ def _hard_stops(spec):
     return LinearHardStops(**values)
 
 
-def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
-    """Build RM3 body forces from one sampled MATLAB elevation record."""
+def _sampled_elevation(wave, base, time, ramp_time):
+    """Load and ramp a sampled MATLAB elevation record."""
     _section(wave, "imported wave", {"type", "file"},
              {"type", "file", "variable", "direction", "reapply_force_ramp"})
     raw = wave["file"]
@@ -208,7 +208,7 @@ def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
         raise ValueError("wave.variable must be a nonempty MAT variable name")
     direction = _number(wave.get("direction", 0), "wave.direction")
     if direction != 0:
-        raise ValueError("floating-joint imported elevation currently supports 0-degree waves")
+        raise ValueError("imported elevation currently supports 0-degree waves")
     second_ramp = wave.get("reapply_force_ramp", False)
     if not isinstance(second_ramp, bool):
         raise ValueError("wave.reapply_force_ramp must be a boolean")
@@ -230,6 +230,13 @@ def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
         early = time < ramp_time
         ramp[early] = (1 - np.cos(np.pi * time[early] / ramp_time)) / 2
     elevation = np.interp(time, samples[:, 0], samples[:, 1]) * ramp
+    return elevation, ramp, path
+
+
+def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
+    """Build RM3 body forces from one sampled MATLAB elevation record."""
+    elevation, ramp, path = _sampled_elevation(wave, base, time, ramp_time)
+    direction = _number(wave.get("direction", 0), "wave.direction")
     force = np.zeros((len(time), 2, 6))
     for number in (1, 2):
         body = BodyClass(str(hydro_file))
@@ -239,7 +246,7 @@ def _imported_elevation(wave, base, hydro_file, time, dt, ramp_time, rho, g):
         body.hydroForce["userDefinedFe"] = np.zeros((len(time), 6))
         body.userDefinedExcitation(np.vstack((time, elevation)), dt, [direction], rho, g)
         force[:, number - 1] = body.hydroForce["userDefinedFe"]
-    if second_ramp:
+    if wave.get("reapply_force_ramp", False):
         # The pinned MATLAB body block ramps force after waveClass ramped elevation.
         force *= ramp[:, None, None]
     return elevation, force, path
@@ -1107,18 +1114,18 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
 
 def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                          b2b, dt, end_time, ramp_time, rho, g, base_dir):
-    """Run mapped coordinates with regular, PM, or no incident waves."""
+    """Run mapped coordinates with supported regular, sampled, or no waves."""
     if set(constraint) - {"kind", "initial_coordinate", "initial_speed",
                            "coordinates"}:
         raise ValueError("linear_subspace uses coordinate maps, not joint locations")
     if wave["type"] not in ("regular", "regularCIC", "pm", "jonswap",
-                            "spectrumImport", "none"):
-        raise ValueError("linear_subspace supports regular, regularCIC, PM, JONSWAP, spectrumImport, or no waves")
+                            "spectrumImport", "elevationImport", "none"):
+        raise ValueError("linear_subspace supports regular, regularCIC, PM, JONSWAP, spectrumImport, elevationImport, or no waves")
     if b2b and len(set(hydro)) != 1:
         raise ValueError("body-to-body hydrodynamics need one shared HDF5 file")
     if wave["type"] == "none" and set(wave) != {"type"}:
         raise ValueError("no-wave cases have no wave height or period")
-    if (wave["type"] in ("pm", "jonswap", "spectrumImport")
+    if (wave["type"] in ("pm", "jonswap", "spectrumImport", "elevationImport")
             and any(body.get("mean_drift", "none") != "none" for body in bodies)):
         raise ValueError("irregular linear-subspace mean-drift forcing is not supported")
     components = None
@@ -1174,6 +1181,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         spectrum_file = (base_dir / wave["file"]).expanduser().resolve(strict=True)
         components = imported_spectrum_components(hydro[0], spectrum_file)
         auxiliary_files.append(spectrum_file)
+    elif wave["type"] == "elevationImport":
+        pass  # The sampled record is loaded after the simulation grid is built.
     else:
         if "ramp_time" in sim:
             raise ValueError("ramp_time is inapplicable to no-wave dynamics")
@@ -1189,6 +1198,13 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     time = np.arange(round(end_time / dt) + 1) * dt
     if not np.isclose(time[-1], end_time, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
+    imported_elevation = None
+    imported_ramp = None
+    if wave["type"] == "elevationImport":
+        imported_elevation, imported_ramp, wave_path = _sampled_elevation(
+            wave, base_dir, time, ramp_time,
+        )
+        auxiliary_files.append(wave_path)
     body_names = []
     for index, body_spec in enumerate(bodies, start=1):
         _body_number(body_spec, index)
@@ -1440,7 +1456,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             "characteristicArea": np.zeros(6),
         }
         body.linearDamping = np.zeros((6, 6))
-        wave_amp = np.vstack((time, np.zeros_like(time)))
+        wave_amp = np.vstack((
+            time, imported_elevation if imported_elevation is not None
+            else np.zeros_like(time),
+        ))
         if wave["type"] == "regular":
             body.hydroForcePre(
                 frequency, [direction], 1, np.array([0.0]), [], dt, rho, g,
@@ -1462,6 +1481,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                 len(components.omega) if irregular else [],
                 dt, rho, g, ("regularCIC" if regular_memory else
                              "spectrumImport" if wave["type"] == "spectrumImport" else
+                             "elevationImport" if wave["type"] == "elevationImport" else
                              "irregular" if irregular else "noWaveCIC"),
                 wave_amp,
                 index, len(bodies), 0, 0, int(b2b),
@@ -1512,6 +1532,19 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     real * np.cos(frequency * at_time)
                     - imaginary * np.sin(frequency * at_time)
                 ) + (height / 2)**2 * ramp * drift)
+        elif wave["type"] == "elevationImport":
+            sampled_force = np.asarray(hydro_force["userDefinedFe"])
+            if wave.get("reapply_force_ramp", False):
+                sampled_force = sampled_force * imported_ramp[:, None]
+
+            def excitation(at_time, *, sampled_force=sampled_force):
+                if len(time) == 1:
+                    return sampled_force[0]
+                sample = min(max(at_time / dt, 0.0), float(len(time) - 1))
+                left = min(int(sample), len(time) - 2)
+                fraction = sample - left
+                return ((1 - fraction) * sampled_force[left]
+                        + fraction * sampled_force[left + 1])
         elif wave["type"] in ("pm", "jonswap", "spectrumImport"):
             if body_spec.get("passive_yaw", False):
                 def excitation(at_time):
@@ -1644,7 +1677,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             ramp[early] = (1 - np.cos(np.pi * response.time[early] / ramp_time)) / 2
         elevation = height / 2 * ramp * np.cos(frequency * response.time)
     else:
-        elevation = pm_elevation
+        elevation = (imported_elevation if imported_elevation is not None
+                     else pm_elevation)
     coordinate_outputs = tuple(
         output for index, name in enumerate(coordinate_names)
         for output in (
@@ -1715,6 +1749,13 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
              np.stack([dynamic.excitation(t) for t in response.time])),
         )
     ) if wave["type"] in ("regular", "regularCIC") else ()
+    imported_outputs = tuple(
+        (f"body{index}_excitation_force",
+         (np.asarray(body.hydroForce["userDefinedFe"])
+          * (imported_ramp[:, None] if wave.get("reapply_force_ramp", False)
+             else 1)))
+        for index, body in enumerate(loaded_bodies, start=1)
+    ) if wave["type"] == "elevationImport" else ()
     passive_outputs = ()
     if passive_model is not None:
         body_index = passive_indices[0] + 1
@@ -1761,5 +1802,6 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             generalized_pto if "pto" in case or "ptos" in case else None
         ),
         extra_outputs=(coordinate_outputs + pto_outputs + tuple(generator_outputs) + drift_outputs
+                       + imported_outputs
                        + passive_outputs + nonlinear_outputs + morison_outputs),
     )
