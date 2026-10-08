@@ -59,8 +59,12 @@ def test_matlab_controller_generator_and_force_balance():
                -3.8e5 * speed + 1.52e5 * (z - z[0]),
                1e-5, "source reactive controller")
     _max_error(shaft_speed, 100 * speed, 1e-10, "shaft speed")
-    _max_error(inertia, -2 * 100 * acceleration, 1e-5,
-               "shaft inertia torque")
+    # Simulink's Derivative block reports the shaft-speed change over the
+    # preceding output interval. Its value is not the instantaneous body
+    # acceleration logged at the same endpoint.
+    _max_error(inertia[1:],
+               -2 * 100 * np.diff(speed) / np.diff(time), 1e-8,
+               "source sampled shaft inertia torque")
     _max_error(friction, -shaft_speed, 1e-10, "shaft friction torque")
     _max_error(shaft_torque, inertia + friction + generator,
                1e-8, "shaft torque")
