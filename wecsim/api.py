@@ -117,6 +117,19 @@ class _FloatingJoint:
 
 
 @dataclass(frozen=True)
+class _FixedHinge:
+    flap: Body
+    base: Body | None
+    location: WorldPoint
+    pto_location: WorldPoint
+    pto_name: str
+    damping: float
+    stiffness: float
+    equilibrium_angle: float
+    added_mass_scheme: str
+
+
+@dataclass(frozen=True)
 class Coordinate:
     name: str
     motions: tuple[Motion, ...]
@@ -368,6 +381,7 @@ class WEC:
         self.rotational_ptos: list[RotationalPTO] = []
         self._floating_gbm_body: Body | None = None
         self._floating_joint: _FloatingJoint | None = None
+        self._fixed_hinge: _FixedHinge | None = None
         self._morison_elements: list[tuple[Body, MorisonElement]] = []
 
     def body(self, name: str, hydro_file: str | Path, *,
@@ -492,7 +506,8 @@ class WEC:
         """
         if (len(self.bodies) != 2 or self.bodies[0] is not float_body
                 or self.bodies[1] is not spar_body or self._floating_joint is not None
-                or self._floating_gbm_body is not None or self.coordinates
+                or self._floating_gbm_body is not None or self._fixed_hinge is not None
+                or self.coordinates
                 or self.ptos or self.rotational_ptos or self._morison_elements):
             raise ValueError("floating_joint needs exactly two ordered bodies and no other layout or PTO")
         if not isinstance(location, WorldPoint) or location.x != 0 or location.y != 0:
@@ -509,6 +524,45 @@ class WEC:
             float_body, spar_body, location, pto_name, damping, stiffness,
             equilibrium_position, mooring_surge_stiffness, hard_stops,
             radiation_method, added_mass_scheme,
+        )
+
+    def fixed_hinge(self, flap: Body, base: Body | None = None, *,
+                    location: WorldPoint = WorldPoint(0, 0, -10),
+                    pto_location: WorldPoint = WorldPoint(0, 0, -8.9),
+                    pto_name: str = "hinge", damping: float = 0.0,
+                    stiffness: float = 0.0, equilibrium_angle: float = 0.0,
+                    added_mass_scheme: str = "implicit") -> None:
+        """Select the published OSWEC pitch hinge and torsional PTO.
+
+        The flap moves in surge, heave, and pitch about a fixed base. Both
+        joint and PTO points currently lie on the world z axis.
+        """
+        if (len(self.bodies) != (1 if base is None else 2)
+                or self.bodies[0] is not flap
+                or base is not None and self.bodies[1] is not base
+                or flap.fixed or self.body_to_body
+                or self._fixed_hinge is not None or self._floating_joint is not None
+                or self._floating_gbm_body is not None or self.coordinates
+                or self.ptos or self.rotational_ptos or self._morison_elements):
+            raise ValueError("fixed_hinge needs one flap, optional ordered base, and no other layout or PTO")
+        if (not isinstance(location, WorldPoint)
+                or not isinstance(pto_location, WorldPoint)
+                or not np.isfinite(location.coordinates()).all()
+                or not np.isfinite(pto_location.coordinates()).all()
+                or location.x != 0 or location.y != 0
+                or pto_location.x != 0 or pto_location.y != 0):
+            raise ValueError("fixed_hinge points need finite world locations on the z axis")
+        if not isinstance(pto_name, str) or not pto_name:
+            raise ValueError("fixed_hinge PTO name must be nonempty")
+        if (not np.isfinite([damping, stiffness, equilibrium_angle]).all()
+                or damping < 0 or stiffness < 0
+                or equilibrium_angle and not stiffness):
+            raise ValueError("fixed_hinge PTO needs finite nonnegative damping and stiffness")
+        if added_mass_scheme not in ("implicit", "simulink_delay"):
+            raise ValueError("unsupported fixed_hinge added-mass scheme")
+        self._fixed_hinge = _FixedHinge(
+            flap, base, location, pto_location, pto_name,
+            damping, stiffness, equilibrium_angle, added_mass_scheme,
         )
 
     def coordinate(self, name: str, *motions: Motion) -> Coordinate:
@@ -610,6 +664,10 @@ class WEC:
                 simulation[key] = value
         if self._floating_joint is not None:
             return self._floating_joint_case(
+                wave, simulation, initial_coordinate, initial_speed,
+            )
+        if self._fixed_hinge is not None:
+            return self._fixed_hinge_case(
                 wave, simulation, initial_coordinate, initial_speed,
             )
         bodies = []
@@ -785,6 +843,70 @@ class WEC:
                                "stiffness": joint.mooring_surge_stiffness}
         return case
 
+    def _fixed_hinge_case(self, wave, simulation,
+                          initial_coordinate, initial_speed) -> dict:
+        hinge = self._fixed_hinge
+        if (len(self.bodies) != (1 if hinge.base is None else 2)
+                or self.bodies[0] is not hinge.flap
+                or hinge.base is not None and self.bodies[1] is not hinge.base
+                or self.coordinates or self.ptos or self.rotational_ptos
+                or self._morison_elements or self._floating_gbm_body is not None
+                or self._floating_joint is not None or self.body_to_body
+                or initial_coordinate is not None or initial_speed is not None):
+            raise ValueError("fixed_hinge needs its selected bodies and no custom coordinates or PTOs")
+        if not isinstance(wave, (RegularWave, PMWave)):
+            raise ValueError("fixed_hinge currently supports regular or PM waves")
+        if (isinstance(wave, RegularWave)
+                and (wave.direction != 0
+                     or hinge.added_mass_scheme != "implicit")):
+            raise ValueError("regular fixed_hinge needs zero-heading waves and implicit added mass")
+        if hinge.base is not None and hinge.base.fixed:
+            if (hinge.base.center_gravity is None
+                    or not np.isfinite(hinge.base.center_gravity).all()):
+                raise ValueError("fixed nonhydrodynamic base needs a finite center of gravity")
+            base_case = {
+                "name": hinge.base.name, "nonhydro": True, "fixed": True,
+                "center_gravity": list(hinge.base.center_gravity),
+                "mass": hinge.base.mass, "inertia": list(hinge.base.inertia),
+                "volume": hinge.base.volume,
+            }
+        elif hinge.base is not None:
+            base_case = {"name": hinge.base.name,
+                         "hydro_file": str(hinge.base.hydro_file),
+                         "hydro_body": hinge.base.hydro_body or 2,
+                         "mass": hinge.base.mass,
+                         "pitch_inertia": float(hinge.base.inertia[1])}
+        else:
+            base_case = None
+        flap = hinge.flap
+        if (not isinstance(flap.mass, Real) or isinstance(flap.mass, bool)
+                or not np.isfinite(flap.mass) or flap.mass <= 0
+                or len(flap.inertia) != 3
+                or not np.isfinite(flap.inertia).all()
+                or flap.inertia[1] <= 0
+                or flap.passive_yaw or flap.yaw_heading_bank is not None
+                or flap.variable_hydro is not None or flap.nonlinear_hydro is not None
+                or flap.mean_drift != "none" or flap.drag_coefficient
+                or flap.drag_area):
+            raise ValueError("fixed_hinge needs a positive flap mass and pitch inertia without extra force models")
+        bodies = [{"name": flap.name, "hydro_file": str(flap.hydro_file),
+                   "hydro_body": flap.hydro_body or 1,
+                   "mass": float(flap.mass),
+                   "pitch_inertia": float(flap.inertia[1])}]
+        if base_case is not None:
+            bodies.append(base_case)
+        simulation["added_mass_scheme"] = hinge.added_mass_scheme
+        return {
+            "name": self.name, "simulation": simulation,
+            "wave": wave.as_case(), "bodies": bodies,
+            "constraint": {"kind": "fixed_hinge",
+                           "location": hinge.location.coordinates()},
+            "pto": {"kind": "pitch", "damping": hinge.damping,
+                    "stiffness": hinge.stiffness,
+                    "equilibrium_position": hinge.equilibrium_angle,
+                    "location": hinge.pto_location.coordinates()},
+        }
+
     def run(
         self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
@@ -829,6 +951,19 @@ class WEC:
             return WECResult(
                 response.time, bodies, coordinates,
                 {self._floating_joint.pto_name: pto},
+                response.wave_elevation, case, response,
+            )
+        if self._fixed_hinge is not None:
+            angle = response.body_position[:, 0, 4]
+            speed = response.body_velocity[:, 0, 4]
+            pto = PTOHistory(
+                angle, speed, response.pto_force,
+                self._fixed_hinge.damping * speed**2,
+            )
+            return WECResult(
+                response.time, bodies,
+                {"pitch": MotionHistory(angle, speed)},
+                {self._fixed_hinge.pto_name: pto},
                 response.wave_elevation, case, response,
             )
         coordinates = {

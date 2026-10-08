@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from wecsim import RegularWave, WEC, WorldPoint
 from wecsim.caseDynamics import run_case
 from wecsim.hingePitch import solve_hinged_pitch_regular
 
@@ -85,3 +86,30 @@ def test_published_nonhydrodynamic_base_against_matlab():
     )
     _max_error(direct.excitation_force, flap[:, 19:25], 1.0,
                "six-component flap excitation force")
+
+    configured = WEC("OSWEC nonhydrodynamic base")
+    moving = configured.body("flap", hydro, mass=127_000,
+                             inertia=(0, 1.85e6, 0))
+    fixed = configured.fixed_body(
+        "base", center_gravity=(0, 0, -10.9), mass=999,
+        inertia=(1, 1, 1),
+    )
+    configured.fixed_hinge(
+        moving, fixed, location=WorldPoint(0, 0, -10),
+        pto_location=WorldPoint(0, 0, -8.9), damping=0,
+    )
+    public = configured.run(
+        RegularWave(2.5, 8), dt=0.1, end_time=400, ramp_time=100,
+    )
+    np.testing.assert_allclose(public.raw.body_position,
+                               response.body_position, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(public.raw.body_velocity,
+                               response.body_velocity, rtol=0, atol=1e-12)
+    _max_error(public.bodies["flap"].position[:, 4], flap[:, 5],
+               0.007, "configured flap pitch")
+    np.testing.assert_allclose(public.bodies["base"].position,
+                               base[:, 1:7], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(public.ptos["hinge"].force,
+                               pto[:, 17], rtol=0, atol=1e-6)
+    np.testing.assert_allclose(public.coordinates["pitch"].position,
+                               public.ptos["hinge"].stroke, rtol=0, atol=0)

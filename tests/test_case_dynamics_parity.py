@@ -9,7 +9,7 @@ import sys
 import numpy as np
 import pytest
 
-from wecsim import NoWave, RegularWave, WEC
+from wecsim import NoWave, PMWave, RegularWave, WEC, WorldPoint
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL = os.environ.get("WEC_SIM_REFERENCE_MODEL")
@@ -260,6 +260,31 @@ def test_oswec_general_runner(tmp_path):
     _max_error(torque, pto[:, 17], 60, "OSWEC PTO torque")
     _max_error(torque * columns["body1_pitch_velocity"], pto[:, 23],
                max(25, 0.06 * np.max(np.abs(pto[:, 23]))), "OSWEC PTO power")
+
+    configured = WEC("Published OSWEC")
+    flap = configured.body("flap", hydro, mass=127_000,
+                           inertia=(0, 1.85e6, 0))
+    configured.fixed_hinge(
+        flap, location=WorldPoint(0, 0, -8.9),
+        pto_location=WorldPoint(0, 0, -8.9), damping=12_000,
+    )
+    public = configured.run(
+        PMWave(2.5, 8, directions=tuple(directions[:, 0]),
+               spreading=tuple(directions[:, 1]), phase_file="phase.csv"),
+        dt=0.1, end_time=400, ramp_time=100,
+        radiation_memory=30, base_dir=tmp_path,
+    )
+    _max_error(public.bodies["flap"].position[:, 4], expected[:, 5],
+               0.004, "configured OSWEC pitch")
+    _max_error(public.bodies["flap"].velocity[:, 4], expected[:, 11],
+               0.005, "configured OSWEC pitch speed")
+    _max_error(public.ptos["hinge"].force, pto[:, 17],
+               60, "configured OSWEC PTO torque")
+    _max_error(-public.ptos["hinge"].absorbed_power, pto[:, 23],
+               max(25, 0.06 * np.max(np.abs(pto[:, 23]))),
+               "configured OSWEC PTO power")
+    np.testing.assert_allclose(public.coordinates["pitch"].position,
+                               public.ptos["hinge"].stroke, rtol=0, atol=0)
 
 
 @pytest.mark.skipif(MODEL != "Sphere" or not (SPHERE_H5 and REFERENCE),

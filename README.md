@@ -162,6 +162,28 @@ Supported combinations are:
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
 | `linear_subspace` | `regular`, `regularCIC`, `pm`, `jonswap`, `spectrumImport`, `elevationImport`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
 
+The canonical OSWEC pitch hinge also has a direct Python configuration:
+
+```python
+from wecsim import PMWave, WEC, WorldPoint
+
+wec = WEC("OSWEC pitch flap")
+flap = wec.body("flap", "oswec.h5", mass=127_000,
+                inertia=(0, 1.85e6, 0))
+wec.fixed_hinge(flap, location=WorldPoint(0, 0, -8.9),
+                pto_location=WorldPoint(0, 0, -8.9), damping=12_000)
+sea = PMWave(2.5, 8, directions=(0, 30, 90),
+             spreading=(0.1, 0.2, 0.7), seed=1)
+result = wec.run(sea, dt=0.1, end_time=400, ramp_time=100,
+                 radiation_memory=30)
+pitch = result.coordinates["pitch"].position
+torque = result.ptos["hinge"].force
+```
+
+The hinge can also take a `fixed_body(...)` base. Both hinge and PTO points
+currently lie on the world z axis. PTO angle and speed are in radians and
+radians per second; `absorbed_power` reports positive damping dissipation.
+
 The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
 PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at
 the wave heading relative to its current yaw angle:
