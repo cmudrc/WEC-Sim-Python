@@ -43,7 +43,10 @@ Git history.
 ## Current status
 
 Wave generation, RM3 and OSWEC hydrodynamic input, force preprocessing, and
-the supported device dynamics have paired MATLAB checks. The Python API is
+the supported device dynamics have paired MATLAB checks. The published
+generalized-body-mode barge has paired ten-DOF hydrodynamic and flexible-mode
+preprocessing, but coupled flexible-body motion is not yet available through
+the case runner; see [PARITY.md](PARITY.md). The Python API is
 the primary way to configure a linearized device. It constructs bodies,
 named motions, attachment points, PTOs, and waves as Python objects, then
 returns NumPy arrays directly. Import it as `wecsim` after installation:

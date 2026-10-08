@@ -139,6 +139,11 @@ class BodyClass:
                                             'B':[],
                                             'C':[],
                                             'D':[]},
+                                  'gbm':{'mass_ff':[],
+                                         'mass_ff_inv':[],
+                                         'stiffness':[],
+                                         'damping':[],
+                                         'state_space':{}},
                                   'storage':{'mass':[],
                                              'momOfInertia':[],
                                              'fAddedMass':[],
@@ -209,7 +214,11 @@ class BodyClass:
         self.dof_start = np.asarray(self.hydroData['properties']['dof_start']).reshape(-1)
         self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
-        self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = np.transpose(np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness')))
+        restoring = np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness'))
+        self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = (
+            restoring[:, :, 0] if restoring.ndim == 3 and restoring.shape[2] == 1
+            else restoring.T
+        )
         self.hydroData['hydro_coeffs']['excitation']['re'] = np.array(f.get(name +  '/hydro_coeffs/excitation/re'))
         self.hydroData['hydro_coeffs']['excitation']['im'] = np.array(f.get(name + '/hydro_coeffs/excitation/im'))
         if f.get(name + '/hydro_coeffs/excitation/impulse_response_fun/f') is not None:
@@ -239,7 +248,9 @@ class BodyClass:
             dataset = f.get(name + '/properties/' + property_name)
             if dataset is not None:
                 # HDF5 reverses MATLAB's matrix dimension order.
-                matrix = np.asarray(dataset).T
+                matrix = np.asarray(dataset)
+                matrix = (matrix[:, :, 0] if matrix.ndim == 3 and matrix.shape[2] == 1
+                          else matrix.T)
                 self.hydroData['gbm'][property_name] = matrix[
                     gbm_start:gbm_end, gbm_start:gbm_end
                 ]
@@ -280,21 +291,25 @@ class BodyClass:
         """
         self.setMassMatrix(rho,nlHydro)
         if self.dof_gbm > 0:
-            #self.linearDamping = [self.linearDamping np.zeros(1,self.dof-np.size(self.linearDamping))] # to use this you need to define self.linearDamping
-            tmp0 = self.linearDamping
-            tmp1 = np.size(self.linearDamping)
-            self.linearDamping = np.zeros(self.dof[0])                
-            self.linearDamping[0][:tmp1[0]] = tmp0[0]
-            self.linearDamping[1][:tmp1[1]] = tmp0[1]
+            dof = int(np.asarray(self.dof).item())
 
-            tmp0 = self.viscDrag['Drag']
-            tmp1 = np.size(self.viscDrag['Drag'])
-            self.viscDrag['Drag'] = np.zeros(self.dof)                
-            self.viscDrag['Drag'][0][:tmp1[0]] = tmp0[0]
-            self.viscDrag['Drag'][1][:tmp1[1]] = tmp0[1]
-            
-            self.viscDrag['cd']   = np.append(self.viscDrag['cd'], np.zeros(self.dof[0]-np.size(self.viscDrag['cd'])))
-            self.viscDrag['characteristicArea'] = np.append(self.viscDrag['characteristicArea'],np.zeros(1,self.dof-np.size(self.viscDrag['characteristicArea'])))
+            def extend_matrix(value):
+                matrix = np.asarray(value, dtype=float)
+                if matrix.ndim == 1:
+                    matrix = np.diag(matrix)
+                if matrix.ndim != 2 or max(matrix.shape) > dof:
+                    raise ValueError("GBM damping matrix exceeds body DOFs")
+                extended = np.zeros((dof, dof))
+                extended[:matrix.shape[0], :matrix.shape[1]] = matrix
+                return extended
+
+            self.linearDamping = extend_matrix(self.linearDamping)
+            self.viscDrag['Drag'] = extend_matrix(self.viscDrag['Drag'])
+            for key in ('cd', 'characteristicArea'):
+                values = np.asarray(self.viscDrag[key], dtype=float).ravel()
+                if len(values) > dof:
+                    raise ValueError("GBM drag vector exceeds body DOFs")
+                self.viscDrag[key] = np.pad(values, (0, dof - len(values)))
 
         if np.any(self.hydroStiffness):  # check for a user-defined stiffness
             self.hydroForce['linearHydroRestCoef'] = self.hydroStiffness
@@ -333,20 +348,26 @@ class BodyClass:
             self.userDefinedExcitation(waveAmpTime,dt,waveDir,rho,g)
             self.irfInfAddedMassAndDamping(CIkt,CTTime,ssCalc,rho,B2B)
 
-        gbmDOF = self.dof_gbm
-        if gbmDOF>0:
-            self.hydroForce['gbm']['stiffness']=self.hydroData['gbm']['stiffness']
-            self.hydroForce['gbm']['damping']=self.hydroData['gbm']['damping']
-            self.hydroForce['gbm']['mass_ff']=[self.hydroForce['fAddedMass'].arange(7,self.dof+1)[self.hydroForce['fAddedMass'].arange(self.dof_start+6,self.dof_end+1)]]+self.hydroData['gbm']['mass']   # need scaling for hydro part
-            self.hydroForce['fAddedMass'][7:self.dof+1] = np.zeros(len(np.arange(7,self.dof+1)))
-            self.hydroForce['fAddedMass'][(self.dof_start[0]+6):(self.dof_end[0]+1)] = np.zeros(len(np.arange(self.dof_start+6,self.dof_end+1)))
-            self.hydroForce['gbm']['mass_ff_inv']=inv(self.hydroForce['gbm']['mass_ff'])
-            
-            # state-space formulation for solving the GBM
-            self.hydroForce['gbm']['state_space']['A'] = [np.zeros((gbmDOF,gbmDOF)), np.eye(gbmDOF,gbmDOF)-inv(self.hydroForce['gbm']['mass_ff'])*self.hydroForce['gbm']['stiffness'],-inv(self.hydroForce['gbm']['mass_ff'])*self.hydroForce['gbm']['damping']]    # move to ... hydroForce sector with scaling .         # or create a new fun for all flex parameters
-            self.hydroForce['gbm']['state_space']['B'] = np.eye(2*gbmDOF,2*gbmDOF)
-            self.hydroForce['gbm']['state_space']['C'] = np.eye(2*gbmDOF,2*gbmDOF)
-            self.hydroForce['gbm']['state_space']['D'] = np.zeros((2*gbmDOF,2*gbmDOF))
+        gbmDOF = int(np.asarray(self.dof_gbm).item())
+        if gbmDOF > 0:
+            flexible = slice(6, 6 + gbmDOF)
+            gbm = self.hydroForce['gbm']
+            gbm['stiffness'] = np.asarray(self.hydroData['gbm']['stiffness'])
+            gbm['damping'] = np.asarray(self.hydroData['gbm']['damping'])
+            gbm['mass_ff'] = (self.hydroForce['fAddedMass'][flexible, flexible]
+                              + np.asarray(self.hydroData['gbm']['mass']))
+            # MATLAB's flexible state-space block carries this mass, so its
+            # applied added-mass matrix no longer contains the flex block.
+            self.hydroForce['fAddedMass'][flexible, flexible] = 0
+            gbm['mass_ff_inv'] = inv(gbm['mass_ff'])
+            gbm['state_space']['A'] = np.block([
+                [np.zeros((gbmDOF, gbmDOF)), np.eye(gbmDOF)],
+                [-gbm['mass_ff_inv'] @ gbm['stiffness'],
+                 -gbm['mass_ff_inv'] @ gbm['damping']],
+            ])
+            gbm['state_space']['B'] = np.eye(2 * gbmDOF)
+            gbm['state_space']['C'] = np.eye(2 * gbmDOF)
+            gbm['state_space']['D'] = np.zeros((2 * gbmDOF, 2 * gbmDOF))
             self.flexHydroBody = 1
             self.nhBody=0
             
