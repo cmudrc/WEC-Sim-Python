@@ -8,7 +8,11 @@ import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from wecsim.mpcPlant import build_sphere_mpc_matrices
+from wecsim import JONSWAPWave
+from wecsim.irregularWave import jonswap_equal_energy_components
+from wecsim.mpcPlant import (
+    build_sphere_mpc_matrices, replay_sphere_mpc_plant,
+)
 from wecsim.waveClass import WaveClass
 
 
@@ -51,6 +55,16 @@ def test_published_sphere_mpc_waves_and_prediction_model():
 
     components = _load("components")
     assert components.shape == (500, 4)
+    phase = components[:, 3, None]
+    assert JONSWAPWave(2.5, 8, phase_file="phases.csv").as_case()["type"] == "jonswap"
+    sea = jonswap_equal_energy_components(
+        hydro, significant_height=2.5, peak_period=8,
+        directions=np.array([0]), spreading=np.array([1]), phase=phase,
+    )
+    _match(sea.omega, components[:, 0], 1e-12, "public JONSWAP frequencies")
+    _match(sea.spectral_amplitude, components[:, 1], 1e-12,
+           "public JONSWAP spectrum")
+    _match(sea.d_omega, components[:, 2], 1e-12, "public JONSWAP widths")
     with h5py.File(hydro) as h5:
         frequencies = np.asarray(h5["/simulation_parameters/w"]).ravel()
     wave = WaveClass("irregular")
@@ -59,11 +73,12 @@ def test_published_sphere_mpc_waves_and_prediction_model():
     wave.spectrumType = "JS"
     wave.freqDisc = "EqualEnergy"
     wave.numFreq = 500
-    wave.phaseData = components[:, 3, None]
+    wave.phaseData = phase
     wave.waveDir = [0]
     wave.waveSpread = [1]
     wave.waveSetup([frequencies.min(), frequencies.max()], "infinite",
                    100, .01, 40000, 9.81, 1000, 400)
+    assert wave.gamma == 1.0
     _match(np.asarray(wave.w).ravel(), components[:, 0], 1e-12,
            "JONSWAP frequencies")
     _match(np.asarray(wave.A).ravel(), components[:, 1], 1e-12,
@@ -75,8 +90,18 @@ def test_published_sphere_mpc_waves_and_prediction_model():
 
     controller = _load("controller")
     body = _load("MPC_body1")
+    plant = _load("plant_output")
     assert controller.shape == (40001, 13)
     assert body.shape == (40001, 25)
+    assert plant.shape == (40001, 4)
+    _match(plant[:, 0], body[:, 0], 1e-12, "plant sample time")
+    _match(plant[:, 3], controller[:, 3], 1e-8,
+           "internal plant PTO force")
+    replay = replay_sphere_mpc_plant(
+        matrices, controller[:, 3], body[:, 21], dt=.01,
+    )
+    _match(replay[:, 0], plant[:, 1], 7e-5, "internal plant heave speed")
+    _match(replay[:, 1], plant[:, 2], 5e-5, "internal plant heave position")
     _match(controller[:, 9], controller[:, 3] * body[:, 9], 1e-7,
            "logged controller power")
     assert controller[np.flatnonzero(np.abs(controller[:, 3]) > 1e-9)[0], 0] == 205.51

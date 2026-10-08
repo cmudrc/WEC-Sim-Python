@@ -132,7 +132,7 @@ Supported combinations are:
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
-| `linear_subspace` | `regular`, `regularCIC`, `pm`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
+| `linear_subspace` | `regular`, `regularCIC`, `pm`, `jonswap`, or `none` | Any number of six-DOF hydrodynamic bodies; named motions or 6-by-N maps; optional linear or rotational PTOs; selected mean-drift coefficients for regular waves | Constant-frequency radiation or convolution |
 
 The published OSWEC passive-yaw cases use one yaw coordinate and a torsional
 PTO. Set `passive_yaw=True` on the moving body to interpolate excitation at
@@ -179,6 +179,14 @@ keeps continuous interpolation. The sampled setting is available for PM waves
 with one incident direction; small trajectory differences can change its
 update sample and accumulate over long runs.
 
+For a heave or other `linear_subspace` device, `JONSWAPWave(2.5, 8,
+seed=1, gamma=3.3)` selects a JONSWAP sea. Omitting `gamma` uses WEC-Sim's
+height/period-dependent value. The published Sphere MPC case uses 2.5 m and
+8 s, which infers `gamma=1`; its JONSWAP spectrum therefore equals the PM
+spectrum for those inputs. `phase_file` replays a saved MATLAB realization.
+The Sphere MPC optimizer and closed-loop PTO trajectory are still being
+validated; `JONSWAPWave` alone does not enable that controller.
+
 For the published Sphere `Mean_Drift` application, select the control-surface
 coefficient in the generated HDF5 file and use convolution radiation:
 
@@ -204,9 +212,10 @@ force ramp. The published unmoored linear Sphere run travels more than 16 m
 in surge over 100 s; the paired result reproduces that source model but does
 not establish physical accuracy at such a large displacement.
 
-The runner rejects unsupported layouts and settings. For the PM case, supply
+The runner rejects unsupported layouts and settings. For PM or JONSWAP, supply
 `wave.height`, `wave.period`, optional `directions` and `spreading`, and either
 an integer `seed` or a `phase_file` CSV to replay a MATLAB realization.
+JONSWAP also accepts an optional positive `gamma`.
 `simulation` accepts `dt`, `end_time`, optional `ramp_time`, `rho`, `g`, and
 `radiation_memory` for radiation-memory cases. For an RM3 `regularCIC` floating
 joint, set `simulation.radiation_method` to `"fir"` to use the published

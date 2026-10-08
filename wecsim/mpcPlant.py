@@ -97,3 +97,37 @@ def build_sphere_mpc_matrices(
     Q = prediction_step / 2 * np.kron(np.eye(count), q_step)
     H = Su.T @ Q @ Su + rate_penalty * np.eye(count + 1)
     return MPCMatrices(A, Bu, Bv, C, Sx, Su, Sv, Q, H)
+
+
+def replay_sphere_mpc_plant(
+    matrices: MPCMatrices, pto_force: np.ndarray,
+    excitation_force: np.ndarray, *, dt: float,
+) -> np.ndarray:
+    """Replay the controller's internal plant from logged force inputs.
+
+    The result has velocity, position relative to the plant equilibrium,
+    and PTO force columns. This is a prediction-model diagnostic, not the
+    physical WEC body trajectory or a closed-loop controller.
+    """
+    force = np.asarray(pto_force, dtype=float)
+    excitation = np.asarray(excitation_force, dtype=float)
+    if (force.ndim != 1 or excitation.shape != force.shape or len(force) < 2
+            or not np.isfinite(force).all() or not np.isfinite(excitation).all()
+            or not np.isfinite(dt) or dt <= 0):
+        raise ValueError("plant replay needs equal finite force histories and positive dt")
+    augmented = np.zeros((11, 11))
+    augmented[:9, :9] = matrices.A
+    augmented[:9, 9] = matrices.Bu
+    augmented[:9, 10] = matrices.Bv
+    discrete = expm(augmented * dt)
+    Ad = discrete[:9, :9]
+    Bud = discrete[:9, 9]
+    Bvd = discrete[:9, 10]
+    state = np.zeros(9)
+    response = np.zeros((len(force), 3))
+    for step in range(len(force) - 1):
+        rate = (force[step + 1] - force[step]) / dt
+        midpoint_excitation = (excitation[step] + excitation[step + 1]) / 2
+        state = Ad @ state + Bud * rate + Bvd * midpoint_excitation
+        response[step + 1] = matrices.C @ state
+    return response
