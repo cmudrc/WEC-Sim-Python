@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from scipy.io import loadmat
+from scipy.signal import fftconvolve
 
 from wecsim import OrificePTO
 from wecsim.bodyClass import BodyClass
@@ -108,6 +109,7 @@ def test_published_owc_wave_and_seventh_excitation_channel():
     body.bodyNumber = body.bodyTotal = 1
     body.readH5file()
     body.mass = "equilibrium"
+    body.linearDamping = np.diag([0, 0, 100, 0, 0, 0, 100])
     memory = np.arange(3001) * 0.005
     body.hydroForcePre(
         components[:, 0], [0], len(memory), memory, len(components),
@@ -138,3 +140,44 @@ def test_published_owc_wave_and_seventh_excitation_channel():
     mass = float(np.asarray(force["gbm"]["mass_ff"])[0, 0])
     _max_error(mass * flexible[:, 2], total + reaction, 1e-6,
                "source flexible acceleration and orifice balance")
+
+    # Reconstruct radiation from all seven source speeds.
+    # The finite-memory convolution is trapezoidal at its first and last
+    # samples, matching the source's continuous convolution block.
+    velocities = np.column_stack((rigid[:, 7:13], flexible[:, 1]))
+    kernel = np.asarray(force["irkb"])
+    radiation = 0.005 * np.column_stack(
+        [sum(
+            fftconvolve(kernel[:, axis, channel], velocities[:, channel])
+            [:len(wave)] for channel in range(7)
+        ) for axis in range(7)]
+    )
+    radiation -= 0.0025 * velocities @ kernel[0].T
+    last_lag = len(kernel) - 1
+    radiation[last_lag:] -= 0.0025 * velocities[:-last_lag] @ kernel[-1].T
+    _max_error(radiation[:, 6], flexible[:, 5], 0.01,
+               "source seventh radiation force")
+
+    rigid_forces = _load("body1_forces")
+    assert rigid_forces.shape == (26001, 37)
+    rigid_radiation, rigid_added, rigid_restoring, rigid_viscous, \
+        rigid_linear, rigid_acceleration = (
+            rigid_forces[:, 1 + 6*i:1 + 6*(i+1)] for i in range(6)
+        )
+    _max_error(radiation[:, :6], rigid_radiation, 0.25,
+               "source rigid radiation force")
+    displacements = np.column_stack((rigid[:, 1:7], flexible[:, 0]))
+    _max_error(
+        displacements @ np.asarray(force["linearHydroRestCoef"])[:6].T,
+        rigid_restoring, 1e-7, "source rigid hydrostatic force",
+    )
+    _max_error(
+        velocities @ np.asarray(force["linearDamping"])[:6].T,
+        rigid_linear, 1e-8, "source rigid linear damping",
+    )
+    _max_error(
+        rigid[:, 19:25] - rigid_radiation - rigid_added
+        - rigid_restoring - rigid_viscous - rigid_linear,
+        rigid[:, 13:19], 1e-7, "source rigid hydrodynamic force sum",
+    )
+    assert np.isfinite(rigid_acceleration).all()
