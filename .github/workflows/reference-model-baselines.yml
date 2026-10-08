@@ -510,6 +510,7 @@ jobs:
             applications/Nonlinear_Hydro/geometry/elipsoid.stl
             applications/Generalized_Body_Modes/hydroData/barge.h5
             applications/OWC/OrificeModel/hydroData/test17a_clean.h5
+            applications/Cable/hydroData/mbari.h5
             applications/Controls/MPC/coeff.mat
 
   compare-end-stops-full:

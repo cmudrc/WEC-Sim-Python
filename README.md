@@ -1077,6 +1077,25 @@ pass the source's saved phase matrix instead of a Python seed. The raw chamber
 force in the pinned Simscape run alternates at the 0.01 s output interval, so
 the paired force check uses a 0.1 s mean and a separate total-work check.
 
+The published MBARI Cable application has an axial spring and damper between
+two attachment points. Its source force law is available as a Python object:
+
+```python
+from wecsim import WecSimCableTension
+
+cable = WecSimCableTension(
+    stiffness=1_000_000, damping=100,
+    length=17.8, initial_length=18,
+)
+force_z = cable.force_z(relative_position=0.03, relative_velocity=0.1)
+```
+
+`relative_position` and `relative_velocity` are the source cable block's
+local z displacement and speed. This component returns its signed actuation
+force. It does not yet advance the three MBARI bodies or their attachment
+points together. The source law can report positive force while the cable is
+stretched and contracting rapidly because its damping term is not clamped.
+
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
 chamber pressure flips on alternating 0.01 s samples while valve flow stays
