@@ -14,6 +14,7 @@ import numpy as np
 from scipy.io import loadmat
 
 from .bodyClass import BodyClass
+from .directDrive import integrate_direct_drive_heave
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .hardStops import LinearHardStops
 from .hingePitch import (
@@ -269,6 +270,16 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("body.mean_drift currently requires linear_subspace")
     if "mooring" in case and kind != "floating_joint":
         raise ValueError("the joint surge mooring requires a floating_joint")
+
+    if "ptos" in case and any(
+            isinstance(pto, Mapping) and "direct_drive" in pto
+            for pto in case["ptos"]):
+        if kind != "linear_subspace":
+            raise ValueError("simple direct drive needs linear_subspace coordinates")
+        return _run_direct_drive_heave(
+            case, sim, wave, constraint, bodies, hydro, b2b,
+            dt, end_time, ramp_time, rho, g,
+        )
 
     if any("variable_hydro" in body for body in bodies):
         if kind != "linear_subspace":
@@ -661,6 +672,134 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")
+
+
+def _run_direct_drive_heave(case, sim, wave, constraint, bodies, hydro,
+                            b2b, dt, end_time, ramp_time, rho, g):
+    """Run a regular-wave heave body with the simple direct-drive PTO block."""
+    heave_map = np.zeros((6, 1))
+    heave_map[2, 0] = 1
+    if (len(bodies) != 1 or b2b or wave["type"] != "regular"
+            or _number(wave.get("direction", 0), "wave.direction") != 0
+            or set(wave) - {"type", "height", "period", "direction"}
+            or set(constraint) - {"kind", "coordinates", "initial_coordinate",
+                                  "initial_speed"}
+            or "radiation_memory" in sim or "pto" in case
+            or "mooring" in case or len(case["ptos"]) != 1):
+        raise ValueError("simple direct drive needs one heave body, regular zero-heading waves, and one PTO")
+    spec = bodies[0]
+    if set(spec) - {"name", "hydro_file", "hydro_body", "mass", "inertia"}:
+        raise ValueError("direct-drive heave body has unsupported settings")
+    _body_number(spec, 1)
+    body = BodyClass(str(hydro[0]))
+    body.bodyNumber = body.bodyTotal = 1
+    body.readH5file()
+    if int(np.asarray(body.dof).item()) != 6:
+        raise ValueError("direct-drive heave needs a six-DOF BEM dataset")
+    center = np.asarray(body.cg, dtype=float).ravel()
+    if center.shape != (3,) or not np.isfinite(center).all():
+        raise ValueError("direct-drive body needs a finite center")
+    name = spec.get("name", "body1")
+    maps, coordinate_names = build_coordinate_maps(
+        constraint, bodies, [name], [center],
+    )
+    if len(maps) != 1 or not np.array_equal(maps[0], heave_map):
+        raise ValueError("simple direct drive currently supports pure heave")
+    connections, _, _, _ = build_linear_ptos(
+        case["ptos"], maps, [center], [name], coordinate_names,
+        allow_direct_drive=True,
+    )
+    connection = connections[0]
+    if (not np.isclose(connection.stroke_jacobian[0], 1, rtol=0, atol=1e-12)
+            or "direct_drive" not in case["ptos"][0]):
+        raise ValueError("simple direct drive needs a vertical PTO with positive heave stroke")
+    drive = _section(case["ptos"][0]["direct_drive"], "pto.direct_drive",
+                     {"kp", "ki", "torque_constant", "gear_ratio",
+                      "drivetrain_inertia", "drivetrain_friction",
+                      "winding_resistance", "winding_inductance"},
+                     {"kp", "ki", "torque_constant", "gear_ratio",
+                      "drivetrain_inertia", "drivetrain_friction",
+                      "winding_resistance", "winding_inductance"})
+    drive = {
+        key: _number(value, f"pto.direct_drive.{key}",
+                     positive=key in ("torque_constant", "gear_ratio",
+                                      "winding_resistance", "winding_inductance"),
+                     nonnegative=key in ("drivetrain_inertia", "drivetrain_friction"))
+        for key, value in drive.items()
+    }
+    height = _number(wave.get("height"), "wave.height", nonnegative=True)
+    period = _number(wave.get("period"), "wave.period", positive=True)
+    mass = spec.get("mass", "equilibrium")
+    mass = (rho * float(np.asarray(body.dispVol).item()) if mass == "equilibrium"
+            else _number(mass, "body.mass", positive=True))
+    inertia = np.asarray(spec.get("inertia", [0, 0, 0]), dtype=float)
+    if (inertia.shape != (3,) or not np.isfinite(inertia).all()
+            or np.any(inertia < 0)):
+        raise ValueError("body.inertia needs three nonnegative values")
+    body.mass = mass
+    body.hydroStiffness = np.zeros((6, 6))
+    body.viscDrag = {"Drag": np.zeros((6, 6)), "cd": np.zeros(6),
+                     "characteristicArea": np.zeros(6)}
+    body.linearDamping = np.zeros((6, 6))
+    frequency = 2 * np.pi / period
+    body.hydroForcePre(
+        frequency, [0], 1, np.array([0.0]), [], dt, rho, g,
+        "regular", np.zeros((2, 1)), 1, 1, 0, 0, 0,
+    )
+    force = body.hydroForce
+    initial_q = initial_coordinate(
+        constraint.get("initial_coordinate", [0]), coordinate_names,
+        "constraint.initial_coordinate",
+    )
+    initial_v = initial_coordinate(
+        constraint.get("initial_speed", [0]), coordinate_names,
+        "constraint.initial_speed",
+    )
+    response = integrate_direct_drive_heave(
+        dt=dt, end_time=end_time, height=height, period=period,
+        ramp_time=ramp_time, rho=rho, g=g, mass=mass,
+        displaced_volume=float(np.asarray(body.dispVol).item()),
+        center_z=float(center[2]),
+        added_mass=float(force["fAddedMass"][2, 2]),
+        radiation_damping=float(force["fDamping"][2, 2]),
+        hydrostatic_stiffness=float(force["linearHydroRestCoef"][2, 2]),
+        excitation_real=float(force["fExt"]["re"][2]),
+        excitation_imaginary=float(force["fExt"]["im"][2]),
+        initial_position=float(center[2]) + initial_q[0],
+        initial_velocity=initial_v[0], **drive,
+    )
+    coordinates = (response.position - center[2])[:, None]
+    speeds = response.velocity[:, None]
+    positions = np.zeros((len(response.time), 1, 6))
+    velocities = np.zeros_like(positions)
+    positions[:, 0, 2] = response.position
+    velocities[:, 0, 2] = response.velocity
+    ramp = np.ones(len(response.time))
+    if ramp_time:
+        early = response.time < ramp_time
+        ramp[early] = (1 - np.cos(np.pi * response.time[early] / ramp_time)) / 2
+    elevation = height / 2 * ramp * np.cos(frequency * response.time)
+    drive_fields = (
+        "shaft_velocity", "shaft_torque", "inertia_torque",
+        "friction_torque", "generator_torque", "current", "voltage",
+        "resistance_loss", "electrical_power", "mechanical_power",
+    )
+    extras = (
+        (f"coordinate_{coordinate_names[0]}_position", coordinates[:, 0]),
+        (f"coordinate_{coordinate_names[0]}_velocity", speeds[:, 0]),
+        ("body1_controller_force", response.controller_force),
+    ) + tuple(
+        (f"pto_{connection.name}_drive_{field}", getattr(response, field))
+        for field in drive_fields
+    ) + connection.outputs(
+        coordinates, speeds, force_override=response.body_force,
+    )
+    return CaseResponse(
+        response.time, positions, velocities, hydro,
+        wave_elevation=elevation,
+        pto_generalized_force=response.body_force[:, None],
+        extra_outputs=extras,
+    )
 
 
 def _run_variable_heave(case, sim, wave, constraint, bodies, hydro,
