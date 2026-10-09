@@ -693,6 +693,20 @@ for iCase = 1:numel(cases)
         assert(numel(selectedPaths) >= 2, ...
             'Desalination hydraulic logging blocks were not found');
     end
+    if string(model) == "WECCCOMP_FAULT_SOURCE"
+        load_system('WaveStar');
+        chart = get_param( ...
+            'WaveStar/Controller/Rotary/MATLAB Function', 'PortHandles');
+        positionLine = get_param(chart.Inport(6), 'Line');
+        sourcePort = get_param(positionLine, 'SrcPortHandle');
+        set_param(sourcePort, 'DataLogging', 'on', ...
+            'DataLoggingNameMode', 'Custom', ...
+            'DataLoggingName', 'fault_true_position');
+        set_param(chart.Outport(5), 'DataLogging', 'on', ...
+            'DataLoggingNameMode', 'Custom', ...
+            'DataLoggingName', 'fault_measured_position');
+        set_param('WaveStar', 'SignalLogging', 'on');
+    end
     if string(model) == "RM3_Radiation_Options"
         [output, simu] = run_radiation_option(cases(iCase));
     else
@@ -700,6 +714,22 @@ for iCase = 1:numel(cases)
     end
     assert(exist('output', 'var') == 1 && ~isempty(output.bodies), ...
         'The MATLAB case produced no body output');
+    if string(model) == "WECCCOMP_FAULT_SOURCE"
+        assert(exist('logsout', 'var') == 1, ...
+            'The WaveStar fault signals were not logged');
+        for signalName = ["fault_true_position", ...
+                          "fault_measured_position"]
+            logged = logsout.getElement(char(signalName));
+            assert(~isempty(logged), ...
+                'The WaveStar fault sensor trace is missing');
+            trace = logged.Values;
+            values = [trace.Time(:), trace.Data(:)];
+            assert(all(isfinite(values), 'all'), ...
+                'The WaveStar fault sensor trace is invalid');
+            writematrix(values, fullfile(outDir, ...
+                "WECCCOMP_FAULT_SOURCE_" + signalName + ".csv"));
+        end
+    end
     if string(model) == "OSWEC_DESALINATION_SOURCE"
         log = simscape.logging.getSimulationLog('OSWEC_RO');
         fid = fopen(fullfile(outDir, ...
