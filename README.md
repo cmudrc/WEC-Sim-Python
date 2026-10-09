@@ -1145,6 +1145,27 @@ events differ more than body positions. The source law can report positive
 force while stretched and contracting rapidly because its damping term is not
 clamped.
 
+The published WaveBot `CalcImpedance` application uses three independent
+motions and a sampled multisine input. Generate its HDF5 file with
+`Load_Mitigating_Controls/hydroData/bemio.m`, then run:
+
+```python
+from wecsim import run_wavebot_impedance
+
+response = run_wavebot_impedance(
+    "applications/Load_Mitigating_Controls/hydroData/waveBotBuoy.h5",
+    "applications/Load_Mitigating_Controls/CalcImpedance/multisine3DOFA.mat",
+)
+print(response.body_position[:, [0, 2, 4]])  # surge, heave, pitch
+```
+
+The default uses positive diagonal damping in those coordinates. MATLAB's
+published `linearDamping(1:2:5)` input instead fills the first matrix column,
+making all three damping forces depend on surge speed. Use
+`source_linear_damping=True` to compare the published source trajectory. The
+runner applies the source model's negative pitch-actuation sign in both modes.
+It covers the open-loop identification case, not the later adaptive controller.
+
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
 chamber pressure flips on alternating 0.01 s samples while valve flow stays
