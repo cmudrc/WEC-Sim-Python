@@ -161,6 +161,29 @@ physical-accuracy target. In the source-compatible setting, reported PTO power
 is the source algebraic power signal, not energy removed from the simulated
 flexible state.
 
+The separate published `OWC/FloatingOWC` device has a compressible air
+chamber. Its pressure state and axial reaction can be configured in Python:
+
+```python
+from math import pi
+from wecsim import FloatingOwcChamber
+
+area = pi * 5.89**2 / 4
+chamber = FloatingOwcChamber(
+    area=area, initial_volume=area * 4.5, gamma=1.4,
+    ambient_pressure=101325, ambient_density=1.25,
+    turbine_diameter=0.75, turbine_kappa=0.775,
+)
+pressure_rate = chamber.pressure_derivative(
+    pressure, water_column_displacement, water_column_speed, turbine_speed,
+)
+column_force = chamber.force_on_column(pressure)
+```
+
+Pressure is gauge Pa and the supplied displacement is positive when the
+water column rises into the chamber. The full floating OWC body, mooring, and
+turbine trajectory is still a named parity gap in [PARITY.md](PARITY.md).
+
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
 instead of constant damping. Import `DeclutchingControl` from `wecsim`.

@@ -49,7 +49,9 @@ def test_published_chamber_pressure_on_source_motion_and_turbine_speed():
         )
 
     displacement = read("xOWC")
-    speed = read("vOWC")
+    # The source bus creator leaves its fourth input unnamed. Its upstream
+    # selector is the water-column heave velocity fed to velOWC.
+    speed = read("signal4")
     turbine_speed = read("vTurb")
     pressure = read("deltaP")
     time = pressure[:, 0]
@@ -73,4 +75,5 @@ def test_published_chamber_pressure_on_source_motion_and_turbine_speed():
     assert predicted.success
     assert np.isfinite(predicted.y).all()
     error = np.abs(predicted.y[0] - pressure[:, 1])
-    assert np.max(error) < 100, f"chamber pressure error {np.max(error):.6g} Pa"
+    assert np.max(error) < 0.05, f"chamber pressure error {np.max(error):.6g} Pa"
+    assert np.sqrt(np.mean(error**2)) < 0.01
