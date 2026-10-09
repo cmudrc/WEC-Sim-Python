@@ -6,6 +6,7 @@ directories. These tests deliberately import the production WaveClass.
 
 from pathlib import Path
 import sys
+from xml.etree import ElementTree
 
 import numpy as np
 import pytest
@@ -182,3 +183,44 @@ def test_wave_surface_grid_matches_matlab_regular_and_irregular_equations():
     np.testing.assert_allclose(
         ParaviewClass(irregular).waveElevationGrid(2.0, X, Y), expected, atol=1e-15
     )
+
+
+def test_paraview_wave_vtp_matches_published_grid_layout(tmp_path):
+    wave = WaveClass("regular")
+    wave.A = 1.25
+    wave.k = 0.3
+    wave.w = 0.8
+    wave.waveDir = [90]
+    wave.waterDepth = 30
+    paths = ParaviewClass(wave).write_paraview_vtp_wave(
+        [2.0, 3.0], tmp_path, domain_size=6,
+        num_points_x=3, num_points_y=2,
+    )
+    assert [path.name for path in paths] == ["waves_1.vtp", "waves_2.vtp"]
+    assert (tmp_path / "ground.txt").read_text() == "6\n30\n0\n"
+    X, Y = np.meshgrid([-6.0, 0.0, 6.0], [-6.0, 6.0])
+    for time, path in zip((2.0, 3.0), paths):
+        root = ElementTree.parse(path).getroot()
+        assert root.attrib == {"type": "PolyData", "version": "0.1"}
+        piece = root.find("./PolyData/Piece")
+        assert piece.attrib == {"NumberOfPoints": "6", "NumberOfPolys": "2"}
+        points = np.fromstring(piece.findtext("./Points/DataArray"), sep=" ").reshape(-1, 3)
+        expected = np.column_stack((
+            X.ravel(), Y.ravel(),
+            (1.25 * np.cos(-0.3 * Y + 0.8 * time)).ravel(),
+        ))
+        np.testing.assert_allclose(points, expected, rtol=0, atol=5.1e-6)
+        connectivity = np.fromstring(
+            piece.findtext("./Polys/DataArray[@Name='connectivity']"),
+            sep=" ", dtype=int,
+        ).reshape(-1, 4)
+        np.testing.assert_array_equal(connectivity, [[0, 1, 4, 3], [1, 2, 5, 4]])
+        offsets = np.fromstring(
+            piece.findtext("./Polys/DataArray[@Name='offsets']"),
+            sep=" ", dtype=int,
+        )
+        np.testing.assert_array_equal(offsets, [4, 8])
+    with pytest.raises(ValueError, match="finite and increasing"):
+        ParaviewClass(wave).write_paraview_vtp_wave(
+            [2, 2], tmp_path, domain_size=6,
+        )

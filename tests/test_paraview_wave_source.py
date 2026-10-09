@@ -1,0 +1,61 @@
+"""Pair Python VTP wave meshes with the pinned MATLAB ParaView writer."""
+
+import os
+from pathlib import Path
+from xml.etree import ElementTree
+
+import numpy as np
+import pytest
+
+from wecsim.paraviewClass import ParaviewClass
+from wecsim.waveClass import WaveClass
+
+
+REFERENCE = os.environ.get("WEC_SIM_MATLAB_PARAVIEW_WAVE_DIR")
+pytestmark = pytest.mark.skipif(
+    not REFERENCE, reason="pinned MATLAB ParaView wave grids not provided",
+)
+
+
+def _mesh(path):
+    piece = ElementTree.parse(path).find("./PolyData/Piece")
+    points = np.fromstring(
+        piece.findtext("./Points/DataArray"), sep=" ",
+    ).reshape(-1, 3)
+    connectivity = np.fromstring(
+        piece.findtext("./Polys/DataArray[@Name='connectivity']"),
+        sep=" ", dtype=int,
+    ).reshape(-1, 4)
+    offsets = np.fromstring(
+        piece.findtext("./Polys/DataArray[@Name='offsets']"),
+        sep=" ", dtype=int,
+    )
+    assert int(piece.get("NumberOfPoints")) == len(points)
+    assert int(piece.get("NumberOfPolys")) == len(connectivity)
+    return points, connectivity, offsets
+
+
+def test_regular_wave_vtp_against_pinned_matlab(tmp_path):
+    reference = Path(REFERENCE)
+    amplitude, wavenumber, omega, direction, depth = np.loadtxt(
+        reference / "parameters.csv", delimiter=",",
+    )
+    wave = WaveClass("regular")
+    wave.A = amplitude
+    wave.k = wavenumber
+    wave.w = omega
+    wave.waveDir = [direction]
+    wave.waterDepth = depth
+    paths = ParaviewClass(wave).write_paraview_vtp_wave(
+        [2, 3], tmp_path, domain_size=6, num_points_x=3, num_points_y=2,
+    )
+    assert (tmp_path / "ground.txt").read_text() == (
+        reference / "ground.txt"
+    ).read_text()
+    for index, path in enumerate(paths, start=1):
+        source = reference / "waves" / f"waves_{index}.vtp"
+        actual_points, actual_cells, actual_offsets = _mesh(path)
+        source_points, source_cells, source_offsets = _mesh(source)
+        np.testing.assert_allclose(actual_points, source_points, rtol=0, atol=1e-5)
+        np.testing.assert_array_equal(actual_cells, source_cells)
+        np.testing.assert_array_equal(actual_offsets, source_offsets)
