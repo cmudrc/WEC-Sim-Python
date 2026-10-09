@@ -30,6 +30,7 @@ class WaveStarNmpcActuator:
         """Advance one published 0.05 s actuator sample and return force N."""
         if not np.isfinite(command_torque):
             raise ValueError("WaveStar NMPC torque command must be finite")
+        arm = self.moment_arm(stroke)
         command = float(np.clip(command_torque, -12, 12))
         torque = (
             .96294775 * command
@@ -40,4 +41,4 @@ class WaveStarNmpcActuator:
         )
         self._command[:] = [command, self._command[0]]
         self._torque[:] = [torque, self._torque[0]]
-        return float(np.clip(torque, -12, 12) / self.moment_arm(stroke))
+        return float(np.clip(torque, -12, 12) / arm)
