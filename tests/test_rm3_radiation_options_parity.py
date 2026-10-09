@@ -10,6 +10,7 @@ from scipy.interpolate import CubicSpline
 from scipy.signal import fftconvolve
 
 from wecsim.caseDynamics import run_case
+from wecsim.radiation import replay_rm3_fitted_radiation
 
 
 APPLICATIONS = os.environ.get("WEC_SIM_APPLICATIONS_DIR")
@@ -159,3 +160,22 @@ def test_matlab_radiation_modes_are_distinct():
     reference_surge = loads["convolution"][:, 1]
     assert np.max(np.abs(loads["FIR"][:, 1] - reference_surge)) > 0.2
     assert np.max(np.abs(loads["state_space"][:, 1] - reference_surge)) > 1.0
+
+
+def test_published_state_space_radiation_force_on_source_motion():
+    """Check the source fitted force law without making it the default solver."""
+    hydro = (Path(APPLICATIONS)
+             / "_Common_Input_Files/RM3/hydroData/rm3.h5").resolve()
+    traces = [np.loadtxt(
+        Path(REFERENCE) / f"RM3_Radiation_Options_state_space_body{body}.csv",
+        delimiter=",",
+    ) for body in (1, 2)]
+    assert all(trace.shape == (5001, 37) for trace in traces)
+    time = traces[0][:, 0]
+    np.testing.assert_allclose(traces[1][:, 0], time, rtol=0, atol=1e-10)
+    velocity = np.stack([trace[:, 7:13] for trace in traces], axis=1)
+    expected = np.stack([trace[:, 25:31] for trace in traces], axis=1)
+    calculated = replay_rm3_fitted_radiation(hydro, time, velocity)
+    error = np.max(np.abs(calculated - expected), axis=0)
+    peak = np.max(np.abs(expected), axis=0)
+    assert np.all(error < 3e-4 * np.maximum(peak, 3)), (error, peak)
