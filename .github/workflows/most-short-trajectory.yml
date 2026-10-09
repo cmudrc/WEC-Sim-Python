@@ -11,6 +11,7 @@ on:
       - 'tests/test_most_platform_forces_source.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
+      - 'wecsim/mostTower.py'
       - 'wecsim/mostController.py'
       - 'wecsim/mostBEM.py'
       - 'wecsim/turbSim.py'
@@ -24,6 +25,7 @@ on:
       - 'tests/test_most_platform_forces_source.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
+      - 'wecsim/mostTower.py'
       - 'wecsim/mostController.py'
       - 'wecsim/mostBEM.py'
       - 'wecsim/turbSim.py'
@@ -78,6 +80,7 @@ jobs:
           WEC_SIM_MOST_SHORT_BASELINE: matlab-most-short.mat
           WEC_SIM_MOST_H5: applications/MOST/hydroData/VolturnUS.h5
           WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
+          WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -338,8 +338,20 @@ closes the source's three translational force balances within `1.4e-8` N
 (gate `1e-4` N) at every sample. This fixes the force signs, frame, and
 Simscape added-mass shift needed for an independent platform solve; the
 tower reaction and platform trajectory are still source inputs to this
-diagnostic. The full six-axis moment accounting and bidirectional turbine
-feedback remain unpaired.
+diagnostic. The separate Newton–Euler reaction gate below resolves the
+six-axis tower load; bidirectional turbine feedback remains unpaired.
+
+Public `MostTowerReaction` now calculates that tower-base wrench from the
+published tower, nacelle, yaw bearing, hub, and three blade mass properties,
+gravity, rotor and platform kinematics, generator torque, and blade-root
+aerodynamic loads. Across all 1,001 states of the pinned 10 s MOST run, its
+maximum force-component error is below `1.5e-8` N. Moment errors are below
+`0.033` N m about the tilted shaft axes and `1.5e-7` N m in the dominant
+pitch moment; the paired gates allow `1e-5` N and `0.1`, `1e-4`, `0.01` N m
+respectively. This gate takes MATLAB platform acceleration, rotor state,
+generator torque, and BEM root loads as inputs. It verifies the physical
+reaction law and its frames, while the live turbine/platform feedback still
+needs an independently advanced coupled trajectory.
 
 The public `MostPlatformHydrodynamics.simulate` separately advances platform
 surge, heave, and pitch from the Python JONSWAP excitation, live catenary,
