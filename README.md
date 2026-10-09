@@ -114,6 +114,15 @@ Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
 runner takes platform motion as input; turbine mass and aerodynamic loads do
 not yet feed back into independently advanced platform motion.
 
+`MostTowerReaction.from_iea15mw(properties_file).evaluate(position, velocity,
+acceleration, rotor_speed, azimuth, generator_torque, blade_root_load)`
+computes the six-component force and moment transferred from this turbine to
+the platform. It uses the published tower, nacelle, hub, and blade mass
+properties, gravity, rotor inertia, and blade-root aerodynamic loads.
+`blade_root_load` is an N×6×3 array in the preconed blade frames; the returned
+N×6 wrench is in the rotating platform frame about the tower base. This is a
+force calculation on supplied platform and rotor states, not a coupled solve.
+
 `MostPlatformHydrodynamics.from_volturnus(h5_file, mass_properties_file)`
 reads the published VolturnUS BEMIO coefficients and platform mass properties.
 Its `restoring_force(position)`, `drag_force(velocity)`, and

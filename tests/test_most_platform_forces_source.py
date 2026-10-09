@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from wecsim import MostPlatformHydrodynamics, MostStaticMooring
+from wecsim import MostPlatformHydrodynamics, MostStaticMooring, MostTowerReaction
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
@@ -125,3 +125,28 @@ def test_most_platform_wave_and_mooring_against_pinned_source():
             response.velocity[:, column], source["body_velocity"][:, column],
             rtol=0, atol=velocity_gate,
         )
+
+
+@pytest.mark.skipif(
+    not all(os.environ.get(name) for name in (
+        "WEC_SIM_MOST_SHORT_BASELINE", "WEC_SIM_MOST_PROPERTIES",
+    )),
+    reason="pinned MATLAB MOST turbine and tower trace not provided",
+)
+def test_most_tower_reaction_against_pinned_source():
+    source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
+    assert source["body_position"].shape == (1001, 6)
+    tower = MostTowerReaction.from_iea15mw(os.environ["WEC_SIM_MOST_PROPERTIES"])
+    force = tower.evaluate(
+        source["body_position"], source["body_velocity"],
+        source["body_acceleration"],
+        source["rotor_speed"].ravel()*2*np.pi/60,
+        source["azimuth"].ravel(), source["generator_torque"].ravel(),
+        source["blade_aero_load"],
+    )
+    source_force = source["tower_base_load"]
+    assert source_force.shape == (1001, 6)
+    np.testing.assert_allclose(force[:, :3], source_force[:, :3],
+                               rtol=0, atol=1e-5)
+    assert np.all(np.max(np.abs(force[:, 3:] - source_force[:, 3:]), axis=0)
+                  < [0.1, 1e-4, 0.01])
