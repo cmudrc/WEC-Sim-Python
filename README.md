@@ -1193,6 +1193,22 @@ frequencies but differs from the BEM damping table. The broader `WEC` runner's
 physical radiation default is unchanged. Fault and nonlinear predictive
 controller variants remain unsupported.
 
+The WaveStar fault application has separately paired PTO components:
+
+```python
+from wecsim import StribeckFriction, WaveStarFaultController
+
+joint = StribeckFriction(.25, .1, .2, .001)
+joint_torque = joint.torque(angular_speed)
+controller = WaveStarFaultController(gain=10, filter_frequency=30)
+axial_force = controller.step(stroke, noise=position_noise, dropout=False)
+```
+
+Call `step` every 0.001 s with the current B-to-C stroke. Its sensor noise
+and dropout inputs make the stochastic fault realization explicit. These PTO
+component checks do not yet establish coupled motion parity for that
+application; see [PARITY.md](PARITY.md).
+
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
 chamber pressure flips on alternating 0.01 s samples while valve flow stays
