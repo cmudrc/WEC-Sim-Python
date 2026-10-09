@@ -1,0 +1,60 @@
+name: MATLAB MOST BEM turbine parity
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/most-bem-parity.yml'
+      - 'tests/export_most_bem.py'
+      - 'tests/matlab/most_bem_baseline.m'
+      - 'tests/test_most_bem_source.py'
+      - 'wecsim/mostBEM.py'
+  pull_request:
+    paths:
+      - '.github/workflows/most-bem-parity.yml'
+      - 'tests/export_most_bem.py'
+      - 'tests/matlab/most_bem_baseline.m'
+      - 'tests/test_most_bem_source.py'
+      - 'wecsim/mostBEM.py'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim
+          ref: 0753b2e47f2457c078751dcfe5d251d1767b80ab
+          path: matlab-ref
+          filter: blob:none
+          sparse-checkout: source
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim_Applications
+          ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+          path: applications
+          filter: blob:none
+          sparse-checkout: MOST/mostData/windTurbine/turbine_properties
+      - run: python tests/export_most_bem.py matlab-ref/source/lib/MOST/MOST_Lib.slx matlab-most-bem-source
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath('matlab-ref/source')); addpath('matlab-most-bem-source'); cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../../../../..'); addpath('tests/matlab'); most_bem_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_bem_source.py
+        env:
+          WEC_SIM_MOST_BEM_BASELINE: matlab-most-bem.mat
+          WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matlab-most-bem
+          path: matlab-most-bem.mat
