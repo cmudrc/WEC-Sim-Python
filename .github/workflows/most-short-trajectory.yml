@@ -7,11 +7,23 @@ on:
       - '.github/workflows/most-short-trajectory.yml'
       - 'tests/matlab/most_short_source_baseline.m'
       - 'tests/matlab/most_wind_advection_baseline.m'
+      - 'tests/test_most_rotor_source.py'
+      - 'wecsim/mostRotor.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/mostBEM.py'
+      - 'wecsim/turbSim.py'
+      - 'wecsim/__init__.py'
   pull_request:
     paths:
       - '.github/workflows/most-short-trajectory.yml'
       - 'tests/matlab/most_short_source_baseline.m'
       - 'tests/matlab/most_wind_advection_baseline.m'
+      - 'tests/test_most_rotor_source.py'
+      - 'wecsim/mostRotor.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/mostBEM.py'
+      - 'wecsim/turbSim.py'
+      - 'wecsim/__init__.py'
   workflow_dispatch:
 
 jobs:
@@ -47,6 +59,16 @@ jobs:
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath(genpath(fullfile(pwd,'matlab-ref','source'))); addpath(fullfile(pwd,'tests','matlab')); most_wind_advection_baseline; most_short_source_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_rotor_source.py
+        env:
+          WEC_SIM_MOST_SHORT_BASELINE: matlab-most-short.mat
+          WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
+          WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
+          WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -59,3 +81,4 @@ jobs:
             applications/MOST/mostData/turbSim/WIND_8mps.mat
             applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
             applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
+            applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat

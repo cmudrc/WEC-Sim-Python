@@ -76,6 +76,30 @@ class MostWindField:
             return interpolator(np.asarray(position, dtype=float).reshape(1, 3))[0]
         return sample
 
+    def sampler_at(self, time: float):
+        """Sample the spatial field at a simulation time in seconds.
+
+        MOST's time-series wind input is linearly interpolated between the
+        TurbSim advection frames before the BEM spatial interpolation.
+        """
+        if not np.isfinite(time) or not 0 <= time <= (self.n_time - 1) * self.wind.dt:
+            raise ValueError("MOST wind time is outside the available record")
+        fractional = time / self.wind.dt
+        before = min(int(np.floor(fractional)), self.n_time - 1)
+        after = min(before + 1, self.n_time - 1)
+        weight = fractional - before
+        if after == before or weight == 0:
+            return self.sampler(before)
+        values = ((1 - weight) * self.at_index(before)
+                  + weight * self.at_index(after)).transpose(1, 2, 3, 0)
+        interpolator = RegularGridInterpolator(
+            (self.x, self.wind.y, self.wind.z), values,
+            bounds_error=False, fill_value=np.nan,
+        )
+        def sample(position):
+            return interpolator(np.asarray(position, dtype=float).reshape(1, 3))[0]
+        return sample
+
 
 def read_turbsim_bts(path: str | Path) -> TurbSimWind:
     """Read a little-endian TurbSim int16 ``.bts`` file.

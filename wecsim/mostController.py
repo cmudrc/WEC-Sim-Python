@@ -85,6 +85,46 @@ class MostBaselineController:
         object.__setattr__(self, "omega_gen", omega)
         object.__setattr__(self, "generator_torque", torque)
 
+    def _command(self, state, previous_pitch):
+        filtered = 5*state[1]
+        error = filtered-self.omega_max
+        desired_torque = np.interp(filtered, self.omega_gen,
+                                   self.generator_torque)
+        c1, c2, c3 = self.sensitivity
+        sensitivity = (c1*previous_pitch+c2)*previous_pitch+c3
+        desired_pitch = np.clip(
+            (self.kp*error+self.ki*state[2])/sensitivity, 0, np.pi/2,
+        )
+        return desired_torque, desired_pitch
+
+    def _advance(self, state, speed_before, speed_after, step,
+                 previous_torque, previous_pitch):
+        def derivative(current, fraction):
+            incoming = speed_before+fraction*(speed_after-speed_before)
+            error = 5*current[1]-self.omega_max
+            integral_rate = error if current[2] > 0 or error > 0 else 0
+            return np.array([
+                -5*current[0]-5*current[1]+incoming,
+                current[0], integral_rate,
+            ])
+
+        k1 = derivative(state, 0)
+        k2 = derivative(state+step*k1/2, .5)
+        k3 = derivative(state+step*k2/2, .5)
+        k4 = derivative(state+step*k3, 1)
+        state = state+step*(k1+2*k2+2*k3+k4)/6
+        state[2] = max(0, state[2])
+        wanted_torque, wanted_pitch = self._command(state, previous_pitch)
+        torque = previous_torque+np.clip(
+            wanted_torque-previous_torque,
+            -self.torque_max_rate*step, self.torque_max_rate*step,
+        )
+        pitch = previous_pitch+np.clip(
+            wanted_pitch-previous_pitch,
+            -self.pitch_max_rate*step, self.pitch_max_rate*step,
+        )
+        return state, torque, pitch
+
     def simulate(self, time, rotor_speed):
         """Return generator torque and pitch for a prescribed speed history.
 
@@ -103,47 +143,10 @@ class MostBaselineController:
         # The source State-Space block has A=[-5,-5;1,0], B=[1;0], C=[0,5]
         # and initial state [0, omega0/5]. Its PI integrator starts at zero.
         state = np.array([0.0, self.initial_omega/5, 0.0])
-
-        def command(current, previous_pitch):
-            filtered = 5*current[1]
-            error = filtered-self.omega_max
-            desired_torque = np.interp(filtered, self.omega_gen,
-                                       self.generator_torque)
-            c1, c2, c3 = self.sensitivity
-            sensitivity = (c1*previous_pitch+c2)*previous_pitch+c3
-            desired_pitch = np.clip(
-                (self.kp*error+self.ki*current[2])/sensitivity,
-                0, np.pi/2,
-            )
-            return desired_torque, desired_pitch
-
-        torque[0], pitch[0] = command(state, self.initial_pitch)
+        torque[0], pitch[0] = self._command(state, self.initial_pitch)
         for index in range(1, len(time)):
-            step = time[index]-time[index-1]
-            speed_before, speed_after = speed[index-1:index+1]
-
-            def derivative(current, fraction):
-                incoming = speed_before+fraction*(speed_after-speed_before)
-                error = 5*current[1]-self.omega_max
-                integral_rate = error if current[2] > 0 or error > 0 else 0
-                return np.array([
-                    -5*current[0]-5*current[1]+incoming,
-                    current[0], integral_rate,
-                ])
-
-            k1 = derivative(state, 0)
-            k2 = derivative(state+step*k1/2, .5)
-            k3 = derivative(state+step*k2/2, .5)
-            k4 = derivative(state+step*k3, 1)
-            state = state+step*(k1+2*k2+2*k3+k4)/6
-            state[2] = max(0, state[2])
-            wanted_torque, wanted_pitch = command(state, pitch[index-1])
-            torque[index] = torque[index-1]+np.clip(
-                wanted_torque-torque[index-1],
-                -self.torque_max_rate*step, self.torque_max_rate*step,
-            )
-            pitch[index] = pitch[index-1]+np.clip(
-                wanted_pitch-pitch[index-1],
-                -self.pitch_max_rate*step, self.pitch_max_rate*step,
+            state, torque[index], pitch[index] = self._advance(
+                state, speed[index-1], speed[index],
+                time[index]-time[index-1], torque[index-1], pitch[index-1],
             )
         return torque, pitch
