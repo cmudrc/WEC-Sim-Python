@@ -17,6 +17,13 @@ jobs:
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('tests/matlab'); threefry_reference
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_matlab_threefry_seed.py
+        env:
+          WEC_SIM_MATLAB_THREEFRY_DIR: matlab-threefry-output
       - uses: actions/upload-artifact@v4
         if: always()
         with:

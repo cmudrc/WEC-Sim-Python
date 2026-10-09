@@ -301,8 +301,9 @@ class PMWave:
 
     ``height`` is significant wave height in metres, ``period`` is peak
     period in seconds, and ``direction`` is the incident heading in degrees.
-    A saved phase CSV replays a MATLAB realization. Without one, ``seed``
-    selects a reproducible Python realization rather than MATLAB's RNG stream.
+    A saved phase CSV replays a MATLAB realization. By default, ``seed``
+    selects a reproducible NumPy realization. Set ``phase_generator="matlab"``
+    to use the pinned WEC-Sim Threefry substream with that seed.
     ``frequency_range`` narrows the BEM frequency interval in rad/s. A
     ``water_depth`` override is currently used only for fixed Morison bodies.
     """
@@ -318,10 +319,15 @@ class PMWave:
     frequency_range: tuple[float, float] | None = None
     water_depth: float | None = None
     current: Current | None = None
+    phase_generator: str = "numpy"
 
     def as_case(self) -> dict:
         if self.seed is not None and self.phase_file is not None:
             raise ValueError("PMWave uses either seed or phase_file")
+        if self.phase_generator not in ("numpy", "matlab"):
+            raise ValueError("PMWave.phase_generator must be 'numpy' or 'matlab'")
+        if self.phase_generator == "matlab" and self.phase_file is None and self.seed is None:
+            raise ValueError("MATLAB phase generation needs a substream seed")
         if (self.directions is None) != (self.spreading is None):
             raise ValueError("PMWave directions and spreading must be supplied together")
         wave = {"type": "pm", "height": self.height,
@@ -341,6 +347,8 @@ class PMWave:
             wave["current"] = self.current.as_case()
         if self.seed is not None:
             wave["seed"] = self.seed
+        if self.phase_generator != "numpy":
+            wave["phase_generator"] = self.phase_generator
         if self.phase_file is not None:
             wave["phase_file"] = str(self.phase_file)
         return wave

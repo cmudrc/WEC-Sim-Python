@@ -3,7 +3,8 @@
 The formulas follow the current MATLAB WEC-Sim ``irregWaveSpectrum``,
 ``waveElevIrreg``, and ``irregExcF`` path for a PM spectrum. Callers may supply
 the phase matrix to replay a MATLAB realization or generate a reproducible
-Python realization with an integer seed.
+Python realization with an integer seed. ``phase_generator="matlab"`` selects
+the pinned WEC-Sim Threefry substream for independent seeded replay.
 """
 
 from dataclasses import dataclass
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Sequence
 
 import numpy as np
+from randomgen import ThreeFry
 from scipy.interpolate import CubicSpline, RegularGridInterpolator
 from scipy.io import loadmat
 
@@ -46,12 +48,32 @@ class IrregularResponse:
     excitation_force: np.ndarray
 
 
+def _random_phases(shape: tuple[int, int], seed: int | None,
+                   phase_generator: str) -> np.ndarray:
+    if phase_generator == "numpy":
+        return 2 * np.pi * np.random.default_rng(seed).random(shape)
+    if phase_generator != "matlab":
+        raise ValueError("phase_generator must be 'numpy' or 'matlab'")
+    if (not isinstance(seed, int) or isinstance(seed, bool)
+            or not 1 <= seed < 2**32 - 4):
+        raise ValueError("MATLAB phase generation needs a positive integer substream seed")
+    # Pinned waveClass: RandStream('Threefry','Seed',1), Substream=phaseSeed.
+    # MATLAB's 17-word State was paired with R2025b for substreams 1-3 and
+    # the published 500-by-3 Morison sea (substream 5). randomgen starts at
+    # the matching block when these four uint64 counter words are supplied.
+    counter = np.array([2 << 32, (4 << 32) + 3,
+                        (6 << 32) + seed + 4, (8 << 32) + 7], dtype=np.uint64)
+    return 2 * np.pi * np.random.Generator(
+        ThreeFry(key=0, counter=counter)).random(shape)
+
+
 def imported_full_directional_components(
     h5_file: str | Path,
     spectrum_file: str | Path,
     *,
     phase: np.ndarray | None = None,
     seed: int | None = None,
+    phase_generator: str = "numpy",
 ) -> FullDirectionalComponents:
     """Load WEC-Sim's frequency-resolved directional MAT spectrum.
 
@@ -102,7 +124,7 @@ def imported_full_directional_components(
         raise ValueError("supply either phase or seed")
     shape = (len(omega), len(heading))
     if phase is None:
-        phases = 2 * np.pi * np.random.default_rng(seed).random(shape)
+        phases = _random_phases(shape, seed, phase_generator)
     else:
         phases = np.asarray(phase, dtype=float)
         if phases.shape != shape or not np.isfinite(phases).all():
@@ -173,21 +195,22 @@ def pm_equal_energy_components(
     spreading: np.ndarray,
     count: int = 500,
     seed: int | None = None,
+    phase_generator: str = "numpy",
     phase: np.ndarray | None = None,
     frequency_range: Sequence[float] | None = None,
 ) -> IrregularComponents:
     """Build current WEC-Sim PM equal-energy bins from a frequency range.
 
-    ``phase`` overrides random generation for replay. With ``seed``, NumPy's
-    generator makes a reproducible *Python* realization; its random sequence
-    is not MATLAB Threefry's. Exactly matching a MATLAB run requires its
-    saved phase matrix. ``frequency_range`` supplies the WEC-Sim ``bem.range``
+    ``phase`` overrides random generation for replay. The default seed uses
+    NumPy; ``phase_generator="matlab"`` uses the pinned WEC-Sim Threefry
+    substream. ``frequency_range`` supplies the WEC-Sim ``bem.range``
     used when a Morison-only body has no HDF5 file.
     """
     return _equal_energy_components(
         h5_file, significant_height=significant_height,
         peak_period=peak_period, directions=directions, spreading=spreading,
         count=count, seed=seed, phase=phase, gamma=None,
+        phase_generator=phase_generator,
         frequency_range=frequency_range,
     )
 
@@ -201,6 +224,7 @@ def jonswap_equal_energy_components(
     spreading: np.ndarray,
     count: int = 500,
     seed: int | None = None,
+    phase_generator: str = "numpy",
     phase: np.ndarray | None = None,
     gamma: float | None = None,
     frequency_range: Sequence[float] | None = None,
@@ -223,6 +247,7 @@ def jonswap_equal_energy_components(
         h5_file, significant_height=significant_height,
         peak_period=peak_period, directions=directions, spreading=spreading,
         count=count, seed=seed, phase=phase, gamma=gamma,
+        phase_generator=phase_generator,
         frequency_range=frequency_range,
     )
 
@@ -231,6 +256,7 @@ def _equal_energy_components(
     h5_file: str | Path | None, *, significant_height: float, peak_period: float,
     directions: np.ndarray, spreading: np.ndarray, count: int,
     seed: int | None, phase: np.ndarray | None, gamma: float | None,
+    phase_generator: str = "numpy",
     frequency_range: Sequence[float] | None = None,
 ) -> IrregularComponents:
     if (not np.isfinite([significant_height, peak_period]).all()
@@ -307,7 +333,7 @@ def _equal_energy_components(
     d_omega = np.diff(np.r_[dense_omega[0], omega])
     spectral_amplitude = 2 * spectrum_hz[indices] / (2 * np.pi)
     if phase is None:
-        phase_array = 2 * np.pi * np.random.default_rng(seed).random((count, len(direction)))
+        phase_array = _random_phases((count, len(direction)), seed, phase_generator)
     else:
         phase_array = np.asarray(phase, dtype=float)
         if phase_array.shape != (count, len(direction)) or not np.isfinite(phase_array).all():
