@@ -166,7 +166,7 @@ chamber. Its pressure state and axial reaction can be configured in Python:
 
 ```python
 from math import pi
-from wecsim import FloatingOwcChamber
+from wecsim import FloatingOwcChamber, FloatingOwcTurbine
 
 area = pi * 5.89**2 / 4
 chamber = FloatingOwcChamber(
@@ -174,15 +174,32 @@ chamber = FloatingOwcChamber(
     ambient_pressure=101325, ambient_density=1.25,
     turbine_diameter=0.75, turbine_kappa=0.775,
 )
+pressure = 1000.0                 # Pa gauge
+water_column_displacement = 0.2  # m
+water_column_speed = 0.1         # m/s
+turbine_speed = 150.0            # rad/s
 pressure_rate = chamber.pressure_derivative(
     pressure, water_column_displacement, water_column_speed, turbine_speed,
 )
 column_force = chamber.force_on_column(pressure)
+turbine = FloatingOwcTurbine(
+    diameter=0.75, inertia=3.06,
+    control_coefficient=2e-4, control_exponent=3,
+    max_control_torque=216.5,
+)
+turbine_state = turbine.evaluate(pressure, turbine_speed)
+rotor_acceleration = turbine_state.speed_derivative
+load_power = turbine_state.load_power
 ```
 
 Pressure is gauge Pa and the supplied displacement is positive when the
-water column rises into the chamber. The full floating OWC body, mooring, and
-turbine trajectory is still a named parity gap in [PARITY.md](PARITY.md).
+water column rises into the chamber. The turbine performance curves are the
+published Wells fits; rotor inertia,
+control gain, exponent, and torque limit are configurable. ``load_power`` is
+the published model's `P_turb = control_torque * turbine_speed` in W. The
+chamber and turbine states are paired with the MATLAB application when driven
+by its water-column motion. Independent body and mooring motion remains a
+named parity gap in [PARITY.md](PARITY.md).
 
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
