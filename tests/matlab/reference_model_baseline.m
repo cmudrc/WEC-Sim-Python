@@ -202,6 +202,21 @@ switch string(model)
         cases = "WECCCOMP";
         caseDirs = string(fullfile(repoRoot, 'applications', ...
             'WECCCOMP', cases));
+        inputFile = fullfile(caseDirs, 'wecSimInputFile.m');
+        contents = fileread(inputFile);
+        for name = ["Float", "Arm", "Frame", "BC", "Motor"]
+            oldName = name + ".stl";
+            newName = name + ".STL";
+            assert(contains(contents, oldName) && ...
+                isfile(fullfile(repoRoot, 'applications', 'WECCCOMP', ...
+                    'geometry', char(newName))), ...
+                'The pinned WaveStar geometry name changed');
+            contents = strrep(contents, char(oldName), char(newName));
+        end
+        fid = fopen(inputFile, 'w');
+        assert(fid ~= -1, 'Could not correct WaveStar geometry case');
+        fprintf(fid, '%s', contents);
+        fclose(fid);
     case {"ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", ...
             "ELLIPSOID_NLH_ODE45"}
         hydroDir = fullfile(repoRoot, 'applications', 'Nonlinear_Hydro', ...
