@@ -521,6 +521,10 @@ class GeneralizedDynamics:
 
         def commit_sampled_excitation(step):
             for body in self.bodies:
+                commit_state = getattr(body.state_excitation, "commit_state", None)
+                if commit_state is not None:
+                    commit_state(time[step], q[step], v[step])
+                    continue
                 commit = getattr(body.state_excitation, "commit", None)
                 if commit is not None:
                     commit(time[step], q[step])
