@@ -84,8 +84,10 @@ result has `velocity[time, component, y, z]`, `y`, `z`, `dt`, and `hub_height`.
 `wecsim.MostWindField(wind).at_index(i)` evaluates the ten published X planes
 at one output time as `[component, x, y, z]`, without storing the full
 five-dimensional shifted wind array. This covers the MOST wind input and its
-frozen-turbulence time shift. MOST's turbine, mooring, and coupled body motion
-are not yet available through the Python device runner.
+frozen-turbulence time shift. `wecsim.MostStaticMooring().force(pose)` evaluates
+the published three-line static catenary load and each fairlead's horizontal
+and vertical tension for a six-coordinate platform pose. MOST's turbine and
+coupled body motion are not yet available through the Python device runner.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
