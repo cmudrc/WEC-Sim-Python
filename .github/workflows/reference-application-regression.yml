@@ -28,6 +28,11 @@ on:
           - Radiation_Force_Options
           - Variable_Hydro
           - Wave_Markers
+      force_moordyn:
+        description: Run upstream MoorDyn tests that normally skip on GitHub CI
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   regression:
@@ -67,7 +72,17 @@ jobs:
           path: MoorDyn
       - name: Install MoorDyn in the MATLAB source tree
         if: matrix.folder == 'Mooring' || matrix.folder == 'Paraview_Visualization'
-        run: mkdir -p matlab-ref/source/functions/moorDyn && cp -r MoorDyn/* matlab-ref/source/functions/moorDyn/
+        run: |
+          mkdir -p matlab-ref/source/functions/moorDyn
+          cp -r MoorDyn/* matlab-ref/source/functions/moorDyn/
+          cp MoorDyn/linux_libraries/x86_64/libmoordyn.so* matlab-ref/source/functions/moorDyn/
+      - name: Use compatible host C++ runtime for MoorDyn
+        if: inputs.force_moordyn && (matrix.folder == 'Mooring' || matrix.folder == 'Paraview_Visualization')
+        run: |
+          library=/usr/lib/x86_64-linux-gnu/libstdc++.so.6
+          test -f "$library"
+          strings "$library" | grep GLIBCXX_3.4.32
+          echo "LD_PRELOAD=$library" >> "$GITHUB_ENV"
       - name: Start a display for Desalination
         if: matrix.folder == 'Desalination'
         run: |
@@ -81,7 +96,7 @@ jobs:
           products: ${{ matrix.folder == 'Controls' && 'Simulink Simscape Simscape_Multibody Control_System_Toolbox Optimization_Toolbox Statistics_and_Machine_Learning_Toolbox Symbolic_Math_Toolbox System_Identification_Toolbox' || matrix.folder == 'Desalination' && 'Simulink Simscape Simscape_Multibody Simscape_Fluids' || 'Simulink Simscape Simscape_Multibody' }}
       - uses: matlab-actions/run-command@v3
         with:
-          command: addpath('tests/matlab'); application_regression('${{ matrix.folder }}')
+          command: addpath('tests/matlab'); application_regression('${{ matrix.folder }}', '${{ inputs.force_moordyn }}')
       - uses: actions/upload-artifact@v4
         if: always()
         with:

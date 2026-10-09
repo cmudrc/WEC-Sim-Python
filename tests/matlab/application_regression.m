@@ -1,5 +1,14 @@
-function application_regression(folder)
+function application_regression(folder, forceMoorDyn)
 % Execute the upstream WEC-Sim Applications tests for a reference-model folder.
+if nargin < 2
+    forceMoorDyn = 'false';
+end
+if strcmpi(forceMoorDyn, 'true') && ...
+        any(string(folder) == ["Mooring", "Paraview_Visualization"])
+    originalActions = getenv('GITHUB_ACTIONS');
+    restoreActions = onCleanup(@() setenv('GITHUB_ACTIONS', originalActions));
+    setenv('GITHUB_ACTIONS', 'false');
+end
 repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(genpath(fullfile(repoRoot, 'matlab-ref', 'source')));
 appRoot = fullfile(repoRoot, 'applications');
