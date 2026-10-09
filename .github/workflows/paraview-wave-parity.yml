@@ -1,4 +1,4 @@
-name: MATLAB ParaView wave parity
+name: MATLAB ParaView mesh parity
 
 on:
   push:
@@ -6,13 +6,17 @@ on:
     paths:
       - '.github/workflows/paraview-wave-parity.yml'
       - 'tests/matlab/paraview_wave_baseline.m'
+      - 'tests/matlab/paraview_body_baseline.m'
       - 'tests/test_paraview_wave_source.py'
+      - 'tests/test_paraview_body_source.py'
       - 'wecsim/paraviewClass.py'
   pull_request:
     paths:
       - '.github/workflows/paraview-wave-parity.yml'
       - 'tests/matlab/paraview_wave_baseline.m'
+      - 'tests/matlab/paraview_body_baseline.m'
       - 'tests/test_paraview_wave_source.py'
+      - 'tests/test_paraview_body_source.py'
       - 'wecsim/paraviewClass.py'
   workflow_dispatch:
 
@@ -33,7 +37,7 @@ jobs:
           release: R2025b
       - uses: matlab-actions/run-command@v3
         with:
-          command: addpath(genpath('matlab-ref/source')); addpath('tests/matlab'); paraview_wave_baseline
+          command: addpath(genpath('matlab-ref/source')); addpath('tests/matlab'); paraview_wave_baseline; paraview_body_baseline
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
@@ -41,8 +45,13 @@ jobs:
       - run: python -m pytest -q tests/test_paraview_wave_source.py
         env:
           WEC_SIM_MATLAB_PARAVIEW_WAVE_DIR: matlab-paraview-wave
+      - run: python -m pytest -q tests/test_paraview_body_source.py
+        env:
+          WEC_SIM_MATLAB_PARAVIEW_BODY_DIR: matlab-paraview-body
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: matlab-paraview-wave
-          path: matlab-paraview-wave/
+          name: matlab-paraview-mesh
+          path: |
+            matlab-paraview-wave/
+            matlab-paraview-body/
