@@ -579,10 +579,34 @@ with MoorDyn("path/to/libmoordyn.so", "path/to/lines.txt").start(
 ```
 
 The pose and velocity are six-component vectors at the MoorDyn connection.
-The binding reproduces the published RM3 connection's force and fairlead
-tensions when driven by its saved MATLAB motion. MoorDyn's legacy interface
-allows one active model per process. This direct force interface is not yet
-coupled to the Python floating-joint motion solver.
+For the RM3 floating joint, attach that connection to the spar in body-local
+coordinates and run the coupled device through the Python interface:
+
+```python
+from wecsim import ImportedElevationWave, MoorDyn, WEC
+
+wec = WEC("RM3 MoorDyn")
+float_body = wec.body("float", "rm3.h5", inertia=(0, 21_306_090.66, 0))
+spar = wec.body("spar", "rm3.h5", inertia=(0, 94_407_091.24, 0))
+wec.floating_joint(
+    float_body, spar, damping=1_200_000,
+    moordyn=MoorDyn("path/to/libmoordyn.so", "path/to/lines.txt"),
+    moordyn_point=spar.at(0, 0, 21.5),
+)
+result = wec.run(
+    ImportedElevationWave("path/to/etaData.mat", reapply_force_ramp=True),
+    dt=0.01, end_time=400, ramp_time=40, radiation_memory=60,
+    initial_coordinate={"spar_heave": -0.21},
+)
+connection_force = dict(result.raw.extra_outputs)["moordyn_connection_force"]
+```
+
+The solver predicts the connection pose, advances native MoorDyn once per
+time step, then applies its force to the two-body motion solve. Its legacy
+interface allows one active native model per process. The pinned 400 s RM3
+MoorDyn comparison checks both bodies, the PTO, connection force, and three
+line tensions. This coupling is currently limited to the reduced RM3 floating
+joint with convolution radiation.
 
 The RM3 floating-joint solver accepts optional PTO hard stops in Python:
 

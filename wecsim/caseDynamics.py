@@ -328,7 +328,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     if kind != "linear_subspace" and any("mean_drift" in body for body in bodies):
         raise ValueError("body.mean_drift currently requires linear_subspace")
     if "mooring" in case and kind != "floating_joint":
-        raise ValueError("the joint surge mooring requires a floating_joint")
+        raise ValueError("the configured mooring requires a floating_joint")
 
     if kind == "fixed_morison":
         return _run_fixed_morison(
@@ -763,13 +763,21 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                         if key != "hard_stops"}
         damping, stiffness, equilibrium = _pto(pto_spec, "relative_heave")
         mooring_stiffness = 0.0
+        moordyn = moordyn_point = None
         if "mooring" in case:
-            mooring = _section(case["mooring"], "mooring", {"kind", "stiffness"},
-                               {"kind", "stiffness"})
-            if mooring["kind"] != "joint_surge_spring":
-                raise ValueError("floating_joint currently supports joint_surge_spring mooring")
-            mooring_stiffness = _number(mooring["stiffness"],
-                                        "mooring.stiffness", positive=True)
+            mooring = _section(case["mooring"], "mooring", {"kind"},
+                               {"kind", "stiffness", "session", "point"})
+            if mooring["kind"] == "joint_surge_spring":
+                if set(mooring) != {"kind", "stiffness"}:
+                    raise ValueError("joint surge spring needs only stiffness")
+                mooring_stiffness = _number(mooring["stiffness"],
+                                            "mooring.stiffness", positive=True)
+            elif mooring["kind"] == "moor_dyn":
+                if set(mooring) != {"kind", "session", "point"}:
+                    raise ValueError("MoorDyn needs a native session and spar-local point")
+                moordyn, moordyn_point = mooring["session"], mooring["point"]
+            else:
+                raise ValueError("unsupported floating-joint mooring")
         imported_force = None
         auxiliary_files = ()
         if wave["type"] == "none":
@@ -824,6 +832,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             pto_stiffness=stiffness, pto_equilibrium=equilibrium,
             pto_hard_stops=hard_stops,
             mooring_surge_stiffness=mooring_stiffness,
+            moordyn=moordyn, moordyn_point=moordyn_point,
             b2b=b2b, radiation_memory=radiation_memory,
             radiation_method=radiation_method,
             added_mass_scheme=sim.get("added_mass_scheme", "implicit"),
@@ -848,6 +857,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             extra_outputs.extend((
                 ("mooring_surge_position", solved.mooring_surge_position),
                 ("mooring_surge_force", solved.mooring_surge_force),
+            ))
+        if moordyn is not None:
+            extra_outputs.extend((
+                ("moordyn_connection_position", solved.moordyn_connection_position),
+                ("moordyn_connection_velocity", solved.moordyn_connection_velocity),
+                ("moordyn_connection_force", solved.moordyn_connection_force),
             ))
         return CaseResponse(
             solved.time, solved.body_position, solved.body_velocity, hydro,
