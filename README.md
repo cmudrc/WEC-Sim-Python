@@ -166,7 +166,16 @@ chamber. Its pressure state and axial reaction can be configured in Python:
 
 ```python
 from math import pi
-from wecsim import FloatingOwcChamber, FloatingOwcTurbine
+import numpy as np
+from wecsim import FloatingOwcChamber, FloatingOwcColumnJoint, FloatingOwcTurbine
+
+joint = FloatingOwcColumnJoint(center_separation=29.445)
+floater_pose = np.array([0, 0, -31.945, 0, 0, 0])
+floater_velocity = np.zeros(6)
+column_pose = joint.column_pose(floater_pose, stroke=0.2)
+column_velocity = joint.column_velocity(
+    floater_pose, floater_velocity, stroke=0.2, stroke_speed=0.1,
+)
 
 area = pi * 5.89**2 / 4
 chamber = FloatingOwcChamber(
@@ -175,8 +184,8 @@ chamber = FloatingOwcChamber(
     turbine_diameter=0.75, turbine_kappa=0.775,
 )
 pressure = 1000.0                 # Pa gauge
-water_column_displacement = 0.2  # m
-water_column_speed = 0.1         # m/s
+water_column_displacement = column_pose[2] - (-2.5)  # m world heave
+water_column_speed = column_velocity[2]             # m/s world heave speed
 turbine_speed = 150.0            # rad/s
 pressure_rate = chamber.pressure_derivative(
     pressure, water_column_displacement, water_column_speed, turbine_speed,
@@ -192,8 +201,10 @@ rotor_acceleration = turbine_state.speed_derivative
 load_power = turbine_state.load_power
 ```
 
-Pressure is gauge Pa and the supplied displacement is positive when the
-water column rises into the chamber. The turbine performance curves are the
+Pressure is gauge Pa. The published chamber input is the column's world heave
+relative to its equilibrium center, positive when the column rises into the
+chamber. The PTO stroke is relative to the floater and can differ substantially
+from that world heave. The turbine performance curves are the
 published Wells fits; rotor inertia,
 control gain, exponent, and torque limit are configurable. ``load_power`` is
 the published model's `P_turb = control_torque * turbine_speed` in W. The
