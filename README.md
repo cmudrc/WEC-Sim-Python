@@ -1479,17 +1479,36 @@ smooth. The test therefore compares the resolved force over 0.1 s and total
 rod work, while reporting the raw discrepancy. Coupled flap motion remains an
 open gap; see [PARITY.md](PARITY.md).
 
-For an imported full-directional spectrum, configure the Python case with
-`wave.type = "spectrumImportFullDir"`, a MAT `wave.file`, and either a
-`wave.phase_file` CSV or an integer `wave.seed`. The default includes each
-heading-bin width in both elevation and force, preserving the spectrum's
-integrated energy. The published MATLAB `Full_Directional_Waves` force block
-omits that width even though its elevation includes it. To reproduce that
-specific source trajectory, set `wave.force_quadrature` to
-`"matlab_omitted"` and `wave.excitation_interpolation` to
-`"spline_frequency"`; `simulation.added_mass_scheme = "simulink_delay"`
-is a separate opt-in Simulink numerical comparison. The ordinary defaults
-remain integrated forcing and implicit added mass.
+For a supported fixed-hinge OSWEC, use a Python wave object with a
+frequency-resolved directional MAT spectrum:
+
+```python
+from wecsim import FullDirectionalSpectrumWave, WEC
+
+wec = WEC("OSWEC")
+flap = wec.body("flap", "path/to/oswec.h5", mass=127000,
+                inertia=(0, 1.85e6, 0), hydro_body=1)
+base = wec.body("base", "path/to/oswec.h5", mass=999,
+                inertia=(999, 999, 999), hydro_body=2)
+wec.fixed_hinge(flap, base, damping=12000)
+result = wec.run(
+    FullDirectionalSpectrumWave("path/to/fullDirSpectrum.mat", seed=7),
+    dt=0.05, end_time=400, ramp_time=100, radiation_memory=30,
+)
+```
+
+The wave also accepts a saved `phase_file` CSV instead of a seed. Its default
+includes each heading-bin width in both elevation and force, preserving the
+spectrum's integrated energy. The published MATLAB `Full_Directional_Waves`
+force block omits that width even though its elevation includes it. To
+reproduce that specific source trajectory, set
+`force_quadrature="matlab_omitted"` and
+`excitation_interpolation="spline_frequency"` on the wave, and set
+`phase_generator="matlab"` with the source seed. The optional
+`wec.fixed_hinge(..., added_mass_scheme="simulink_delay")` compares against
+Simulink's delayed added-mass feedback. Integrated forcing and implicit added
+mass remain the defaults. The equivalent low-level case wave type is
+`spectrumImportFullDir`.
 
 The same wave calculation is available directly in Python:
 
