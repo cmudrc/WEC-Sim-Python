@@ -315,6 +315,25 @@ controller state, and azimuth evolve without saved turbine state as input.
 Platform motion is still prescribed, so this is one-way rotor trajectory
 parity, not a fully coupled MOST platform/turbine trajectory.
 
+The expanded [MOST platform-force source trace](https://github.com/cmudrc/wec-sim-python/actions/runs/37966607366)
+records all six hydrodynamic force channels, mooring position and load,
+tower-base load, body acceleration, and realized JONSWAP sea over the same
+1,001 samples. Python regenerates all 500 frequencies, spectral amplitudes,
+bin widths, and phases to `7e-15` or better; wave elevation differs by at
+most `2.8e-14` m and six-component excitation by at most `2.3e-6` N or N m
+(gate `1e-5`). The direct Python catenary evaluated at every logged moving
+mooring pose differs by at most `2.5e-5` N and `4.9e-4` N m (gates `1e-3` N
+and `1e-2` N m). The source body force channels add exactly as excitation
+minus radiation, added mass, restoring, viscous drag, and linear damping.
+Using the pinned platform mass and infinite-frequency added mass, then
+rotating the logged tower-base force from platform to world coordinates,
+closes the source's three translational force balances within `1.4e-8` N
+(gate `1e-4` N) at every sample. This fixes the force signs, frame, and
+Simscape added-mass shift needed for an independent platform solve; the
+tower reaction and platform trajectory are still source inputs to this
+diagnostic. Rotational balance and bidirectional turbine feedback remain
+unpaired.
+
 The WaveStar NMPC solver-step audit in
 `tools/wavestar_nmpc_step_audit.py` compares the first 30 s of the pinned
 published `ode8`/0.05 s source run with independent Python closed loops at
