@@ -28,7 +28,7 @@ def _max_error(actual, expected, limit, label):
 @pytest.mark.skipif(
     not REFERENCE, reason="paired MATLAB fixed Morison output not provided",
 )
-def test_published_fixed_morison_wave_and_force(tmp_path):
+def test_published_fixed_morison_wave_and_force():
     source = Path(REFERENCE)
     components_csv = np.loadtxt(source / "MORISON_FIXED_components.csv", delimiter=",")
     directions = np.loadtxt(source / "MORISON_FIXED_directions.csv", delimiter=",")
@@ -46,13 +46,13 @@ def test_published_fixed_morison_wave_and_force(tmp_path):
     _max_error(monopile[:, 13:19], -force[:, 1:7], 1e-8,
                "source total force and signed Morison output")
 
-    phases = tmp_path / "phases.csv"
-    np.savetxt(phases, components_csv[:, 4:7], delimiter=",")
     components = pm_equal_energy_components(
         None, significant_height=2, peak_period=5,
         directions=directions[:, 0], spreading=directions[:, 1],
-        frequency_range=(.001, 10), phase=components_csv[:, 4:7],
+        frequency_range=(.001, 10), seed=5, phase_generator="matlab",
     )
+    _max_error(components.phase, components_csv[:, 4:7], 1e-13,
+               "seeded three-direction MATLAB phases")
     for actual, expected, label in (
         (components.omega, components_csv[:, 0], "frequency"),
         (components.spectral_amplitude, components_csv[:, 1], "PM spectrum"),
@@ -81,7 +81,7 @@ def test_published_fixed_morison_wave_and_force(tmp_path):
         phase_mode="matlab_shared",
     )
     result = wec.run(
-        PMWave(2, 5, phase_file=phases,
+        PMWave(2, 5, seed=5, phase_generator="matlab",
                directions=(0, 30, 90), spreading=(.1, .2, .7),
                frequency_range=(.001, 10), water_depth=30),
         dt=.01, end_time=400, ramp_time=100, rho=1025,

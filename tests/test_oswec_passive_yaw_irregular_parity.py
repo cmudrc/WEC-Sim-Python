@@ -196,7 +196,7 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
 
 
 @pytest.mark.parametrize("seed", (1, 2, 3))
-def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
+def test_continuous_heading_irregular_passive_yaw(seed):
     """Pair continuous heading and 250 s flap/PTO trajectories in three seas."""
     source = Path(REFERENCE)
     hydro = (Path(APPLICATIONS)
@@ -213,12 +213,13 @@ def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
     assert flap.shape == base.shape == pto.shape == (25001, 25)
     assert wave.shape == (25001, 2)
 
-    phases = tmp_path / "phases.csv"
-    np.savetxt(phases, components_csv[:, 3, None], delimiter=",")
     components = pm_equal_energy_components(
         hydro, significant_height=2.5, peak_period=8,
-        directions=[10], spreading=[1], phase=components_csv[:, 3, None],
+        directions=[10], spreading=[1], seed=seed,
+        phase_generator="matlab",
     )
+    _max_error(components.phase, components_csv[:, 3, None], 1e-13,
+               "seeded MATLAB phases")
     for actual, expected, label in (
         (components.omega, components_csv[:, 0], "frequency"),
         (components.spectral_amplitude, components_csv[:, 1], "spectrum"),
@@ -249,7 +250,8 @@ def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
         "yaw", moving.move("yaw", pivot=WorldPoint(0, 0, -8.9)),
     )
     wec.rotational_pto("hinge", yaw, damping=120000)
-    result = wec.run(PMWave(2.5, 8, direction=10, phase_file=phases),
+    result = wec.run(PMWave(2.5, 8, direction=10, seed=seed,
+                            phase_generator="matlab"),
                      dt=0.01, end_time=250, ramp_time=100,
                      radiation_memory=40)
     _max_error(result.time, flap[:, 0], 1e-10, "time")

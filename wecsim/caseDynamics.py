@@ -287,7 +287,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     g = _number(sim.get("g", 9.81), "simulation.g", positive=True)
     wave = _section(case["wave"], "wave", {"type"},
                     {"type", "height", "period", "direction", "directions",
-                     "spreading", "seed", "phase_file", "frequency_count",
+                     "spreading", "seed", "phase_file", "phase_generator", "frequency_count",
                      "gamma", "file", "variable", "reapply_force_ramp", "seas",
                      "excitation_interpolation", "force_quadrature",
                      "frequency_range", "water_depth", "current"})
@@ -398,7 +398,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     or set(sim) - {"dt", "end_time", "ramp_time", "rho", "g",
                                    "radiation_memory"}
                     or set(wave) - {"type", "height", "period", "directions",
-                                    "spreading", "seed", "phase_file",
+                                    "spreading", "seed", "phase_file", "phase_generator",
                                     "frequency_count"}
                     or set(constraint) - {"kind", "location", "orifice",
                                           "orifice_force_path",
@@ -431,6 +431,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 peak_period=_number(wave.get("period"), "wave.period", positive=True),
                 directions=directions, spreading=spreading,
                 count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+                phase_generator=wave.get("phase_generator", "numpy"),
             )
             orifice_spec = _section(
                 constraint["orifice"], "constraint.orifice",
@@ -593,7 +594,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 wave_elevation=elevation,
             )
         if wave["type"] == "spectrumImportFullDir":
-            if (set(wave) - {"type", "file", "phase_file", "seed",
+            if (set(wave) - {"type", "file", "phase_file", "seed", "phase_generator",
                              "excitation_interpolation", "force_quadrature"}
                     or "file" not in wave):
                 raise ValueError("spectrumImportFullDir needs a MAT spectrum file")
@@ -617,6 +618,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     raise ValueError("wave.seed must be an integer")
             components = imported_full_directional_components(
                 hydro[0], spectrum_path, phase=phase, seed=seed,
+                phase_generator=wave.get("phase_generator", "numpy"),
             )
             incident = synthesize_full_directional_response(
                 hydro[0], components, dt=dt, end_time=end_time,
@@ -635,7 +637,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             for index, sea in enumerate(seas):
                 _section(sea, f"wave.seas[{index}]", {"height", "period"},
                          {"height", "period", "direction", "directions",
-                          "spreading", "seed", "phase_file", "frequency_count"})
+                          "spreading", "seed", "phase_file", "phase_generator",
+                          "frequency_count"})
                 if "direction" in sea:
                     if "directions" in sea or "spreading" in sea:
                         raise ValueError("a sea uses direction or directions and spreading")
@@ -670,6 +673,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                     ),
                     directions=directions, spreading=spreading,
                     count=sea.get("frequency_count", 500), seed=seed, phase=phase,
+                    phase_generator=sea.get("phase_generator", "numpy"),
                 ))
             incident = synthesize_multiple_irregular_response(
                 hydro[0], components, dt=dt, end_time=end_time,
@@ -678,7 +682,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
             )
         else:
             if set(wave) - {"type", "height", "period", "directions",
-                             "spreading", "seed", "phase_file",
+                             "spreading", "seed", "phase_file", "phase_generator",
                              "frequency_count", "excitation_interpolation"}:
                 raise ValueError("PM waves use height, period, directions, and phase settings")
             height = _number(wave.get("height"), "wave.height", positive=True)
@@ -706,6 +710,7 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                 directions=wave.get("directions", [0, 30, 90]),
                 spreading=wave.get("spreading", [0.1, 0.2, 0.7]),
                 count=count, seed=seed, phase=phase,
+                phase_generator=wave.get("phase_generator", "numpy"),
             )
             incident = synthesize_irregular_response(
                 hydro[0], components, dt=dt, end_time=end_time,
@@ -1267,7 +1272,8 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
         raise ValueError("fixed Morison bodies use no joints, PTOs, or radiation")
     if (wave["type"] != "pm"
             or set(wave) - {"type", "height", "period", "directions",
-                            "spreading", "seed", "phase_file", "frequency_count",
+                            "spreading", "seed", "phase_file", "phase_generator",
+                            "frequency_count",
                             "frequency_range", "water_depth", "current"}
             or "frequency_range" not in wave or "water_depth" not in wave):
         raise ValueError("fixed Morison bodies need a PM sea, frequency range, and water depth")
@@ -1311,6 +1317,7 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
         spreading=wave.get("spreading", [1.0]),
         count=wave.get("frequency_count", 500),
         seed=seed, phase=phase, frequency_range=wave["frequency_range"],
+        phase_generator=wave.get("phase_generator", "numpy"),
     )
     time = np.arange(round(end_time / dt) + 1) * dt
     position = np.zeros((len(time), len(bodies), 6))
@@ -1381,7 +1388,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         if "water_depth" in wave:
             raise ValueError("wave.water_depth override currently needs a fixed Morison body")
         if set(wave) - {"type", "height", "period", "directions", "spreading",
-                         "seed", "phase_file", "frequency_count",
+                         "seed", "phase_file", "phase_generator", "frequency_count",
                          "excitation_interpolation", "gamma", "frequency_range"}:
             raise ValueError("irregular waves use height, period, directions, and phase settings")
         if wave["type"] == "pm" and "gamma" in wave:
@@ -1410,6 +1417,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
             directions=wave.get("directions", [0.0]),
             spreading=wave.get("spreading", [1.0]),
             count=wave.get("frequency_count", 500), seed=seed, phase=phase,
+            phase_generator=wave.get("phase_generator", "numpy"),
             frequency_range=wave.get("frequency_range"),
             **spectrum_options,
         )
