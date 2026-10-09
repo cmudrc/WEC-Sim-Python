@@ -30,6 +30,7 @@ on:
       - 'tests/test_rm3_moordyn_coupled_parity.py'
       - 'tests/test_floating_owc_source.py'
       - 'tests/test_floating_owc_joint.py'
+      - 'tests/test_floating_owc_moordyn_replay.py'
       - 'tests/test_floating_owc_vertical_motion.py'
       - 'tests/test_floating_owc_chamber.py'
       - 'tests/test_floating_owc_turbine.py'
@@ -505,6 +506,13 @@ jobs:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MOORDYN_LIBRARY: matlab-ref/source/functions/moorDyn/libmoordyn.so
+      - run: python -m pytest -q tests/test_floating_owc_moordyn_replay.py
+        if: matrix.model == 'FLOATING_OWC_SOURCE'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MOORDYN_LIBRARY: matlab-ref/source/functions/moorDyn/libmoordyn.so
+          WEC_SIM_FLOATING_OWC_H5: applications/OWC/FloatingOWC/hydroData/floatingOWC.h5
       - run: python -m pytest -q -s tests/test_rm3_moordyn_coupled_parity.py
         if: matrix.model == 'RM3_MOORDYN'
         env:

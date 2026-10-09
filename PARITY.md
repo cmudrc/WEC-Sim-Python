@@ -239,6 +239,17 @@ that WEC-Sim ran; it does not establish Python parity.
 | Other/dynamic: `MOST` | Inventoried without a paired Python motion/output gate. The WaveStar base and fault applications and both WaveBot applications are paired separately above. |
 | Other/dynamic: both `Nonlinear_Hydro/ode45` cases and `OWC/OrificeModel` | Source force components and bounded motion intervals are compared above, but full-trajectory parity remains unestablished because of source solver force timing or large late motion differences. |
 
+For the floating OWC, the nine-line MoorDyn replay reconstructs the published
+coupling pose and velocity from the floater's center state and its body-local
+attachment. It then advances the pinned native MoorDyn library for all 50,001
+samples without reading MATLAB's force or line-tension history as input. Each
+of six mooring-force components and five named fairlead tensions has a maximum
+error below `0.1%` of its source peak and RMS error below `0.01%` of its peak.
+The published `lines.txt` repeats the `FairTen3` output label; the MATLAB
+struct retains one named channel, so the Python gate aligns channels by name.
+The floater motion remains prescribed for this replay. Live feedback to the
+seven-coordinate body solve and the independent chamber remain open.
+
 The published RM3 `End_Stops` trajectory has a separate refined-step gate;
 the pinned 0.1 s output is not treated as a converged motion reference.
 
