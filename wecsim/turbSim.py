@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 
 import numpy as np
+from scipy.interpolate import RegularGridInterpolator
 
 
 _HEADER = struct.Struct("<h4i12fi")
@@ -59,6 +60,21 @@ class MostWindField:
             self.discarded + 1 + index - self.x / (self.speed * self.wind.dt) + .5,
         ).astype(int) - 1
         return self.wind.velocity[source].transpose(1, 0, 2, 3)
+
+    def sampler(self, index: int):
+        """Return MOST's trilinear world-position wind sampler at one time.
+
+        Outside the published X/Y/Z grid the sampler returns NaN, as the
+        MATLAB BEM block's ``interp3`` call does.
+        """
+        values = self.at_index(index).transpose(1, 2, 3, 0)
+        interpolator = RegularGridInterpolator(
+            (self.x, self.wind.y, self.wind.z), values,
+            bounds_error=False, fill_value=np.nan,
+        )
+        def sample(position):
+            return interpolator(np.asarray(position, dtype=float).reshape(1, 3))[0]
+        return sample
 
 
 def read_turbsim_bts(path: str | Path) -> TurbSimWind:

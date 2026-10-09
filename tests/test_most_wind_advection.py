@@ -25,6 +25,12 @@ def test_most_wind_advection_sample_order_and_bounds():
     first = field.at_index(0)
     assert first.shape == (3, 10, 2, 2)
     np.testing.assert_array_equal(first[0, :, 0, 0], np.arange(13, 3, -1))
+    sampler = field.sampler(0)
+    np.testing.assert_allclose(
+        sampler([-25, 0, .5]), first[:, :2].mean(axis=(1, 2, 3)),
+        rtol=0, atol=1e-14,
+    )
+    assert np.isnan(sampler([field.x[-1]+1, 0, .5])).all()
     with pytest.raises(IndexError):
         field.at_index(field.n_time)
 
