@@ -30,6 +30,7 @@ from .floatingOwc import (
     FloatingOwcChamber, FloatingOwcColumnJoint, FloatingOwcTurbine,
     FloatingOwcTurbineResponse,
 )
+from .floatingOwcDynamics import FloatingOwcResponse, solve_floating_owc
 from .friction import StribeckFriction
 from .mbariCable import MBARICableResponse, run_mbari_cable
 from .wavebotImpedance import WaveBotImpedanceResponse, run_wavebot_impedance
@@ -82,7 +83,7 @@ __all__ = [
     "PlanarCableAttachment", "WecSimCableTension",
     "FixedHydroMonopileResponse", "run_fixed_hydro_monopile",
     "FloatingOwcChamber", "FloatingOwcColumnJoint", "FloatingOwcTurbine",
-    "FloatingOwcTurbineResponse",
+    "FloatingOwcTurbineResponse", "FloatingOwcResponse", "solve_floating_owc",
     "StribeckFriction",
     "WaveStarFaultController",
     "WaveStarNmpcActuator",

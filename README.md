@@ -209,8 +209,29 @@ published Wells fits; rotor inertia,
 control gain, exponent, and torque limit are configurable. ``load_power`` is
 the published model's `P_turb = control_torque * turbine_speed` in W. The
 chamber and turbine states are paired with the MATLAB application when driven
-by its water-column motion. Independent body and mooring motion remains a
-named parity gap in [PARITY.md](PARITY.md).
+by its water-column motion. The complete published regular-wave device can
+also be advanced with live native MoorDyn, body, chamber, and turbine feedback:
+
+```python
+from wecsim import MoorDyn, solve_floating_owc
+
+mooring = MoorDyn("path/to/libmoordyn.so", "path/to/writable/lines.txt")
+response = solve_floating_owc(
+    "path/to/floatingOWC.h5", mooring,
+    wave_height=4.5, wave_period=11.2, ramp_time=50,
+    moordyn_point=(0, 0, 31.945),  # body-local point relative to floater CG
+    chamber=chamber, turbine=turbine,
+    dt=0.01, end_time=500,
+)
+print(response.column_pose[-1], response.turbine_power[-1])
+```
+
+The HDF5 and native MoorDyn library are external inputs. The solver defaults
+to the published body masses and inertias; wave, body, attachment, chamber,
+and turbine parameters can be changed through Python arguments. This solver
+uses the published regular-wave fixed-frequency hydrodynamic formulation,
+with body-to-body radiation coupling disabled as in the source case. Its
+paired trajectory and remaining scope are in [PARITY.md](PARITY.md).
 
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
