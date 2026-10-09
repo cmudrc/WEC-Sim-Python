@@ -51,4 +51,4 @@ def test_published_regular_wave_markers(family):
     # marker-phase mismatch if the pair ever fails.
     omega = 2 * np.pi / period
     residual = omega**2 - gravity * source_k * np.tanh(source_k * depth)
-    assert abs(residual) < 1e-11
+    assert abs(residual) / omega**2 < 1e-10

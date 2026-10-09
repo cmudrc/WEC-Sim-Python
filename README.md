@@ -610,6 +610,22 @@ wave.phaseData = np.loadtxt("pm_phase.csv", delimiter=",")
 wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 ```
 
+For a regular sea, sample surface elevation at any world XY locations using
+the public wave object. The published OSWEC wave-marker case has a 10.9 m BEM
+water depth:
+
+```python
+import numpy as np
+from wecsim import RegularWave
+
+time = np.arange(0, 400.1, 0.1)
+locations = [[0, 0], [10, 0], [0, -20]]
+markers = RegularWave(2.5, 8).elevation_at(
+    time, locations, water_depth=10.9, ramp_time=100,
+)
+# markers has one row per time and one column per location.
+```
+
 The historical BS fixture remains a compatibility check for the
 original Python port; current MATLAB WEC-Sim rejects BS inputs.
 For this RM3 convolution layout, the solver follows the published pitched
