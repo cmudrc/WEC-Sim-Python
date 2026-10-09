@@ -38,9 +38,12 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         Path(os.environ["WEC_SIM_MOST_ADVECTION_DIR"]) / "WIND_8mps.bts",
     ))
     sea = jonswap_equal_energy_components(
-        h5_file, significant_height=4, peak_period=8,
+        h5_file,
+        significant_height=float(os.environ.get("WEC_SIM_MOST_WAVE_HEIGHT", "4")),
+        peak_period=8,
         directions=np.array([0.]), spreading=np.array([1.]),
-        seed=1, phase_generator="matlab",
+        seed=int(os.environ.get("WEC_SIM_MOST_PHASE_SEED", "1")),
+        phase_generator="matlab",
     )
     wave = synthesize_irregular_response(
         h5_file, sea, dt=.01, end_time=10, ramp_time=20,
@@ -56,6 +59,13 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
     source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
     np.testing.assert_allclose(time, source["body_time"].ravel(),
                                rtol=0, atol=1e-12)
+    for actual, expected in (
+        (sea.omega, source["wave_omega"].ravel()),
+        (sea.spectral_amplitude, source["wave_amplitude"].ravel()),
+        (sea.d_omega, source["wave_d_omega"].ravel()),
+        (sea.phase, source["wave_phase"]),
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-11)
     assert result.iterations <= 12
     assert result.position_residual <= 1e-6
     assert result.velocity_residual <= 1e-6
