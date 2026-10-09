@@ -278,6 +278,21 @@ that WEC-Sim ran; it does not establish Python parity.
 | Other/dynamic: `MOST` | Inventoried without a paired Python motion/output gate. The WaveStar base and fault applications and both WaveBot applications are paired separately above. |
 | Other/dynamic: both `Nonlinear_Hydro/ode45` cases and `OWC/OrificeModel` | Source force components and bounded motion intervals are compared above, but full-trajectory parity remains unestablished because of source solver force timing or large late motion differences. |
 
+The WaveStar NMPC solver-step audit in
+`tools/wavestar_nmpc_step_audit.py` compares the first 30 s of the pinned
+published `ode8`/0.05 s source run with independent Python closed loops at
+0.001 and 0.0005 s plant steps, both retaining the 0.05 s control step.
+Halving the Python step changes pitch by less than `1e-12` rad before NMPC
+starts at 15 s and at most `5.82e-5` rad through 30 s. Over the same 15–30 s
+window, the 0.001 s Python trajectory differs from the published MATLAB pitch
+by up to `0.02877` rad; torque-command differences are `0.00743` N m between
+Python steps versus `2.874` N m against MATLAB. The source/Python pitch gap
+already reaches `0.00342` rad before any controller acts. Along with the
+derived fine-step MATLAB comparison above, this argues against Python plant
+step refinement as the remedy for the published coarse-step trajectory gap.
+It does not isolate every difference in the active closed loop or establish
+full NMPC parity. The physical Python plant and PTO laws remain unchanged.
+
 For the floating OWC, the nine-line MoorDyn replay reconstructs the published
 coupling pose and velocity from the floater's center state and its body-local
 attachment. It then advances the pinned native MoorDyn library for all 50,001
