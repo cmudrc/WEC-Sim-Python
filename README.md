@@ -594,13 +594,12 @@ and elevation columns. `reapply_force_ramp=True` explicitly reproduces the
 second force ramp used by the pinned MATLAB body block in paired comparisons.
 The inherited `WaveClass` now uses the pinned MATLAB PM and JONSWAP spectrum
 definitions, including height-dependent PM energy and JONSWAP's inferred
-`gamma` when it is unspecified. Its seeded phases use a local NumPy generator;
-MATLAB's Threefry substreams produce different realizations for the same
-integer seed. To replay a MATLAB realization, assign its frequency-by-direction
-phase matrix before `waveSetup`:
+`gamma` when it is unspecified. Its seeded phases use a local NumPy generator
+by default. Set `phaseGenerator="matlab"` to reproduce a pinned WEC-Sim
+Threefry substream without a saved phase file. A supplied `phaseData` matrix
+still replays a specific frequency-by-direction realization:
 
 ```python
-import numpy as np
 from wecsim.waveClass import WaveClass
 
 wave = WaveClass("irregular")
@@ -608,7 +607,7 @@ wave.T, wave.H = 8, 2.5
 wave.spectrumType = "PM"
 wave.freqDisc, wave.numFreq = "Traditional", 64
 wave.waveDir, wave.waveSpread = [0, 30, 90], [0.1, 0.2, 0.7]
-wave.phaseData = np.loadtxt("pm_phase.csv", delimiter=",")
+wave.phaseSeed, wave.phaseGenerator = 1, "matlab"
 wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
 ```
 
