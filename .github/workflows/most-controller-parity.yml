@@ -41,6 +41,7 @@ jobs:
       - uses: matlab-actions/setup-matlab@v3
         with:
           release: R2025b
+          products: Simulink Optimization_Toolbox
       - uses: matlab-actions/run-command@v3
         with:
           command: cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../control'); Steady_States_IEA15MW; Controller_IEA15MW; cd('../../../../..'); addpath('tests/matlab'); most_baseline_controller_baseline
