@@ -30,8 +30,9 @@ def published():
     phase_file = (reference / "OSWEC_FULL_DIR_phase.csv").resolve()
     phase = np.loadtxt(phase_file, delimiter=",")
     components = imported_full_directional_components(
-        hydro, spectrum, phase=phase,
+        hydro, spectrum, seed=1, phase_generator="matlab",
     )
+    assert np.max(np.abs(components.phase - phase)) < 1e-13
     bodies = tuple(np.loadtxt(
         reference / f"OSWEC_FULL_DIR_Full_Directional_Waves_body{number}.csv",
         delimiter=",",
@@ -76,7 +77,7 @@ def test_heading_width_explains_source_excitation_for_both_bodies(published):
                        0.003, 0.0007, 0.0006, 8, 5)),
 ])
 def test_source_force_hinge_and_pto_against_matlab(published, scheme, limits):
-    hydro, spectrum, phase_file, _, bodies, pto, wave = published
+    hydro, spectrum, _, _, bodies, pto, wave = published
     simulation = {"dt": .05, "end_time": 400, "ramp_time": 100,
                   "radiation_memory": 30}
     if scheme != "implicit":
@@ -84,7 +85,7 @@ def test_source_force_hinge_and_pto_against_matlab(published, scheme, limits):
     response = run_case({
         "simulation": simulation,
         "wave": {"type": "spectrumImportFullDir", "file": str(spectrum),
-                 "phase_file": str(phase_file),
+                 "seed": 1, "phase_generator": "matlab",
                  "excitation_interpolation": "spline_frequency",
                  "force_quadrature": "matlab_omitted"},
         "bodies": [
@@ -122,4 +123,4 @@ def test_source_force_hinge_and_pto_against_matlab(published, scheme, limits):
     power = response.pto_force * response.body_velocity[:, 0, 4]
     assert np.max(np.abs(power - pto[:, 23])) < limits[7]
     assert len(response.hydro_files) == 2
-    assert len(response.auxiliary_files) == 2
+    assert len(response.auxiliary_files) == 1
