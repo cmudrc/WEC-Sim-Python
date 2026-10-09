@@ -270,7 +270,12 @@ def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
     _max_error(hinge.stroke, pto[:, 5], 1e-4, "PTO angle")
     _max_error(hinge.velocity, pto[:, 11], 2e-5, "PTO angular speed")
     _max_error(hinge.force, pto[:, 17], 3, "PTO torque")
-    _max_error(-hinge.absorbed_power, pto[:, 23], 0.05,
-               "PTO source-signed power")
+    source_peak_power = np.max(np.abs(pto[:, 23]))
+    _max_error(-hinge.absorbed_power, pto[:, 23],
+               5e-4 * source_peak_power, "PTO source-signed power")
+    source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
+    python_work = np.trapezoid(hinge.absorbed_power, result.time)
+    assert source_work > 0
+    assert abs(python_work - source_work) / source_work < 2e-4
     _max_error(pto[:, 17], -120000 * pto[:, 11], 1e-5,
                "source PTO damping law")
