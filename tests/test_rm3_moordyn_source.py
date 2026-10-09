@@ -46,3 +46,31 @@ def test_published_moordyn_case_exports_motion_and_line_tension():
     assert pto.shape == (40_001, 25)
     np.testing.assert_allclose(pto[:, 0], np.arange(40_001) * 0.01,
                                rtol=0, atol=1e-8)
+
+
+def test_moordyn_connection_is_body_local_spar_point():
+    prefix = "RM3_MOORDYN"
+    body = _read(f"{prefix}_MoorDyn_body2.csv")
+    connection = _read(f"{prefix}_coupling.csv")
+    pitch = body[:, 5]
+    pitch_speed = body[:, 11]
+    lever = 21.5  # Pinned RM3 spar center to its MoorDyn connection, m.
+    np.testing.assert_allclose(
+        connection[:, 1], body[:, 1] + lever * np.sin(pitch),
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        connection[:, 3], body[:, 3] + lever * np.cos(pitch),
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        connection[:, 7],
+        body[:, 7] + lever * np.cos(pitch) * pitch_speed,
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        connection[:, 9],
+        body[:, 9] - lever * np.sin(pitch) * pitch_speed,
+        rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(connection[:, 5], pitch, rtol=0, atol=1e-12)

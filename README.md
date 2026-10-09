@@ -565,6 +565,25 @@ force ramp; its default is `False`. The current mooring setting is a surge
 spring at this joint. Arbitrary mooring matrices and attachment locations
 remain unsupported.
 
+For a native MoorDyn model, install the matching
+[WEC-Sim MoorDyn library](https://github.com/WEC-Sim/MoorDyn) separately and
+pass its library and line-input paths to Python:
+
+```python
+import numpy as np
+from wecsim import MoorDyn
+
+with MoorDyn("path/to/libmoordyn.so", "path/to/lines.txt").start(
+        np.zeros(6), np.zeros(6)) as mooring:
+    force_and_moment = mooring.step(body_pose, body_velocity, time, dt)
+```
+
+The pose and velocity are six-component vectors at the MoorDyn connection.
+The binding reproduces the published RM3 connection's force and fairlead
+tensions when driven by its saved MATLAB motion. MoorDyn's legacy interface
+allows one active model per process. This direct force interface is not yet
+coupled to the Python floating-joint motion solver.
+
 The RM3 floating-joint solver accepts optional PTO hard stops in Python:
 
 ```python

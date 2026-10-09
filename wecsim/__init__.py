@@ -36,6 +36,7 @@ from .wavestarNmpc import (
     WaveStarNmpcObserver, WaveStarNmpcPredictor, WaveStarNmpcPTO,
 )
 from .morison import MorisonElement
+from .moorDyn import MoorDyn
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
 from .oswecDesalination import OSWECDesalinationResponse, run_oswec_desalination
@@ -54,7 +55,7 @@ from .sphereMpc import SphereMPCResult, run_sphere_mpc
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "Current", "DeclutchingControl", "DirectDriveHistory", "DirectLinearGenerator", "DirectLinearGeneratorSignals", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
-    "MotionHistory", "FlexibleModeHistory", "ImportedElevationWave", "ImportedSpectrumWave", "JONSWAPWave", "MorisonElement", "NoWave", "PMWave", "PTOHistory", "LinearGeneratorHistory", "RotationalPTO", "RegularCICWave",
+    "MotionHistory", "FlexibleModeHistory", "ImportedElevationWave", "ImportedSpectrumWave", "JONSWAPWave", "MorisonElement", "MoorDyn", "NoWave", "PMWave", "PTOHistory", "LinearGeneratorHistory", "RotationalPTO", "RegularCICWave",
     "RegularWave", "SimpleDirectDrive", "VariableHydro", "HydroState", "WEC",
     "OrificePTO", "OrificeResponse",
     "WECResult", "WorldPoint",
