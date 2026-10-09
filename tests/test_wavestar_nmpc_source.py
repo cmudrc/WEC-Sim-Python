@@ -13,7 +13,7 @@ from wecsim.irregularWave import (
 from wecsim.wavestar import WaveStarLinkage, run_wavestar_published
 from wecsim import (
     WaveStarNmpcActuator, WaveStarNmpcController,
-    WaveStarNmpcObserver, WaveStarNmpcPredictor,
+    WaveStarNmpcObserver, WaveStarNmpcPredictor, WaveStarNmpcPTO,
 )
 
 
@@ -293,3 +293,51 @@ def test_nmpc_unforced_plant_motion_diagnostic():
     assert np.max(np.abs(
         response.radiation_force - source_forces[:count, 1:7]
     )) < .2
+
+
+def test_nmpc_independent_full_closed_loop_diagnostic():
+    """Expose the published coarse-solver gap without tuning plant physics."""
+    source_float = _source("WECCCOMP_Nonlinear_Model_Predictive_body1")
+    source_pto = _source("WECCCOMP_Nonlinear_Model_Predictive_pto1")
+    components = _source("components")
+    controller = loadmat(
+        Path(REFERENCE) / "WECCCOMP_NMPC_SOURCE_controller.mat",
+        simplify_cells=True,
+    )
+    source_command = np.asarray(
+        controller["cmd_ptoM"]["signals"]["values"]
+    )
+    sea = jonswap_equal_energy_components(
+        HYDRO, significant_height=.1042, peak_period=1.836,
+        directions=np.array([0.]), spreading=np.array([1.]),
+        gamma=3.3, phase=components[:, 3, None],
+    )
+    pto = WaveStarNmpcPTO(plant_dt=.001, control_dt=.05)
+    response = run_wavestar_published(
+        HYDRO, sea, dt=.001, end_time=225, ramp_time=25,
+        g=9.80665, pto_controller=pto, output_stride=50,
+    )
+    assert source_float.shape == (4501, 25)
+    assert source_pto.shape == (4501, 43)
+    assert source_command.shape == (4501,)
+    np.testing.assert_allclose(response.time, source_float[:, 0],
+                               rtol=0, atol=1e-9)
+    np.testing.assert_allclose(pto.command_time, response.time,
+                               rtol=0, atol=1e-9)
+    assert pto.command_torque.shape == (4501,)
+    assert np.isfinite(response.angle).all()
+    assert np.isfinite(response.pto_force).all()
+    assert np.isfinite(pto.command_torque).all()
+    assert np.max(np.abs(pto.command_torque)) <= 12 + 1e-10
+    errors = {
+        "pitch_rad": np.max(np.abs(response.angle - source_float[:, 5])),
+        "pitch_speed_rad_s": np.max(np.abs(
+            response.angular_speed - source_float[:, 11])),
+        "pto_stroke_m": np.max(np.abs(
+            response.pto_stroke - source_pto[:, 3])),
+        "command_Nm": np.max(np.abs(
+            pto.command_torque - source_command)),
+        "axial_force_N": np.max(np.abs(
+            response.pto_force - source_pto[:, 33])),
+    }
+    print("published coarse-step NMPC motion differences:", errors)

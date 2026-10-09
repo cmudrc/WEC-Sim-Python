@@ -1185,13 +1185,13 @@ response = run_wavestar_published(hydro, sea)
 print(response.angle, response.pto_stroke)
 ```
 
-The function integrates the published unforced, single-coordinate linkage and
+By default, the function integrates the published unforced, single-coordinate linkage and
 uses the source application's fitted state-space radiation model. A Python
 seed gives a reproducible sea; replaying MATLAB's exact sea requires its saved
 phase column. The fit is positive in the active joint coordinate at sampled
 frequencies but differs from the BEM damping table. The broader `WEC` runner's
 physical radiation default is unchanged. The fault application has a separate
-paired trajectory below; coupled nonlinear predictive control remains open.
+paired trajectory below; nonlinear predictive closed-loop trajectory parity remains open.
 
 The published nonlinear predictive application also has a paired PTO actuator
 component. It accepts the controller's sampled torque request and the current
@@ -1239,6 +1239,35 @@ independent Python run pairs pitch within `5e-5` rad, PTO stroke within
 `10` µm, and axial PTO force within `0.03` N across all 14,951 samples.
 That derived run also samples the controller at 1 ms; the published 0.05 s
 `ode8` closed loop and NMPC motion after 15 s remain open.
+
+To run the complete 225 s Python controller from its own motion, pass the
+sampled PTO to the WaveStar runner:
+
+```python
+import numpy as np
+from wecsim import WaveStarNmpcPTO
+from wecsim.irregularWave import jonswap_equal_energy_components
+from wecsim.wavestar import run_wavestar_published
+
+hydro = "applications/WECCCOMP/hydroData/wavestar.h5"
+sea = jonswap_equal_energy_components(
+    hydro, significant_height=0.1042, peak_period=1.836,
+    directions=np.array([0.]), spreading=np.array([1.]),
+    gamma=3.3, seed=1,
+)
+pto = WaveStarNmpcPTO(plant_dt=0.001, control_dt=0.05)
+motion = run_wavestar_published(
+    hydro, sea, dt=0.001, end_time=225, ramp_time=25,
+    g=9.80665, pto_controller=pto, output_stride=50,
+)
+print(motion.angle, pto.command_torque, motion.pto_force)
+```
+
+Python's seed generates a new realization; replaying the published MATLAB
+sea requires its saved phase column. The published 0.05 s `ode8` case and
+this fine-step Python run show a bounded but material motion difference, so
+their full 225 s trajectory is recorded as a diagnostic rather than a
+paired parity gate.
 
 The WaveStar fault application has separately paired PTO components:
 

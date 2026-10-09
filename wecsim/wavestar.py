@@ -86,7 +86,7 @@ def run_wavestar_published(
     fault_joint_friction=None,
     output_stride: int = 1,
 ) -> WaveStarResponse:
-    """Integrate the published unforced WECCCOMP WaveStar linkage.
+    """Integrate the published WECCCOMP WaveStar linkage.
 
     The pinned case uses a fitted state-space radiation model. Its active
     damping is positive, but the fit differs in magnitude from the BEM table.
@@ -108,6 +108,10 @@ def run_wavestar_published(
         if sensor_noise is not None or sensor_dropout is not None:
             raise ValueError("WaveStar sensor inputs need a PTO controller")
     else:
+        controller_step = getattr(pto_controller, "plant_dt", dt)
+        if (not np.isfinite(controller_step)
+                or not np.isclose(controller_step, dt, rtol=0, atol=1e-12)):
+            raise ValueError("WaveStar PTO plant step must match the runner")
         if sensor_noise is None:
             sensor_noise = np.zeros(steps + 1)
         if sensor_dropout is None:
