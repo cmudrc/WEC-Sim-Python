@@ -47,7 +47,15 @@ def test_published_multisine_and_mooring_force_laws():
     commanded = np.column_stack([
         np.interp(actuation[:, 0], input_signal[:, 0], input_signal[:, i + 1])
         for i in range(3)
-    ]) * parameters[0, 4:]
+    ])
+    late = actuation[:, 0] > input_signal[-1, 0]
+    commanded[late] = (
+        input_signal[-1, 1:]
+        + (actuation[late, 0, None] - input_signal[-1, 0])
+        * (input_signal[-1, 1:] - input_signal[-2, 1:])
+        / (input_signal[-1, 0] - input_signal[-2, 0])
+    )
+    commanded *= parameters[0, 4:]
     np.testing.assert_allclose(actuation[:, 1:], commanded,
                                rtol=0, atol=1e-8)
 
@@ -70,8 +78,18 @@ def test_published_hydrodynamic_matrices_and_body_force_channels():
     assert np.max(np.abs(added_mass)) > 0
     assert np.max(np.abs(hydrostatic)) > 0
     np.testing.assert_allclose(body[:, 19:25], 0, rtol=0, atol=1e-10)
-    linear_damping = np.diag([1000, 0, 1000, 0, 100, 0])
+    # MATLAB linear indexing in body.linearDamping(1:2:5) fills the first
+    # column, rather than the surge/heave/pitch diagonal.
+    linear_damping = np.zeros((6, 6))
+    linear_damping[[0, 2, 4], 0] = [1000, 1000, 100]
     np.testing.assert_allclose(
-        forces[:, 25:31], -body[:, 7:13] @ linear_damping.T,
+        forces[:, 25:31], body[:, 7:13] @ linear_damping.T,
+        rtol=0, atol=1e-6,
+    )
+    drag = (.5 * 1025 * np.array([1.15, 1.15, 1, .5, .5, 0])
+            * np.array([2.9568, 2.9568, 5.4739, 5.4739, 5.4739, 0]))
+    velocity = body[:, 7:13]
+    np.testing.assert_allclose(
+        forces[:, 19:25], drag * np.abs(velocity) * velocity,
         rtol=0, atol=1e-6,
     )
