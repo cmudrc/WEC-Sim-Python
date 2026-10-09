@@ -66,6 +66,13 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         (sea.phase, source["wave_phase"]),
     ):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-11)
+    np.testing.assert_allclose(
+        wave.elevation, source["wave_elevation"].ravel(), rtol=0, atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        wave.excitation_force, source["body_force_excitation"],
+        rtol=0, atol=1e-4,
+    )
     assert result.iterations <= 12
     assert result.position_residual <= 1e-6
     assert result.velocity_residual <= 1e-6

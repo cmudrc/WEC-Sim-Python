@@ -383,8 +383,10 @@ establishes bidirectional six-coordinate platform/turbine motion for the
 published 10 s, below-rated case. A second pinned condition changes only the
 JONSWAP significant height from 4 to 6 m and phase seed from 1 to 2. The
 independent Python solve converges in eight passes; the saved wave bins,
-amplitudes, and phases match the fresh MATLAB source to `1e-11`. Across its
-1,001 samples, maximum platform position differences are `0.114` mm surge,
+amplitudes, and phases match the fresh MATLAB source to `1e-11`. Wave elevation
+and all six excitation-force components differ by at most `2.9e-14` m and
+`6.7e-6` N or N m, below paired gates of `1e-12` m and `1e-4` N or N m.
+Across its 1,001 samples, maximum platform position differences are `0.114` mm surge,
 `0.280` mm sway, `0.078` mm heave, `1.85e-5` rad roll, `2.70e-6` rad pitch,
 and `9.05e-5` rad yaw. Maximum velocity differences are `0.0231` mm/s surge,
 `0.0952` mm/s sway, `0.0442` mm/s heave, `9.34e-6` rad/s roll, `5.94e-7`
