@@ -78,6 +78,12 @@ coordinates use small-motion kinematics and fixed-axis PTOs. The floating
 joint uses its own pitched-slider geometry and a relative-heave PTO; arbitrary
 PTO attachment points are not part of that reduced layout.
 
+The MOST application uses a TurbSim full-field wind input. Its checked-in
+`.bts` file can be read directly with `wecsim.read_turbsim_bts(path)`; the
+result has `velocity[time, component, y, z]`, `y`, `z`, `dt`, and `hub_height`.
+This is wind input decoding only. MOST's turbine, mooring, and coupled body
+motion are not yet available through the Python device runner.
+
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
 ```python
