@@ -19,7 +19,7 @@ from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
 from .floatingOwc import FloatingOwcChamber, FloatingOwcTurbine
 from .hardStops import LinearHardStops
-from .morison import MorisonElement
+from .morison import MorisonElement, finite_depth_wavenumber
 from .moorDyn import MoorDyn
 from .orifice import OrificePTO
 
@@ -206,6 +206,40 @@ class RegularWave:
         return {"type": "regular", "height": self.height,
                 "period": self.period, "direction": self.direction}
 
+    def elevation_at(
+        self, time: Sequence[float], locations: Sequence[Sequence[float]], *,
+        water_depth: float = np.inf, ramp_time: float = 0.0,
+        g: float = 9.81,
+    ) -> np.ndarray:
+        """Sample the undisturbed, ramped surface at world XY locations.
+
+        Rows follow ``time`` and columns follow ``locations``. This is the
+        wave-marker signal; it does not depend on the WEC body motion.
+        """
+        times = np.asarray(time, dtype=float)
+        points = np.asarray(locations, dtype=float)
+        if (times.ndim != 1 or not np.isfinite(times).all()
+                or np.any(times < 0) or points.ndim != 2
+                or points.shape[1] != 2 or not np.isfinite(points).all()):
+            raise ValueError("time and marker locations need finite 1D and Nx2 arrays")
+        if (not np.isfinite([self.height, self.period, self.direction,
+                             ramp_time, g]).all()
+                or self.height < 0 or self.period <= 0 or ramp_time < 0
+                or g <= 0 or np.isnan(water_depth) or water_depth <= 0):
+            raise ValueError("regular wave and ramp settings must be valid")
+        omega = 2 * np.pi / self.period
+        k = (omega**2 / g if np.isinf(water_depth) else
+             finite_depth_wavenumber(np.array([omega]),
+                                     water_depth=water_depth, gravity=g)[0])
+        heading = np.deg2rad(self.direction)
+        distance = points[:, 0] * np.cos(heading) + points[:, 1] * np.sin(heading)
+        ramp = np.ones_like(times)
+        if ramp_time:
+            starting = times < ramp_time
+            ramp[starting] = 0.5 * (1 - np.cos(np.pi * times[starting] / ramp_time))
+        return (self.height / 2 * ramp[:, None]
+                * np.cos(omega * times[:, None] - k * distance[None, :]))
+
 
 @dataclass(frozen=True)
 class RegularCICWave:
@@ -218,6 +252,14 @@ class RegularCICWave:
     def as_case(self) -> dict:
         return {"type": "regularCIC", "height": self.height,
                 "period": self.period, "direction": self.direction}
+
+    def elevation_at(self, time: Sequence[float],
+                     locations: Sequence[Sequence[float]], *,
+                     water_depth: float = np.inf, ramp_time: float = 0.0,
+                     g: float = 9.81) -> np.ndarray:
+        return RegularWave(self.height, self.period, self.direction).elevation_at(
+            time, locations, water_depth=water_depth, ramp_time=ramp_time, g=g,
+        )
 
 
 @dataclass(frozen=True)
