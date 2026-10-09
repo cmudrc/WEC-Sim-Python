@@ -266,6 +266,22 @@ their respective MATLAB peaks. This verifies the published regular-wave,
 fixed-frequency-hydrodynamic case, not other seas, radiation-memory settings,
 or arbitrary floating OWC designs.
 
+A derived 150 s run keeps that same published sea, geometry, hydrodynamics,
+mooring, and air train while setting the slider PTO to `15,000` N/m stiffness
+and `60,000` N s/m damping. MATLAB's logged PTO force equals
+`-stiffness × stroke - damping × speed` within `3.5e-9` N. The public
+`solve_floating_owc` advances the altered system independently; the local
+maximum differences are `0.00222` m floater position, `0.00086` m column
+position, `0.00258` m PTO stroke, `100` N PTO force, `438` W mechanical PTO
+power, `8.43` Pa chamber pressure, `0.296` rad/s rotor speed, and `21.5` W
+turbine load power over 15,001 samples. The paired CI gates allow `0.007` m
+floater position, `0.003` m column position, `0.008` m stroke, `400` N PTO
+force, `1,500` W mechanical power, `20` Pa pressure, `0.8` rad/s rotor speed,
+and `50` W turbine power; six mooring-force components must stay within
+`1.5%` of their respective source peaks. This checks configurable PTO
+stiffness/damping in a physically distinct case without fitting source
+motion or forces as inputs.
+
 The published RM3 `End_Stops` trajectory has a separate refined-step gate;
 the pinned 0.1 s output is not treated as a converged motion reference.
 

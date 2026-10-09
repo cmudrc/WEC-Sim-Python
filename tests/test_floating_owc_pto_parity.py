@@ -66,21 +66,21 @@ def test_nonzero_floating_owc_pto_dynamics(tmp_path):
     )
     np.testing.assert_allclose(response.time, floater[:, 0], rtol=0, atol=1e-8)
     _bound("floater position (m)", response.floater_pose[:, :3],
-           floater[:, 1:4], .015)
+           floater[:, 1:4], .007)
     _bound("floater rotation (rad)", response.floater_pose[:, 3:6],
-           floater[:, 4:7], 3e-4)
+           floater[:, 4:7], 1e-4)
     _bound("column position (m)", response.column_pose[:, :3],
-           column[:, 1:4], .01)
-    _bound("PTO stroke (m)", response.stroke, pto[:, 3], .015)
-    _bound("PTO force (N)", response.pto_force, source_pto_force, 1_500)
+           column[:, 1:4], .003)
+    _bound("PTO stroke (m)", response.stroke, pto[:, 3], .008)
+    _bound("PTO force (N)", response.pto_force, source_pto_force, 400)
     _bound("PTO mechanical power (W)", -response.pto_mechanical_power,
-           pto[:, 21], 3_000)
+           pto[:, 21], 1_500)
     _bound("chamber pressure (Pa)", response.chamber_pressure,
            pressure[:, 1], 20)
-    _bound("rotor speed (rad/s)", response.turbine_speed, rotor[:, 1], 1)
+    _bound("rotor speed (rad/s)", response.turbine_speed, rotor[:, 1], .8)
     _bound("turbine load power (W)", response.turbine_power,
            turbine_power[:, 1], 50)
     force_peak = np.max(np.abs(coupling[1:, 13:19]), axis=0)
     force_error = np.max(np.abs(
         response.mooring_force[1:] - coupling[1:, 13:19]), axis=0)
-    assert np.all(force_error < .02 * force_peak), force_error / force_peak
+    assert np.all(force_error < .015 * force_peak), force_error / force_peak
