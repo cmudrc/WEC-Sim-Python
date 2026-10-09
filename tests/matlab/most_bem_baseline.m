@@ -13,7 +13,7 @@ z = linspace(10, 290, 12);
 model.createBEMstruct(x, y, z);
 bem = model.BEMstruct;
 
-q = zeros(4, 14);
+q = zeros(5, 14);
 q(:,3) = model.hub.height;
 q(:,14) = 7.56*pi/30;
 q(2,13) = pi/6;
@@ -28,12 +28,21 @@ q(4,7:9) = [-0.1 0.08 -0.04];
 q(4,10:12) = [-0.002 0.001 -0.003];
 q(4,13) = pi/2;
 q(4,14) = 0.9;
-wind_speeds = [8 8 8 11];
-bladepitch = [0 0 0.03 0.08];
-loads = zeros(4, 6, 3);
+q(5,:) = q(3,:);
+q(5,13:14) = [pi/3 0.85];
+wind_speeds = [8 8 8 11 8];
+bladepitch = [0 0 0.03 0.08 0.02];
+loads = zeros(5, 6, 3);
 wind = zeros(length(x), length(y), length(z), 3);
-for i = 1:4
+for i = 1:5
     wind(:,:,:,1) = wind_speeds(i);
+    wind(:,:,:,2:3) = 0;
+    if i == 5
+        [X,Y,Z] = ndgrid(x,y,z);
+        wind(:,:,:,1) = 8 + 0.002*X + 0.004*Y + 0.01*(Z-150);
+        wind(:,:,:,2) = 0.1 + 0.001*Y;
+        wind(:,:,:,3) = 0.02*Z/150;
+    end
     loads(i,:,:) = BEM(wind, q(i,:)', bladepitch(i), bem);
 end
 assert(all(isfinite(loads), 'all'));

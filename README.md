@@ -86,8 +86,13 @@ at one output time as `[component, x, y, z]`, without storing the full
 five-dimensional shifted wind array. This covers the MOST wind input and its
 frozen-turbulence time shift. `wecsim.MostStaticMooring().force(pose)` evaluates
 the published three-line static catenary load and each fairlead's horizontal
-and vertical tension for a six-coordinate platform pose. MOST's turbine and
-coupled body motion are not yet available through the Python device runner.
+and vertical tension for a six-coordinate platform pose. For the published
+IEA 15 MW turbine, `wecsim.MostBEM.from_iea15mw(blade_data_directory)` reads
+its raw AeroDyn blade and airfoil tables; `model.loads(hub_state, pitch, wind)`
+returns six root loads per blade for a 14-state hub, blade pitch in radians,
+and either a wind three-vector or a position-to-wind callable. Turbine control
+and coupled platform motion are not yet available through the Python device
+runner.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 

@@ -9,6 +9,7 @@ on:
       - 'tests/matlab/most_bem_baseline.m'
       - 'tests/test_most_bem_source.py'
       - 'wecsim/mostBEM.py'
+      - 'wecsim/__init__.py'
   pull_request:
     paths:
       - '.github/workflows/most-bem-parity.yml'
@@ -16,6 +17,7 @@ on:
       - 'tests/matlab/most_bem_baseline.m'
       - 'tests/test_most_bem_source.py'
       - 'wecsim/mostBEM.py'
+      - 'wecsim/__init__.py'
   workflow_dispatch:
 
 jobs:
