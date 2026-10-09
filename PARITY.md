@@ -270,7 +270,9 @@ A derived 150 s run keeps that same published sea, geometry, hydrodynamics,
 mooring, and air train while setting the slider PTO to `15,000` N/m stiffness
 and `60,000` N s/m damping. MATLAB's logged PTO force equals
 `-stiffness × stroke - damping × speed` within `3.5e-9` N. The public
-`solve_floating_owc` advances the altered system independently; the local
+`solve_floating_owc` advances the altered system independently, and the same
+paired gate now runs through `WEC.floating_owc` and `WEC.run` with a named
+floater, column, body-local mooring point, and PTO. The local
 maximum differences are `0.00222` m floater position, `0.00086` m column
 position, `0.00258` m PTO stroke, `100` N PTO force, `438` W mechanical PTO
 power, `8.43` Pa chamber pressure, `0.296` rad/s rotor speed, and `21.5` W
@@ -359,7 +361,8 @@ attachment-location dynamics remain unpaired.
 returns named NumPy body, coordinate, and PTO histories. The JSON case runner
 remains available for saved cases; the Python builder covers the mapped
 `linear_subspace`, one-body `floating_gbm`, two-body RM3-style
-`floating_joint`, and one- or two-body OSWEC `fixed_hinge` layouts. The
+`floating_joint`, two-body coupled `floating_owc`, and one- or two-body
+OSWEC `fixed_hinge` layouts. The
 floating joint uses a relative-heave PTO; the fixed hinge accepts a torsional
 PTO at the published world-axis locations. Neither accepts arbitrary
 attachment geometry.
@@ -395,8 +398,8 @@ MoorDyn binaries and preloading the runner's compatible C++ runtime resolved
 that reference-environment issue. Targeted R2025b runs now pass the published
 [RM3 MoorDyn](https://github.com/cmudrc/wec-sim-python/actions/runs/37884438725)
 and [RM3 MoorDyn ParaView](https://github.com/cmudrc/wec-sim-python/actions/runs/37885063313)
-tests. The later Python native-force replay is reported above; independent
-coupled Python motion remains open.
+tests. The independent Python RM3 body/PTO/mooring trajectory is paired above;
+the ParaView files remain unpaired.
 
 The `Multiple_Wave_Spectra` test class is excluded by MATLAB because its
 class name does not match its filename. Our harness generates its OSWEC HDF5

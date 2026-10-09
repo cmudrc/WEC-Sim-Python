@@ -16,6 +16,8 @@ from scipy.io import loadmat
 from .bodyClass import BodyClass
 from .directDrive import integrate_direct_drive_heave
 from .directLinearGenerator import DirectLinearGenerator
+from .floatingOwc import FloatingOwcChamber, FloatingOwcTurbine
+from .floatingOwcDynamics import solve_floating_owc
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .gbmFloating import (
     solve_floating_gbm_pm_orifice, solve_floating_gbm_regular,
@@ -38,6 +40,7 @@ from .morison import (
     regular_wave_axial_morison_terms, regular_wave_heave_morison_terms,
     solve_fixed_morison_irregular,
 )
+from .moorDyn import MoorDyn
 from .nonlinearHydro import HeaveMeshHydro
 from .orifice import OrificePTO
 from .passiveYaw import (
@@ -266,8 +269,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
     """Run one explicitly supported wave/device configuration.
 
     ``base_dir`` resolves relative hydro and phase file paths. Supported
-    layouts include heave free decay, a fixed hinge, a floating joint, mapped
-    linear coordinates, and fixed bodies with Cartesian Morison elements.
+    layouts include heave free decay, a fixed hinge, a floating joint, a
+    floating OWC, mapped linear coordinates, and fixed Morison bodies.
     """
     case = _section(
         case, "case", {"simulation", "wave", "bodies", "constraint"},
@@ -294,7 +297,9 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                            "orifice", "orifice_force_path", "heave_linear_damping",
                            "mode_linear_damping", "heave_drag_cd",
                            "heave_drag_area", "pitch_drag_cd",
-                           "pitch_drag_area"})
+                           "pitch_drag_area", "column_height",
+                           "column_diameter", "initial_rotor_speed",
+                           "chamber", "turbine"})
     if "current" in wave and constraint["kind"] != "fixed_morison":
         raise ValueError("wave.current currently requires fixed_morison")
     bodies = case["bodies"]
@@ -327,8 +332,12 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         raise ValueError("configurable PTO connections require linear_subspace")
     if kind != "linear_subspace" and any("mean_drift" in body for body in bodies):
         raise ValueError("body.mean_drift currently requires linear_subspace")
-    if "mooring" in case and kind != "floating_joint":
-        raise ValueError("the configured mooring requires a floating_joint")
+    if "mooring" in case and kind not in ("floating_joint", "floating_owc"):
+        raise ValueError("the configured mooring requires a floating_joint or floating_owc")
+
+    if kind == "floating_owc":
+        return _run_floating_owc(case, sim, wave, constraint, bodies, hydro,
+                                 b2b, dt, end_time, ramp_time, rho, g)
 
     if kind == "fixed_morison":
         return _run_fixed_morison(
@@ -878,6 +887,100 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
         )
 
     raise ValueError(f"unsupported constraint layout: {kind}")
+
+
+def _run_floating_owc(case, sim, wave, constraint, bodies, hydro,
+                      b2b, dt, end_time, ramp_time, rho, g):
+    """Adapt the coupled OWC solver to named case and Python-builder output."""
+    if (len(bodies) != 2 or b2b or hydro[0] != hydro[1]
+            or "ptos" in case or "radiation_memory" in sim
+            or "radiation_method" in sim or "added_mass_scheme" in sim):
+        raise ValueError("floating_owc needs one ordered two-body HDF5 and fixed-frequency radiation")
+    for index, body in enumerate(bodies, start=1):
+        _section(body, "floating_owc body",
+                 {"hydro_file", "hydro_body", "mass", "inertia"},
+                 {"name", "hydro_file", "hydro_body", "mass", "inertia"})
+        _body_number(body, index)
+    if (wave["type"] != "regular"
+            or set(wave) - {"type", "height", "period", "direction"}
+            or _number(wave.get("direction", 0), "wave.direction") != 0):
+        raise ValueError("floating_owc needs zero-heading regular waves")
+    height = _number(wave.get("height"), "wave.height", nonnegative=True)
+    period = _number(wave.get("period"), "wave.period", positive=True)
+    _section(constraint, "floating_owc constraint",
+             {"kind", "column_height", "column_diameter"},
+             {"kind", "column_height", "column_diameter",
+              "initial_rotor_speed", "chamber", "turbine"})
+    chamber = constraint.get("chamber")
+    turbine = constraint.get("turbine")
+    if (chamber is not None and not isinstance(chamber, FloatingOwcChamber)
+            or turbine is not None and not isinstance(turbine, FloatingOwcTurbine)):
+        raise TypeError("floating_owc chamber and turbine need their public classes")
+    pto = _section(case.get("pto"), "floating_owc PTO",
+                   {"kind", "name", "stiffness", "damping"},
+                   {"kind", "name", "stiffness", "damping"})
+    if pto["kind"] != "column_slider" or not isinstance(pto["name"], str) or not pto["name"]:
+        raise ValueError("floating_owc needs a named column_slider PTO")
+    mooring = _section(case.get("mooring"), "floating_owc mooring",
+                       {"kind", "session"}, {"kind", "session", "point"})
+    if mooring["kind"] != "moor_dyn" or not isinstance(mooring["session"], MoorDyn):
+        raise ValueError("floating_owc needs a MoorDyn session")
+    point = mooring.get("point")
+    if point is not None:
+        point = np.asarray(point, dtype=float)
+        if point.shape != (3,) or not np.isfinite(point).all():
+            raise ValueError("floating_owc mooring point needs three finite local values")
+    inertia = [np.asarray(body["inertia"], dtype=float) for body in bodies]
+    if (any(value.shape != (3,) or not np.isfinite(value).all()
+            for value in inertia) or np.any(inertia[0] <= 0)
+            or (np.any(inertia[1] != 0) and np.any(inertia[1] <= 0))):
+        raise ValueError("floating_owc body inertias are invalid")
+    column_mass = _number(bodies[1]["mass"], "column.mass", positive=True)
+    floater_mass = bodies[0]["mass"]
+    if floater_mass != "equilibrium":
+        floater_mass = _number(floater_mass, "floater.mass", positive=True)
+    owc_ramp_time = _number(sim.get("ramp_time", 50.0),
+                            "simulation.ramp_time", nonnegative=True)
+    response = solve_floating_owc(
+        hydro[0], mooring["session"], dt=dt, end_time=end_time,
+        wave_height=height, wave_period=period,
+        ramp_time=owc_ramp_time,
+        floater_mass=floater_mass, floater_inertia=tuple(inertia[0]),
+        column_mass=column_mass,
+        column_height=_number(constraint["column_height"], "column_height", positive=True),
+        column_diameter=_number(constraint["column_diameter"], "column_diameter", positive=True),
+        column_inertia=(None if np.all(inertia[1] == 0) else tuple(inertia[1])),
+        pto_stiffness=_number(pto["stiffness"], "pto.stiffness"),
+        pto_damping=_number(pto["damping"], "pto.damping"),
+        moordyn_point=point, chamber=chamber, turbine=turbine,
+        initial_rotor_speed=_number(constraint.get("initial_rotor_speed", 150),
+                                    "initial_rotor_speed", positive=True),
+        rho=rho, g=g,
+    )
+    wave_ramp = np.ones_like(response.time)
+    if owc_ramp_time > 0:
+        early = response.time < owc_ramp_time
+        wave_ramp[early] = (1 - np.cos(np.pi * response.time[early] / owc_ramp_time)) / 2
+    elevation = height / 2 * wave_ramp * np.cos(2 * np.pi * response.time / period)
+    return CaseResponse(
+        response.time,
+        np.stack((response.floater_pose, response.column_pose), axis=1),
+        np.stack((response.floater_velocity, response.column_velocity), axis=1),
+        hydro, pto_force=response.pto_force,
+        pto_label="pto_column_slider_force", wave_elevation=elevation,
+        extra_outputs=(
+            ("pto_mechanical_power", response.pto_mechanical_power),
+            ("chamber_pressure", response.chamber_pressure),
+            ("turbine_speed", response.turbine_speed),
+            ("turbine_power", response.turbine_power),
+            ("pneumatic_power", response.pneumatic_power),
+            ("moordyn_connection_position", response.mooring_pose),
+            ("moordyn_connection_velocity", response.mooring_velocity),
+            ("moordyn_connection_force", response.mooring_force),
+        ),
+        pto_stroke=response.stroke, pto_velocity=response.stroke_speed,
+        pto_absorbed_power=response.pto_dissipated_power,
+    )
 
 
 def _run_direct_drive_heave(case, sim, wave, constraint, bodies, hydro,
