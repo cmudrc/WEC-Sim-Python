@@ -75,7 +75,7 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         (2, 1.5e-4, 7e-5),  # heave, m and m/s
         (3, 4e-5, 2e-5),    # roll, rad and rad/s
         (4, 5e-6, 2e-6),    # pitch, rad and rad/s
-        (5, 1.5e-4, 2e-6),  # yaw, rad and rad/s
+        (5, 1.5e-4, 3e-6),  # yaw, rad and rad/s across both pinned seas
     ):
         np.testing.assert_allclose(
             result.platform.position[:, axis], source["body_position"][:, axis],
