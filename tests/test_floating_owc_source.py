@@ -43,7 +43,8 @@ def test_published_floating_owc_source_has_coupled_motion_and_power():
     assert fairlead.shape[1] >= 4
     assert np.max(fairlead[:, 1:]) > 100
 
-    for name in ("x_vTurb", "u", "P_pneumatic", "P_turb", "eta_turb"):
+    for name in ("x_xOWC", "x_vOWC", "x_deltaP", "x_vTurb", "u",
+                 "P_pneumatic", "P_turb", "eta_turb"):
         trace = _read(name)
         assert trace.shape[1] >= 2
         assert trace[-1, 0] >= 499.9
