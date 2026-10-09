@@ -32,8 +32,8 @@ def test_most_static_mooring_against_matlab_source():
     ):
         force, hv = model.force(pose)
         np.testing.assert_allclose(force[:3], expected_force[:3],
-                                   rtol=0, atol=50)
+                                   rtol=0, atol=1e-3)
         np.testing.assert_allclose(force[3:], expected_force[3:],
-                                   rtol=0, atol=3000)
+                                   rtol=0, atol=1e-2)
         np.testing.assert_allclose(hv, expected_hv,
-                                   rtol=0, atol=50)
+                                   rtol=0, atol=1e-3)
