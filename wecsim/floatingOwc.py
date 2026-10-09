@@ -71,3 +71,119 @@ class FloatingOwcChamber:
         if not np.isfinite(gauge).all():
             raise ValueError("pressure must be finite")
         return -self.area * gauge
+
+
+def _published_wells_curves() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Sample the pinned application's fitted Wells curves on its 5000-point grid."""
+    psi = np.linspace(-0.3, 0.3, 5000)
+    magnitude = np.abs(psi)
+    efficiency = np.zeros_like(psi)
+    linear_segments = (
+        (0.008, 0.009, 0.0, 0.1),
+        (0.009, 0.0128, 0.1, 0.2),
+        (0.0128, 0.0199, 0.2, 0.3),
+        (0.0199, 0.0404, 0.3, 0.5),
+        (0.0878, 0.1141, 0.5, 0.3),
+        (0.1141, 0.1192, 0.3, 0.273),
+        (0.2122, 0.3, 0.0016, 0.0),
+    )
+    for low_psi, high_psi, low_eta, high_eta in linear_segments:
+        selected = (magnitude >= low_psi) & (magnitude <= high_psi)
+        efficiency[selected] = low_eta + (high_eta - low_eta) * (
+            magnitude[selected] - low_psi) / (high_psi - low_psi)
+    coefficients = np.polyfit(
+        [0.0404, 0.0634, 0.0878], [0.5, 0.595, 0.5], 2)
+    selected = (magnitude > 0.0404) & (magnitude < 0.0878)
+    efficiency[selected] = np.polyval(coefficients, magnitude[selected])
+    selected = (magnitude >= 0.1192) & (magnitude <= 0.2122)
+    efficiency[selected] = 200.6 * np.exp(-55.35 * magnitude[selected])
+
+    flow = np.where(
+        magnitude <= 0.1, 0.775 * magnitude,
+        -2.503 * magnitude**2 + 1.608 * magnitude - 0.05664 - 0.00167,
+    )
+    torque = efficiency * magnitude * flow
+    selected = (magnitude > 0.1) & (magnitude <= 0.114)
+    torque[selected] = (0.3156 + (0.3170 - 0.3156) *
+                        (magnitude[selected] - 0.1) / 0.014) / 100
+    return psi, efficiency, flow, torque
+
+
+_PSI_GRID, _EFFICIENCY, _FLOW, _TORQUE = _published_wells_curves()
+
+
+@dataclass(frozen=True)
+class FloatingOwcTurbineResponse:
+    control_torque: np.ndarray
+    turbine_torque: np.ndarray
+    load_power: np.ndarray
+    pneumatic_power: np.ndarray
+    efficiency: np.ndarray
+    speed_derivative: np.ndarray
+
+
+@dataclass(frozen=True)
+class FloatingOwcTurbine:
+    """Published floating-OWC Wells turbine, load control, and rotor inertia.
+
+    ``evaluate`` accepts chamber gauge pressure in Pa and rotor speed in
+    rad/s. ``load_power`` is the source's logged ``P_turb = u * speed`` in W;
+    ``pneumatic_power`` is its pressure-flow power in W. The performance
+    curves are the fixed fits from the published application.
+    """
+
+    diameter: float = 0.75
+    inertia: float = 3.06
+    ambient_pressure: float = 101325.0
+    ambient_density: float = 1.25
+    gamma: float = 1.4
+    max_speed: float = 350.0
+    control_coefficient: float = 2e-4
+    control_exponent: float = 3.0
+    max_control_torque: float = 216.5
+
+    def __post_init__(self) -> None:
+        values = tuple(self.__dict__.values())
+        if (any(isinstance(value, bool) or not isinstance(value, Real)
+                for value in values)
+                or not np.isfinite(values).all()
+                or any(value <= 0 for value in values)
+                or self.control_exponent < 1):
+            raise ValueError("floating OWC turbine parameters must be finite and positive; control exponent must be at least one")
+
+    def evaluate(
+        self, pressure: float | np.ndarray, speed: float | np.ndarray,
+    ) -> FloatingOwcTurbineResponse:
+        gauge = np.asarray(pressure, dtype=float)
+        rotor_speed = np.asarray(speed, dtype=float)
+        absolute = self.ambient_pressure + gauge
+        if (not np.isfinite(gauge).all() or not np.isfinite(rotor_speed).all()
+                or np.any(absolute <= 0) or np.any(rotor_speed <= 0)):
+            raise ValueError("chamber absolute pressure and rotor speed must be positive")
+
+        chamber_density = self.ambient_density * (
+            absolute / self.ambient_pressure) ** (1 / self.gamma)
+        density = np.maximum(self.ambient_density, chamber_density)
+        pressure_coefficient = gauge / (
+            density * rotor_speed**2 * self.diameter**2)
+        safe_psi = np.where(rotor_speed > self.max_speed,
+                            0.0, pressure_coefficient)
+        clipped = np.clip(safe_psi, _PSI_GRID[0], _PSI_GRID[-1])
+        flow = np.interp(clipped, _PSI_GRID, _FLOW) * np.sign(pressure_coefficient)
+        torque_coefficient = np.interp(clipped, _PSI_GRID, _TORQUE)
+        efficiency = np.interp(clipped, _PSI_GRID, _EFFICIENCY)
+
+        turbine_torque = (self.diameter**5 * density * torque_coefficient *
+                          rotor_speed**2)
+        control_torque = np.minimum(
+            self.control_coefficient * rotor_speed**(self.control_exponent - 1),
+            self.max_control_torque)
+        mass_flow = flow * density * rotor_speed * self.diameter**3
+        return FloatingOwcTurbineResponse(
+            control_torque=control_torque,
+            turbine_torque=turbine_torque,
+            load_power=control_torque * rotor_speed,
+            pneumatic_power=gauge * mass_flow / chamber_density,
+            efficiency=efficiency,
+            speed_derivative=(turbine_torque - control_torque) / self.inertia,
+        )
