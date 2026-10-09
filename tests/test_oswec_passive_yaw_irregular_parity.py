@@ -195,17 +195,19 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
     assert pto.shape == (25001, 25)
 
 
-def test_continuous_heading_irregular_passive_yaw(tmp_path):
-    """Check the same PM realization and 250 s flap/PTO trajectory."""
+@pytest.mark.parametrize("seed", (1, 2, 3))
+def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
+    """Pair continuous heading and 250 s flap/PTO trajectories in three seas."""
     source = Path(REFERENCE)
     hydro = (Path(APPLICATIONS)
              / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
-    prefix = "OSWEC_PASSIVE_YAW_IRR_CONT"
-    case = "PassiveYawRegressionContinuous"
+    model = "OSWEC_PASSIVE_YAW_IRR_CONT"
+    prefix = model + (f"_SEED{seed}" if seed > 1 else "")
+    case = "PassiveYawRegressionContinuous" + (f"Seed{seed}" if seed > 1 else "")
     components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
-    flap = np.loadtxt(source / f"{prefix}_{case}_body1.csv", delimiter=",")
-    base = np.loadtxt(source / f"{prefix}_{case}_body2.csv", delimiter=",")
-    pto = np.loadtxt(source / f"{prefix}_{case}_pto1.csv", delimiter=",")
+    flap = np.loadtxt(source / f"{model}_{case}_body1.csv", delimiter=",")
+    base = np.loadtxt(source / f"{model}_{case}_body2.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{model}_{case}_pto1.csv", delimiter=",")
     wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
     assert components_csv.shape == (500, 4)
     assert flap.shape == base.shape == pto.shape == (25001, 25)
@@ -268,7 +270,12 @@ def test_continuous_heading_irregular_passive_yaw(tmp_path):
     _max_error(hinge.stroke, pto[:, 5], 1e-4, "PTO angle")
     _max_error(hinge.velocity, pto[:, 11], 2e-5, "PTO angular speed")
     _max_error(hinge.force, pto[:, 17], 3, "PTO torque")
-    _max_error(-hinge.absorbed_power, pto[:, 23], 0.05,
-               "PTO source-signed power")
+    source_peak_power = np.max(np.abs(pto[:, 23]))
+    _max_error(-hinge.absorbed_power, pto[:, 23],
+               5e-4 * source_peak_power, "PTO source-signed power")
+    source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
+    python_work = np.trapezoid(hinge.absorbed_power, result.time)
+    assert source_work > 0
+    assert abs(python_work - source_work) / source_work < 2e-4
     _max_error(pto[:, 17], -120000 * pto[:, 11], 1e-5,
                "source PTO damping law")

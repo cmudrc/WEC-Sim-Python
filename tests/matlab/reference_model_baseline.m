@@ -1,5 +1,14 @@
 function reference_model_baseline(model)
 % Run the published RM3, OSWEC, or Sphere reference cases and save numeric output.
+requestedModel = string(model);
+selectedContinuousSeed = 0;
+if startsWith(requestedModel, "OSWEC_PASSIVE_YAW_IRR_CONT_SEED")
+    selectedContinuousSeed = str2double(extractAfter(requestedModel, ...
+        "OSWEC_PASSIVE_YAW_IRR_CONT_SEED"));
+    assert(ismember(selectedContinuousSeed, [2, 3]), ...
+        'Unsupported continuous-yaw phase seed');
+    model = "OSWEC_PASSIVE_YAW_IRR_CONT";
+end
 repoRoot = fileparts(fileparts(fileparts(mfilename('fullpath'))));
 addpath(genpath(fullfile(repoRoot, 'matlab-ref', 'source')));
 outDir = fullfile(repoRoot, 'matlab-reference-model-output');
@@ -590,6 +599,25 @@ switch string(model)
             assert(fid ~= -1, 'Could not write the continuous-yaw input');
             fprintf(fid, '%s', contents);
             fclose(fid);
+            if selectedContinuousSeed > 0
+                caseName = cases + "Seed" + selectedContinuousSeed;
+                seedDir = fullfile(repoRoot, 'applications', ...
+                    'Passive_Yaw', caseName);
+                [copied, copyMessage] = copyfile(caseDirs, seedDir);
+                assert(copied, copyMessage);
+                inputFile = fullfile(seedDir, 'wecSimInputFile.m');
+                contents = fileread(inputFile);
+                assert(contains(contents, 'waves.phaseSeed = 1;'), ...
+                    'The pinned passive-yaw phase setting changed');
+                contents = strrep(contents, 'waves.phaseSeed = 1;', ...
+                    sprintf('waves.phaseSeed = %d;', selectedContinuousSeed));
+                fid = fopen(inputFile, 'w');
+                assert(fid ~= -1, 'Could not write the continuous-yaw seed input');
+                fprintf(fid, '%s', contents);
+                fclose(fid);
+                cases = caseName;
+                caseDirs = string(seedDir);
+            end
         else
             cases = "PassiveYawRegression";
             caseDirs = string(sourceDir);
@@ -1792,11 +1820,16 @@ for iCase = 1:numel(cases)
     if any(string(model) == ["OSWEC_PASSIVE_YAW_IRR", ...
                              "OSWEC_PASSIVE_YAW_IRR_CONT"])
         expectedThreshold = double(string(model) == "OSWEC_PASSIVE_YAW_IRR");
+        expectedPhaseSeed = iCase;
+        if selectedContinuousSeed > 0
+            expectedPhaseSeed = selectedContinuousSeed;
+        end
         assert(simu.dt == 0.01 && simu.endTime == 250 && ...
             simu.rampTime == 100 && simu.cicEndTime == 40 && ...
             strcmp(waves.type, 'irregular') && waves.height == 2.5 && ...
             waves.period == 8 && waves.direction == 10 && ...
-            waves.phaseSeed == iCase && strcmp(waves.spectrumType, 'PM') && ...
+            waves.phaseSeed == expectedPhaseSeed && ...
+            strcmp(waves.spectrumType, 'PM') && ...
             body(1).mass == 12700 && body(2).mass == 999 && ...
             body(1).yaw.option == 1 && body(2).yaw.option == 1 && ...
             body(1).yaw.threshold == expectedThreshold && ...
@@ -1811,8 +1844,8 @@ for iCase = 1:numel(cases)
             all(isfinite(components), 'all'), ...
             'The irregular passive-yaw components are invalid');
         exportPrefix = string(model);
-        if iCase > 1
-            exportPrefix = exportPrefix + "_SEED" + iCase;
+        if expectedPhaseSeed > 1
+            exportPrefix = exportPrefix + "_SEED" + expectedPhaseSeed;
         end
         writematrix(components, fullfile(outDir, ...
             exportPrefix + '_components.csv'));
