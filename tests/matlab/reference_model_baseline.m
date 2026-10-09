@@ -226,7 +226,8 @@ switch string(model)
         cases = "WECCCOMP_Fault_Implementation";
         caseDirs = string(fullfile(repoRoot, 'applications', ...
             'WECCCOMP', cases));
-    case {"WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG"}
+    case {"WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG", ...
+            "WECCCOMP_NMPC_FINE_CTRL_DIAG"}
         hydroDir = fullfile(repoRoot, 'applications', 'WECCCOMP', 'hydroData');
         cd(hydroDir);
         if ~isfile('wavestar.h5')
@@ -246,9 +247,10 @@ switch string(model)
                 'The pinned WaveStar NMPC geometry name changed');
             contents = strrep(contents, char(oldName), char(newName));
         end
-        if string(model) == "WECCCOMP_NMPC_FINE_DIAG"
-            % Derived pre-control run: preserve the sea and geometry, but
-            % resolve the stiff radiation fit before the controller starts.
+        if any(string(model) == ["WECCCOMP_NMPC_FINE_DIAG", ...
+                "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
+            % Derived fine-step runs preserve the sea and geometry. The
+            % control diagnostic ends before NMPC activates at 15 s.
             oldStep = 'simu.dt             = 50/1000;';
             oldSolver = "simu.solver         = 'ode8';";
             oldCic = 'simu.cicEndTime     = 2;';
@@ -260,14 +262,20 @@ switch string(model)
                 'simu.dt             = 1/1000;');
             contents = strrep(contents, char(oldSolver), ...
                 "simu.solver         = 'ode4';");
+            if string(model) == "WECCCOMP_NMPC_FINE_DIAG"
+                endTime = 9.95;
+            else
+                endTime = 14.95;
+            end
             contents = strrep(contents, oldCic, ...
-                sprintf('simu.endTime = 9.95;\n    %s', oldCic));
+                sprintf('simu.endTime = %.2f;\n    %s', endTime, oldCic));
         end
         fid = fopen(inputFile, 'w');
         assert(fid ~= -1, 'Could not correct WaveStar NMPC geometry case');
         fprintf(fid, '%s', contents);
         fclose(fid);
-        if string(model) == "WECCCOMP_NMPC_FINE_DIAG"
+        if any(string(model) == ["WECCCOMP_NMPC_FINE_DIAG", ...
+                "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
             % The published plot script assumes the run lasts beyond 25 s.
             % It has no effect on simulation or core WEC-Sim postprocessing.
             plotFile = fullfile(caseDirs, 'userDefinedFunctions.m');
@@ -277,7 +285,22 @@ switch string(model)
                 'The WaveStar NMPC plotting script changed');
             fid = fopen(plotFile, 'w');
             assert(fid ~= -1, 'Could not disable the WaveStar plot script');
-            fprintf(fid, '%% Fine pre-control diagnostic: no plots.\n');
+            fprintf(fid, '%% Fine-step diagnostic: no plots.\n');
+            fclose(fid);
+        end
+        if string(model) == "WECCCOMP_NMPC_FINE_CTRL_DIAG"
+            % The AR forecast is not used before the 15 s NMPC start.
+            % Leave the 10-14.95 s resistive controller active while
+            % avoiding an AR fit on the derived 0.001 s sample grid.
+            controllerFile = fullfile(caseDirs, 'controller_init.m');
+            controllerContents = fileread(controllerFile);
+            assert(contains(controllerContents, 'startPredictor  = 10;'), ...
+                'The pinned WaveStar predictor start changed');
+            controllerContents = strrep(controllerContents, ...
+                'startPredictor  = 10;', 'startPredictor  = 15;');
+            fid = fopen(controllerFile, 'w');
+            assert(fid ~= -1, 'Could not adjust fine control diagnostic');
+            fprintf(fid, '%s', controllerContents);
             fclose(fid);
         end
     case {"ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", ...
@@ -1106,6 +1129,27 @@ for iCase = 1:numel(cases)
         writematrix([output.wave.time(:), output.wave.elevation(:)], ...
             fullfile(outDir, 'WECCCOMP_NMPC_FINE_DIAG_wave.csv'));
     end
+    if string(model) == "WECCCOMP_NMPC_FINE_CTRL_DIAG"
+        assert(strcmp(simu.solver, 'ode4') && simu.dt == 0.001 && ...
+            simu.endTime == 14.95 && simu.rampTime == 25 && ...
+            simu.stateSpace == 1 && waves.phaseSeed == 1 && ...
+            waves.height == 0.1042 && waves.period == 1.836 && ...
+            waves.gamma == 3.3 && controllerType == 2 && ...
+            startController == 15 && startPredictor == 15 && ...
+            numel(output.bodies) == 5 && numel(output.ptos) == 1, ...
+            'The derived fine-step WaveStar control settings changed');
+        writematrix([waves.omega(:), waves.amplitude(:), ...
+            waves.dOmega(:), waves.phase(:)], ...
+            fullfile(outDir, 'WECCCOMP_NMPC_FINE_CTRL_DIAG_components.csv'));
+        required = {'cmd_ptoM', 'estimated_states', ...
+            'motor_displacement'};
+        for iSignal = 1:numel(required)
+            assert(exist(required{iSignal}, 'var') == 1, ...
+                'The fine-step WaveStar signal %s is missing', required{iSignal});
+        end
+        save(fullfile(outDir, 'WECCCOMP_NMPC_FINE_CTRL_DIAG_controller.mat'), ...
+            required{:}, '-v7');
+    end
     if string(model) == "MONOPILE_HYDRO"
         assert(strcmp(simu.solver, 'ode4') && simu.dt == 0.01 && ...
             simu.endTime == 400 && simu.rampTime == 100 && ...
@@ -1771,7 +1815,8 @@ for iCase = 1:numel(cases)
             response.forceTotal, response.forceExcitation];
         if ismember(string(model), ...
                 ["WECCCOMP_SOURCE", "WECCCOMP_FAULT_SOURCE", ...
-                 "WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG"]) && iBody == 1
+                 "WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG", ...
+                 "WECCCOMP_NMPC_FINE_CTRL_DIAG"]) && iBody == 1
             forceValues = [response.time(:), ...
                 response.forceRadiationDamping, response.forceAddedMass, ...
                 response.forceRestoring, response.forceMorisonAndViscous, ...
@@ -1780,7 +1825,8 @@ for iCase = 1:numel(cases)
                 all(isfinite(forceValues), 'all'), ...
                 'WaveStar hydrodynamic force trace is incomplete');
             if any(string(model) == ...
-                    ["WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG"])
+                    ["WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG", ...
+                     "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
                 forceSample = 1:numel(response.time);
             else
                 forceSample = 1:10:numel(response.time);
@@ -2001,7 +2047,8 @@ for iCase = 1:numel(cases)
                 response.forceInternalMechanics, response.powerInternalMechanics];
             if any(string(model) == ["WECCCOMP_FAULT_SOURCE", ...
                                       "WECCCOMP_NMPC_SOURCE", ...
-                                      "WECCCOMP_NMPC_FINE_DIAG"])
+                                      "WECCCOMP_NMPC_FINE_DIAG", ...
+                                      "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
                 values = [values, response.forceTotal, ...
                     response.forceActuation, response.acceleration];
             end
