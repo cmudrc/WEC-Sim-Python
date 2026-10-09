@@ -28,6 +28,7 @@ from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenera
 from .fixedHydroMonopile import FixedHydroMonopileResponse, run_fixed_hydro_monopile
 from .mbariCable import MBARICableResponse, run_mbari_cable
 from .wavebotImpedance import WaveBotImpedanceResponse, run_wavebot_impedance
+from .wavestar import WaveStarLinkage, WaveStarResponse, run_wavestar_published
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
@@ -71,5 +72,6 @@ __all__ = [
     "FixedHydroMonopileResponse", "run_fixed_hydro_monopile",
     "MBARICableResponse", "run_mbari_cable",
     "WaveBotImpedanceResponse", "run_wavebot_impedance",
+    "WaveStarLinkage", "WaveStarResponse", "run_wavestar_published",
     "imported_full_directional_components", "synthesize_full_directional_response",
 ]

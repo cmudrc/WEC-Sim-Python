@@ -1164,7 +1164,34 @@ published `linearDamping(1:2:5)` input instead fills the first matrix column,
 making all three damping forces depend on surge speed. Use
 `source_linear_damping=True` to compare the published source trajectory. The
 runner applies the source model's negative pitch-actuation sign in both modes.
-It covers the open-loop identification case, not the later adaptive controller.
+The adaptive `ControlTests` application has a separate published-case runner
+and paired gate in [PARITY.md](PARITY.md).
+
+The published WaveStar base application can also be run without MATLAB after
+generating `WECCCOMP/hydroData/wavestar.h5` with its `bemio.m`:
+
+```python
+import numpy as np
+from wecsim import run_wavestar_published
+from wecsim.irregularWave import jonswap_equal_energy_components
+
+hydro = "applications/WECCCOMP/hydroData/wavestar.h5"
+sea = jonswap_equal_energy_components(
+    hydro, significant_height=0.0625, peak_period=1.412,
+    directions=np.array([0.]), spreading=np.array([1.]),
+    gamma=1, seed=1,
+)
+response = run_wavestar_published(hydro, sea)
+print(response.angle, response.pto_stroke)
+```
+
+The function integrates the published unforced, single-coordinate linkage and
+uses the source application's fitted state-space radiation model. A Python
+seed gives a reproducible sea; replaying MATLAB's exact sea requires its saved
+phase column. The fit is positive in the active joint coordinate at sampled
+frequencies but differs from the BEM damping table. The broader `WEC` runner's
+physical radiation default is unchanged. Fault and nonlinear predictive
+controller variants remain unsupported.
 
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
