@@ -383,6 +383,51 @@ class ImportedSpectrumWave:
 
 
 @dataclass(frozen=True)
+class FullDirectionalSpectrumWave:
+    """Frequency-resolved directional MAT sea for a supported fixed hinge.
+
+    Heading-bin width is included in excitation by default. The pinned
+    MATLAB Full_Directional_Waves force block omitted it; select
+    ``force_quadrature="matlab_omitted"`` only for that source comparison.
+    Files resolve from ``WEC.run(base_dir=...)``.
+    """
+
+    file: str | Path
+    seed: int | None = None
+    phase_file: str | Path | None = None
+    phase_generator: str = "numpy"
+    excitation_interpolation: str = "linear"
+    force_quadrature: str = "integrated"
+
+    def as_case(self) -> dict:
+        if not str(self.file):
+            raise ValueError("full-directional wave needs a MAT file")
+        if self.seed is not None and self.phase_file is not None:
+            raise ValueError("full-directional wave uses either seed or phase_file")
+        if self.phase_file is not None and not str(self.phase_file):
+            raise ValueError("phase_file must be a nonempty path")
+        if self.phase_generator not in ("numpy", "matlab"):
+            raise ValueError("phase_generator must be 'numpy' or 'matlab'")
+        if (self.phase_generator == "matlab" and self.phase_file is None
+                and self.seed is None):
+            raise ValueError("MATLAB phase generation needs a substream seed")
+        if self.excitation_interpolation not in ("linear", "spline_frequency"):
+            raise ValueError("excitation_interpolation must be linear or spline_frequency")
+        if self.force_quadrature not in ("integrated", "matlab_omitted"):
+            raise ValueError("force_quadrature must be integrated or matlab_omitted")
+        wave = {"type": "spectrumImportFullDir", "file": str(self.file),
+                "excitation_interpolation": self.excitation_interpolation,
+                "force_quadrature": self.force_quadrature}
+        if self.seed is not None:
+            wave["seed"] = self.seed
+        if self.phase_file is not None:
+            wave["phase_file"] = str(self.phase_file)
+        if self.phase_generator != "numpy":
+            wave["phase_generator"] = self.phase_generator
+        return wave
+
+
+@dataclass(frozen=True)
 class ImportedElevationWave:
     """Sampled time/elevation MAT record in WEC-Sim's ``elevationImport`` mode.
 
@@ -858,7 +903,7 @@ class WEC:
         return pto
 
     def to_case(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | FullDirectionalSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,
@@ -869,8 +914,9 @@ class WEC:
         """Return the case mapping used by the validated dynamics runner."""
         if not isinstance(wave, (RegularWave, RegularCICWave, PMWave,
                                  JONSWAPWave, ImportedSpectrumWave,
+                                 FullDirectionalSpectrumWave,
                                  ImportedElevationWave, NoWave)):
-            raise TypeError("wave must be RegularWave, RegularCICWave, PMWave, JONSWAPWave, ImportedSpectrumWave, ImportedElevationWave, or NoWave")
+            raise TypeError("wave must be a supported regular, irregular, imported, or no-wave configuration")
         simulation = {"dt": dt, "end_time": end_time}
         for key, value in (
             ("ramp_time", ramp_time), ("radiation_memory", radiation_memory),
@@ -1156,8 +1202,8 @@ class WEC:
                 or self._floating_joint is not None or self.body_to_body
                 or initial_coordinate is not None or initial_speed is not None):
             raise ValueError("fixed_hinge needs its selected bodies and no custom coordinates or PTOs")
-        if not isinstance(wave, (RegularWave, PMWave)):
-            raise ValueError("fixed_hinge currently supports regular or PM waves")
+        if not isinstance(wave, (RegularWave, PMWave, FullDirectionalSpectrumWave)):
+            raise ValueError("fixed_hinge supports regular, PM, or full-directional waves")
         if (isinstance(wave, RegularWave)
                 and (wave.direction != 0
                      or hinge.added_mass_scheme != "implicit")):
@@ -1210,7 +1256,7 @@ class WEC:
         }
 
     def run(
-        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | ImportedElevationWave | NoWave, *,
+        self, wave: RegularWave | RegularCICWave | PMWave | JONSWAPWave | ImportedSpectrumWave | FullDirectionalSpectrumWave | ImportedElevationWave | NoWave, *,
         dt: float, end_time: float,
         ramp_time: float | None = None,
         radiation_memory: float | None = None,

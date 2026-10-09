@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 from examples.configurable_rm3_pto import HYDRO, build_wec
 from wecsim.caseDynamics import run_case
-from wecsim import (ImportedElevationWave, ImportedSpectrumWave, JONSWAPWave, LatchingControl, NoWave, PMWave,
+from wecsim import (FullDirectionalSpectrumWave, ImportedElevationWave, ImportedSpectrumWave, JONSWAPWave, LatchingControl, NoWave, PMWave,
                     RegularWave, WEC, WorldPoint)
 from wecsim.irregularWave import (imported_spectrum_components,
                                   jonswap_equal_energy_components,
@@ -19,6 +19,21 @@ from wecsim.irregularWave import (imported_spectrum_components,
 
 ROOT = Path(__file__).resolve().parents[1]
 JSON_EXAMPLE = ROOT / "examples/configurable_rm3_pto.json"
+
+
+def test_full_directional_wave_keeps_physical_defaults():
+    wave = FullDirectionalSpectrumWave("fullDirSpectrum.mat", seed=7)
+    assert wave.as_case() == {
+        "type": "spectrumImportFullDir", "file": "fullDirSpectrum.mat",
+        "seed": 7, "excitation_interpolation": "linear",
+        "force_quadrature": "integrated",
+    }
+    with pytest.raises(ValueError, match="either seed or phase_file"):
+        FullDirectionalSpectrumWave("fullDirSpectrum.mat", seed=7,
+                                    phase_file="phase.csv").as_case()
+    with pytest.raises(ValueError, match="substream seed"):
+        FullDirectionalSpectrumWave("fullDirSpectrum.mat",
+                                    phase_generator="matlab").as_case()
 
 
 def test_python_builder_matches_equivalent_case():

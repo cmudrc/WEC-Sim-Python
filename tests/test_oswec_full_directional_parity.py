@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from wecsim import FullDirectionalSpectrumWave, WEC, WorldPoint
 from wecsim.caseDynamics import run_case
 from wecsim.irregularWave import (
     imported_full_directional_components, synthesize_full_directional_response,
@@ -82,22 +83,40 @@ def test_source_force_hinge_and_pto_against_matlab(published, scheme, limits):
                   "radiation_memory": 30}
     if scheme != "implicit":
         simulation["added_mass_scheme"] = scheme
-    response = run_case({
-        "simulation": simulation,
-        "wave": {"type": "spectrumImportFullDir", "file": str(spectrum),
-                 "seed": 1, "phase_generator": "matlab",
-                 "excitation_interpolation": "spline_frequency",
-                 "force_quadrature": "matlab_omitted"},
-        "bodies": [
-            {"hydro_file": str(hydro), "hydro_body": 1,
-             "mass": 127000, "pitch_inertia": 1.85e6},
-            {"hydro_file": str(hydro), "hydro_body": 2, "fixed": True,
-             "mass": 999, "inertia": [999, 999, 999]},
-        ],
-        "constraint": {"kind": "fixed_hinge", "location": [0, 0, -10]},
-        "pto": {"kind": "pitch", "location": [0, 0, -8.9],
-                "damping": 12000},
-    })
+    wave_config = FullDirectionalSpectrumWave(
+        spectrum, seed=1, phase_generator="matlab",
+        excitation_interpolation="spline_frequency",
+        force_quadrature="matlab_omitted",
+    )
+    if scheme == "simulink_delay":
+        configured = WEC("OSWEC full directional")
+        flap = configured.body("flap", hydro, mass=127000,
+                               inertia=(0, 1.85e6, 0), hydro_body=1)
+        base = configured.body("base", hydro, mass=999,
+                               inertia=(999, 999, 999), hydro_body=2)
+        configured.fixed_hinge(
+            flap, base, location=WorldPoint(0, 0, -10),
+            pto_location=WorldPoint(0, 0, -8.9), damping=12000,
+            added_mass_scheme=scheme,
+        )
+        response = configured.run(
+            wave_config, dt=.05, end_time=400, ramp_time=100,
+            radiation_memory=30,
+        ).raw
+    else:
+        response = run_case({
+            "simulation": simulation,
+            "wave": wave_config.as_case(),
+            "bodies": [
+                {"hydro_file": str(hydro), "hydro_body": 1,
+                 "mass": 127000, "pitch_inertia": 1.85e6},
+                {"hydro_file": str(hydro), "hydro_body": 2, "fixed": True,
+                 "mass": 999, "inertia": [999, 999, 999]},
+            ],
+            "constraint": {"kind": "fixed_hinge", "location": [0, 0, -10]},
+            "pto": {"kind": "pitch", "location": [0, 0, -8.9],
+                    "damping": 12000},
+        })
     flap, base = bodies
     np.testing.assert_allclose(response.time, flap[:, 0], rtol=0, atol=1e-10)
     assert np.max(np.abs(response.wave_elevation - wave[:, 1])) < 1e-11
