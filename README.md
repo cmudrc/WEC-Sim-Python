@@ -84,7 +84,10 @@ result has `velocity[time, component, y, z]`, `y`, `z`, `dt`, and `hub_height`.
 `wecsim.MostWindField(wind).at_index(i)` evaluates the ten published X planes
 at one output time as `[component, x, y, z]`, without storing the full
 five-dimensional shifted wind array. This covers the MOST wind input and its
-frozen-turbulence time shift. `wecsim.MostStaticMooring().force(pose)` evaluates
+frozen-turbulence time shift. `MostWindField(wind).sampler(i)` returns the
+trilinear world-position wind callable for that output time, suitable for
+`MostBEM.loads(hub_state, pitch, sampler)`.
+`wecsim.MostStaticMooring().force(pose)` evaluates
 the published three-line static catenary load and each fairlead's horizontal
 and vertical tension for a six-coordinate platform pose. For the published
 IEA 15 MW turbine, `wecsim.MostBEM.from_iea15mw(blade_data_directory)` reads
