@@ -195,17 +195,19 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
     assert pto.shape == (25001, 25)
 
 
-def test_continuous_heading_irregular_passive_yaw(tmp_path):
-    """Check the same PM realization and 250 s flap/PTO trajectory."""
+@pytest.mark.parametrize("seed", (1, 2, 3))
+def test_continuous_heading_irregular_passive_yaw(tmp_path, seed):
+    """Pair continuous heading and 250 s flap/PTO trajectories in three seas."""
     source = Path(REFERENCE)
     hydro = (Path(APPLICATIONS)
              / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
-    prefix = "OSWEC_PASSIVE_YAW_IRR_CONT"
-    case = "PassiveYawRegressionContinuous"
+    model = "OSWEC_PASSIVE_YAW_IRR_CONT"
+    prefix = model + (f"_SEED{seed}" if seed > 1 else "")
+    case = "PassiveYawRegressionContinuous" + (f"Seed{seed}" if seed > 1 else "")
     components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
-    flap = np.loadtxt(source / f"{prefix}_{case}_body1.csv", delimiter=",")
-    base = np.loadtxt(source / f"{prefix}_{case}_body2.csv", delimiter=",")
-    pto = np.loadtxt(source / f"{prefix}_{case}_pto1.csv", delimiter=",")
+    flap = np.loadtxt(source / f"{model}_{case}_body1.csv", delimiter=",")
+    base = np.loadtxt(source / f"{model}_{case}_body2.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{model}_{case}_pto1.csv", delimiter=",")
     wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
     assert components_csv.shape == (500, 4)
     assert flap.shape == base.shape == pto.shape == (25001, 25)

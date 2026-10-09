@@ -593,25 +593,26 @@ switch string(model)
         else
             cases = "PassiveYawRegression";
             caseDirs = string(sourceDir);
-            for phaseSeed = 2:3
-                caseName = "PassiveYawRegressionSeed" + phaseSeed;
-                derivedDir = fullfile(repoRoot, 'applications', ...
-                    'Passive_Yaw', caseName);
-                [copied, copyMessage] = copyfile(sourceDir, derivedDir);
-                assert(copied, copyMessage);
-                inputFile = fullfile(derivedDir, 'wecSimInputFile.m');
-                contents = fileread(inputFile);
-                assert(contains(contents, 'waves.phaseSeed = 1;'), ...
-                    'The pinned passive-yaw phase setting changed');
-                contents = strrep(contents, 'waves.phaseSeed = 1;', ...
-                    sprintf('waves.phaseSeed = %d;', phaseSeed));
-                fid = fopen(inputFile, 'w');
-                assert(fid ~= -1, 'Could not write the passive-yaw seed input');
-                fprintf(fid, '%s', contents);
-                fclose(fid);
-                cases(end + 1) = caseName;
-                caseDirs(end + 1) = string(derivedDir);
-            end
+        end
+        baseCaseDir = caseDirs(1);
+        for phaseSeed = 2:3
+            caseName = cases(1) + "Seed" + phaseSeed;
+            derivedDir = fullfile(repoRoot, 'applications', ...
+                'Passive_Yaw', caseName);
+            [copied, copyMessage] = copyfile(baseCaseDir, derivedDir);
+            assert(copied, copyMessage);
+            inputFile = fullfile(derivedDir, 'wecSimInputFile.m');
+            contents = fileread(inputFile);
+            assert(contains(contents, 'waves.phaseSeed = 1;'), ...
+                'The pinned passive-yaw phase setting changed');
+            contents = strrep(contents, 'waves.phaseSeed = 1;', ...
+                sprintf('waves.phaseSeed = %d;', phaseSeed));
+            fid = fopen(inputFile, 'w');
+            assert(fid ~= -1, 'Could not write the passive-yaw seed input');
+            fprintf(fid, '%s', contents);
+            fclose(fid);
+            cases(end + 1) = caseName;
+            caseDirs(end + 1) = string(derivedDir);
         end
     case "RM3_PTO_Extension"
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
