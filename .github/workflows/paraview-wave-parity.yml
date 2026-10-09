@@ -1,0 +1,48 @@
+name: MATLAB ParaView wave parity
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/paraview-wave-parity.yml'
+      - 'tests/matlab/paraview_wave_baseline.m'
+      - 'tests/test_paraview_wave_source.py'
+      - 'wecsim/paraviewClass.py'
+  pull_request:
+    paths:
+      - '.github/workflows/paraview-wave-parity.yml'
+      - 'tests/matlab/paraview_wave_baseline.m'
+      - 'tests/test_paraview_wave_source.py'
+      - 'wecsim/paraviewClass.py'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim
+          ref: 0753b2e47f2457c078751dcfe5d251d1767b80ab
+          path: matlab-ref
+          filter: blob:none
+          sparse-checkout: source
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath('matlab-ref/source')); addpath('tests/matlab'); paraview_wave_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_paraview_wave_source.py
+        env:
+          WEC_SIM_MATLAB_PARAVIEW_WAVE_DIR: matlab-paraview-wave
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matlab-paraview-wave
+          path: matlab-paraview-wave/

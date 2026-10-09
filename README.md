@@ -1526,6 +1526,24 @@ incident = synthesize_full_directional_response(
 # incident.elevation and incident.excitation_force are NumPy arrays.
 ```
 
+For a regular-wave ParaView surface, the legacy wave object can write numbered
+VTP wave meshes and `ground.txt` using WEC-Sim's grid layout:
+
+```python
+from wecsim.waveClass import WaveClass
+from wecsim.paraviewClass import ParaviewClass
+
+waves = WaveClass("regular")
+waves.H, waves.T, waves.waveDir = 2.5, 8, [0]
+waves.waveSetup([0.3, 1.5], 30, 0, 0.1, 21, 9.81, 1000, 2)
+ParaviewClass(waves).write_paraview_vtp_wave(
+    [0, 1, 2], "results/paraview", domain_size=40,
+)
+```
+
+This writes the wave surface only. Body, mooring, and pressure VTP output
+remain open parity gaps.
+
 To run a supported case without writing Python code:
 
 ```sh
