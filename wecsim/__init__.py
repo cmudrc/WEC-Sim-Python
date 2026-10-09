@@ -58,6 +58,7 @@ from .rm3Regular import solve_rm3_regular
 from .rm3Hydraulic import RM3HydraulicResponse, run_rm3_rectified_hydraulic
 from .sphereMpc import SphereMPCResult, run_sphere_mpc
 from .mostMooring import MostStaticMooring
+from .mostPlatform import MostPlatformHydrodynamics, MostPlatformResponse
 from .mostBEM import MostBEM
 from .mostController import MostBaselineController
 from .mostRotor import MostRotor, MostRotorResponse
@@ -101,5 +102,5 @@ __all__ = [
     "WaveBotImpedanceResponse", "run_wavebot_impedance",
     "WaveStarLinkage", "WaveStarResponse", "run_wavestar_published",
     "imported_full_directional_components", "synthesize_full_directional_response",
-    "MostBEM", "MostBaselineController", "MostRotor", "MostRotorResponse", "MostStaticMooring", "MostWindField", "TurbSimWind", "read_turbsim_bts",
+    "MostBEM", "MostBaselineController", "MostPlatformHydrodynamics", "MostPlatformResponse", "MostRotor", "MostRotorResponse", "MostStaticMooring", "MostWindField", "TurbSimWind", "read_turbsim_bts",
 ]
