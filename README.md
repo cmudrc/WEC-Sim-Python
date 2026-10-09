@@ -226,6 +226,12 @@ response = solve_floating_owc(
 print(response.column_pose[-1], response.turbine_power[-1])
 ```
 
+Set `pto_stiffness` and `pto_damping` (N/m and N s/m) in
+`solve_floating_owc` to configure the axial PTO. Positive values oppose the
+water-column stroke and speed; the response reports axial force, mechanical
+power entering the PTO, and damper-only dissipation. Both default to zero, as
+in the published application.
+
 The HDF5 and native MoorDyn library are external inputs. The solver defaults
 to the published body masses and inertias; wave, body, attachment, chamber,
 and turbine parameters can be changed through Python arguments. This solver

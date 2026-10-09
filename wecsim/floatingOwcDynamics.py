@@ -25,6 +25,8 @@ class FloatingOwcResponse:
     Poses and velocities have six columns: world xyz then xyz Euler angles or
     world angular velocity. ``mooring_pose`` and ``mooring_velocity`` are the
     endpoint predictions passed to native MoorDyn at each coupling step.
+    ``pto_mechanical_power`` is positive for power entering the PTO and
+    includes spring exchange; ``pto_dissipated_power`` is damper loss only.
     """
 
     time: np.ndarray
@@ -34,6 +36,9 @@ class FloatingOwcResponse:
     column_velocity: np.ndarray
     stroke: np.ndarray
     stroke_speed: np.ndarray
+    pto_force: np.ndarray
+    pto_mechanical_power: np.ndarray
+    pto_dissipated_power: np.ndarray
     chamber_pressure: np.ndarray
     turbine_speed: np.ndarray
     mooring_pose: np.ndarray
@@ -100,6 +105,8 @@ def solve_floating_owc(
     column_height: float = 50.69,
     column_diameter: float = 5.89,
     column_inertia: tuple[float, float, float] | None = None,
+    pto_stiffness: float = 0.0,
+    pto_damping: float = 0.0,
     moordyn_point: tuple[float, float, float] | None = None,
     chamber: FloatingOwcChamber | None = None,
     turbine: FloatingOwcTurbine | None = None,
@@ -115,13 +122,16 @@ def solve_floating_owc(
     by default it is the world origin in equilibrium. ``initial_state``, when
     provided, is floater xyz, xyz Euler angles, slider stroke, floater world
     linear/angular velocity, slider speed, gauge pressure, and rotor speed.
+    Positive PTO stiffness and damping oppose the slider stroke and speed;
+    the returned ``pto_force`` acts on the water column along the slider.
     The native MoorDyn model is stepped once per fixed interval using a
     predicted endpoint. Other state derivatives use RK4 on that interval.
     """
     if not isinstance(moordyn, MoorDyn):
         raise TypeError("moordyn must be a MoorDyn session")
     scalars = (dt, end_time, wave_period, wave_height, ramp_time,
-               column_mass, column_height, column_diameter, rho, g,
+               column_mass, column_height, column_diameter,
+               pto_stiffness, pto_damping, rho, g,
                initial_rotor_speed)
     if (not np.isfinite(scalars).all() or dt <= 0 or end_time <= 0
             or wave_period <= 0 or wave_height < 0 or ramp_time < 0
@@ -232,6 +242,7 @@ def solve_floating_owc(
         _, _, mooring_jacobian = connection(values)
         force += mooring_jacobian.T @ line_force
         force[6] += float(chamber.force_on_column(values[14]))
+        force[6] -= pto_stiffness * stroke + pto_damping * speed[6]
         acceleration = np.linalg.solve(mass, force)
 
         pitch, yaw = angles[1], angles[2]
@@ -275,9 +286,12 @@ def solve_floating_owc(
     column_velocity = joint.column_velocity(
         floater_pose, floater_velocity, history[:, 6], history[:, 13])
     power = turbine.evaluate(history[:, 14], history[:, 15])
+    pto_force = -pto_stiffness * history[:, 6] - pto_damping * history[:, 13]
     return FloatingOwcResponse(
         time, floater_pose, floater_velocity, column_pose, column_velocity,
-        history[:, 6], history[:, 13], history[:, 14], history[:, 15],
+        history[:, 6], history[:, 13], pto_force,
+        -pto_force * history[:, 13], pto_damping * history[:, 13]**2,
+        history[:, 14], history[:, 15],
         mooring_pose, mooring_velocity, mooring_force,
         power.load_power, power.pneumatic_power,
     )
