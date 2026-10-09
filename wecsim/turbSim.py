@@ -1,6 +1,7 @@
 """Read the TurbSim full-field wind input used by the MOST application."""
 
 from dataclasses import dataclass
+from math import ceil, floor
 from pathlib import Path
 import struct
 
@@ -22,6 +23,42 @@ class TurbSimWind:
     hub_height: float
     mean_wind_speed: float
     description: str
+
+
+class MostWindField:
+    """MOST's frozen-turbulence X planes, evaluated without a large 5-D copy.
+
+    ``at_index(i)`` has axes component, X, Y, Z, matching one time step of
+    MOST's ``Wind.SpatialDiscrUVW`` from ``RunTurbsim.m``.
+    """
+
+    def __init__(self, wind: TurbSimWind, speed: float = 8.0):
+        if not np.isfinite(speed) or speed <= 0:
+            raise ValueError("wind advection speed must be positive and finite")
+        self.wind = wind
+        self.speed = float(speed)
+        self.x = np.arange(-30.0, 61.0, 10.0)
+        self.discarded = ceil(wind.y[-1] / (self.speed * wind.dt))
+        self.n_time = len(wind.velocity) - 2 * self.discarded + 1
+        if self.n_time < 1:
+            raise ValueError("TurbSim record is too short for MOST advection")
+        first = floor(self.discarded + 1 - self.x[-1] / (self.speed * wind.dt) + .5)
+        last = floor(self.discarded + self.n_time - self.x[0] / (self.speed * wind.dt) + .5)
+        if first < 1 or last > len(wind.velocity):
+            raise ValueError("MOST advection samples outside the TurbSim record")
+
+    @property
+    def time(self) -> np.ndarray:
+        return np.arange(self.n_time) * self.wind.dt
+
+    def at_index(self, index: int) -> np.ndarray:
+        """Return all ten X planes at a zero-based output time index."""
+        if not 0 <= index < self.n_time:
+            raise IndexError("MOST wind time index is out of range")
+        source = np.floor(
+            self.discarded + 1 + index - self.x / (self.speed * self.wind.dt) + .5,
+        ).astype(int) - 1
+        return self.wind.velocity[source].transpose(1, 0, 2, 3)
 
 
 def read_turbsim_bts(path: str | Path) -> TurbSimWind:

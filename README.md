@@ -81,8 +81,11 @@ PTO attachment points are not part of that reduced layout.
 The MOST application uses a TurbSim full-field wind input. Its checked-in
 `.bts` file can be read directly with `wecsim.read_turbsim_bts(path)`; the
 result has `velocity[time, component, y, z]`, `y`, `z`, `dt`, and `hub_height`.
-This is wind input decoding only. MOST's turbine, mooring, and coupled body
-motion are not yet available through the Python device runner.
+`wecsim.MostWindField(wind).at_index(i)` evaluates the ten published X planes
+at one output time as `[component, x, y, z]`, without storing the full
+five-dimensional shifted wind array. This covers the MOST wind input and its
+frozen-turbulence time shift. MOST's turbine, mooring, and coupled body motion
+are not yet available through the Python device runner.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
