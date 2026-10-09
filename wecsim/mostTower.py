@@ -34,6 +34,33 @@ class MostTowerReaction:
             raise ValueError("platform center of gravity must be a finite three-vector")
         return cls(properties, cg)
 
+    def acceleration_matrix(self, azimuth) -> np.ndarray:
+        """Return N×6×6 turbine inertia about the tower base.
+
+        The matrix maps world-frame platform-center acceleration to the
+        platform-frame tower reaction: ``load = zero_acceleration_load - M @ a``.
+        It depends on blade azimuth, but not wind, rotor speed, or torque.
+        """
+        azimuth = np.asarray(azimuth, dtype=float).reshape(-1)
+        if azimuth.size < 1 or not np.isfinite(azimuth).all():
+            raise ValueError("azimuth must contain finite values")
+        n = azimuth.size
+        position = np.tile(np.r_[self.platform_cg, np.zeros(3)], (n, 1))
+        zero_state = np.zeros((n, 6))
+        zero_scalar = np.zeros(n)
+        zero_load = np.zeros((n, 6, 3))
+        bias = self.evaluate(position, zero_state, zero_state, zero_scalar,
+                             azimuth, zero_scalar, zero_load)
+        matrix = np.empty((n, 6, 6))
+        for axis in range(6):
+            acceleration = np.zeros((n, 6))
+            acceleration[:, axis] = 1
+            matrix[:, :, axis] = bias - self.evaluate(
+                position, zero_state, acceleration, zero_scalar, azimuth,
+                zero_scalar, zero_load,
+            )
+        return matrix
+
     def evaluate(self, position, velocity, acceleration, rotor_speed, azimuth,
                  generator_torque, blade_root_load) -> np.ndarray:
         """Return N×6 tower-base loads for aligned turbine/platform states.

@@ -150,3 +150,53 @@ def test_most_tower_reaction_against_pinned_source():
                                rtol=0, atol=1e-5)
     assert np.all(np.max(np.abs(force[:, 3:] - source_force[:, 3:]), axis=0)
                   < [0.1, 1e-4, 0.01])
+
+
+@pytest.mark.skipif(
+    not all(os.environ.get(name) for name in (
+        "WEC_SIM_MOST_SHORT_BASELINE", "WEC_SIM_MOST_H5",
+        "WEC_SIM_MOST_MASS_PROPERTIES", "WEC_SIM_MOST_PROPERTIES",
+    )),
+    reason="pinned MATLAB MOST coupled-platform inputs not provided",
+)
+def test_most_platform_with_implicit_turbine_against_pinned_source():
+    source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
+    time = source["body_time"].ravel()
+    h5_file = os.environ["WEC_SIM_MOST_H5"]
+    sea = jonswap_equal_energy_components(
+        h5_file, significant_height=4, peak_period=8,
+        directions=np.array([0.]), spreading=np.array([1.]),
+        seed=1, phase_generator="matlab",
+    )
+    wave = synthesize_irregular_response(
+        h5_file, sea, dt=.01, end_time=10, ramp_time=20,
+        rho=1025, g=9.80665,
+    )
+    platform = MostPlatformHydrodynamics.from_volturnus(
+        h5_file, os.environ["WEC_SIM_MOST_MASS_PROPERTIES"],
+    )
+    tower = MostTowerReaction.from_iea15mw(
+        os.environ["WEC_SIM_MOST_PROPERTIES"],
+        platform_cg=platform.equilibrium_pose[:3],
+    )
+    # MATLAB rotor, controller, and blade-root histories remain external.
+    # Tower load and platform acceleration are calculated in the Python solve.
+    response = platform.simulate_with_turbine(
+        time, wave.excitation_force, tower,
+        source["rotor_speed"].ravel()*2*np.pi/60,
+        source["azimuth"].ravel(), source["generator_torque"].ravel(),
+        source["blade_aero_load"],
+    )
+    for axis, pose_gate, speed_gate in (
+        (0, 5e-5, 5e-5),   # surge, m and m/s
+        (2, 1.5e-4, 1e-4),  # heave, m and m/s
+        (4, 4e-5, 1e-5),   # pitch, rad and rad/s
+    ):
+        np.testing.assert_allclose(
+            response.position[:, axis], source["body_position"][:, axis],
+            rtol=0, atol=pose_gate,
+        )
+        np.testing.assert_allclose(
+            response.velocity[:, axis], source["body_velocity"][:, axis],
+            rtol=0, atol=speed_gate,
+        )

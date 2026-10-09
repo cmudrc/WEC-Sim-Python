@@ -18,6 +18,7 @@ class MostRotorResponse:
     azimuth: np.ndarray  # rad
     generator_torque: np.ndarray  # N m
     blade_pitch: np.ndarray  # rad
+    blade_root_load: np.ndarray  # N×6×3, preconed blade frames
 
 
 @dataclass(frozen=True)
@@ -94,6 +95,7 @@ class MostRotor:
         azimuth = np.empty(time.size)
         torque = np.empty(time.size)
         pitch = np.empty(time.size)
+        blade_load = np.empty((time.size, 6, 3))
         speed[0] = self.controller.initial_omega
         azimuth[0] = self.initial_azimuth
         state = np.array([0.0, speed[0]/5, 0.0])
@@ -116,18 +118,20 @@ class MostRotor:
                 raise ValueError("MOST BEM loads are not finite at the platform state")
             # Each BEM root load is in a preconed blade frame. Transfer its
             # moment to the shaft through the hub radius before projection.
-            return np.sum(cosine*loads[3] - sine*loads[5]
-                          - self.bem.hub_radius*cosine*loads[1])
+            shaft_torque = np.sum(cosine*loads[3] - sine*loads[5]
+                                  - self.bem.hub_radius*cosine*loads[1])
+            return shaft_torque, loads
 
         for index in range(time.size - 1):
             step = time[index + 1] - time[index]
-            aero = aerodynamic_torque(index, speed[index], azimuth[index],
-                                      pitch[index])
+            aero, blade_load[index] = aerodynamic_torque(
+                index, speed[index], azimuth[index], pitch[index],
+            )
             acceleration = ((aero - torque[index]) / self.inertia
                             - platform_shaft_acceleration[index])
             predicted_speed = speed[index] + step*acceleration
             predicted_azimuth = azimuth[index] + step*speed[index]
-            aero_next = aerodynamic_torque(
+            aero_next, _ = aerodynamic_torque(
                 index + 1, predicted_speed, predicted_azimuth, pitch[index],
             )
             acceleration_next = ((aero_next - torque[index]) / self.inertia
@@ -138,4 +142,8 @@ class MostRotor:
                 state, speed[index], speed[index + 1], step,
                 torque[index], pitch[index],
             )
-        return MostRotorResponse(time, speed, azimuth, torque, pitch)
+        _, blade_load[-1] = aerodynamic_torque(
+            time.size - 1, speed[-1], azimuth[-1], pitch[-1],
+        )
+        return MostRotorResponse(time, speed, azimuth, torque, pitch,
+                                 blade_load)

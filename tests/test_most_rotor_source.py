@@ -40,6 +40,11 @@ def test_most_rotor_against_pinned_coupled_source():
     response = rotor.simulate(
         time, source["body_position"], source["body_velocity"], wind,
     )
+    assert response.blade_root_load.shape == (1001, 6, 3)
+    np.testing.assert_allclose(
+        response.blade_root_load[0], source["blade_aero_load"][0],
+        rtol=0, atol=1e-4,
+    )
     np.testing.assert_allclose(
         response.rotor_speed * 60/(2*np.pi), source["rotor_speed"].ravel(),
         rtol=0, atol=1e-3,
