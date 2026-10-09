@@ -33,6 +33,26 @@ def _static(name):
     return values
 
 
+def _prepared_body(number):
+    body = BodyClass(HYDRO)
+    body.bodyNumber = number
+    body.bodyTotal = 2
+    body.readH5file()
+    body.mass = "equilibrium" if number == 1 else 4493450
+    body.inertia = np.zeros(3)
+    body.hydroStiffness = np.zeros((6, 6))
+    body.viscDrag = {
+        "Drag": np.zeros((6, 6)), "cd": np.zeros(6),
+        "characteristicArea": np.zeros(6),
+    }
+    body.linearDamping = np.zeros((6, 6))
+    body.hydroForcePre(
+        2 * np.pi / 11.2, [0], 1, np.array([0.0]), [], 0.01,
+        1000, 9.81, "regular", np.zeros((2, 2)), number, 2, 0, 0, 0,
+    )
+    return body
+
+
 def test_published_floating_owc_source_has_coupled_motion_and_power():
     wave = _read("wave")
     assert wave.shape[1] == 2
@@ -78,22 +98,7 @@ def test_floating_owc_python_regular_excitation_matches_both_matlab_bodies():
     )
 
     for number in (1, 2):
-        body = BodyClass(HYDRO)
-        body.bodyNumber = number
-        body.bodyTotal = 2
-        body.readH5file()
-        body.mass = "equilibrium" if number == 1 else 4493450
-        body.inertia = np.zeros(3)
-        body.hydroStiffness = np.zeros((6, 6))
-        body.viscDrag = {
-            "Drag": np.zeros((6, 6)), "cd": np.zeros(6),
-            "characteristicArea": np.zeros(6),
-        }
-        body.linearDamping = np.zeros((6, 6))
-        body.hydroForcePre(
-            frequency, [0], 1, np.array([0.0]), [], 0.01, 1000, 9.81,
-            "regular", np.zeros((2, 2)), number, 2, 0, 0, 1,
-        )
+        body = _prepared_body(number)
         coefficients = body.hydroForce["fExt"]
         predicted = amplitude * ramp[:, None] * (
             np.cos(frequency * time)[:, None] * coefficients["re"]
@@ -115,8 +120,29 @@ def test_floating_owc_source_exports_mechanical_force_balance():
                                    rtol=0, atol=1e-8)
         mass = _static(f"body{number}_mass")
         assert mass.shape == (1, 4) and mass[0, 0] > 0
-        for name, shape in (("added_mass", (6, 12)),
-                            ("radiation_damping", (6, 12)),
+        # The published input leaves b2b unset: each body uses its own 6x6
+        # hydrodynamic blocks despite the shared 12-DOF BEMIO file.
+        for name, shape in (("added_mass", (6, 6)),
+                            ("radiation_damping", (6, 6)),
                             ("hydrostatic", (6, 6))):
             matrix = _static(f"body{number}_{name}")
             assert matrix.shape == shape
+        body = _prepared_body(number)
+        np.testing.assert_allclose(
+            _static(f"body{number}_added_mass"),
+            body.hydroForce["fAddedMass"], rtol=1e-12, atol=1e-5,
+        )
+        damping = _static(f"body{number}_radiation_damping")
+        np.testing.assert_allclose(
+            damping, body.hydroForce["fDamping"],
+            rtol=1e-12, atol=1e-7,
+        )
+        np.testing.assert_allclose(
+            _static(f"body{number}_hydrostatic"),
+            body.hydroForce["linearHydroRestCoef"],
+            rtol=1e-12, atol=1e-5,
+        )
+        np.testing.assert_allclose(
+            forces[:, 1:7], source[::10, 7:13] @ damping.T,
+            rtol=1e-12, atol=1e-8,
+        )

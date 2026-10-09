@@ -215,9 +215,11 @@ class BodyClass:
         self.dof_end   = np.asarray(self.hydroData['properties']['dof_end']).reshape(-1)
         self.dof_gbm   = self.dof-6
         restoring = np.array(f.get(name + '/hydro_coeffs/linear_restoring_stiffness'))
+        # The 2D HDF5 matrix is already in the orientation used by MATLAB's
+        # h5load. Transposing it moves asymmetric OWC yaw couplings.
         self.hydroData['hydro_coeffs']['linear_restoring_stiffness'] = (
             restoring[:, :, 0] if restoring.ndim == 3 and restoring.shape[2] == 1
-            else restoring.T
+            else restoring
         )
         self.hydroData['hydro_coeffs']['excitation']['re'] = np.array(f.get(name +  '/hydro_coeffs/excitation/re'))
         self.hydroData['hydro_coeffs']['excitation']['im'] = np.array(f.get(name + '/hydro_coeffs/excitation/im'))
