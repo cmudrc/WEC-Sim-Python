@@ -1190,8 +1190,24 @@ uses the source application's fitted state-space radiation model. A Python
 seed gives a reproducible sea; replaying MATLAB's exact sea requires its saved
 phase column. The fit is positive in the active joint coordinate at sampled
 frequencies but differs from the BEM damping table. The broader `WEC` runner's
-physical radiation default is unchanged. Fault and nonlinear predictive
-controller variants remain unsupported.
+physical radiation default is unchanged. The fault application has a separate
+paired trajectory below; coupled nonlinear predictive control remains open.
+
+The published nonlinear predictive application also has a paired PTO actuator
+component. It accepts the controller's sampled torque request and the current
+rod stroke every 0.05 s:
+
+```python
+from wecsim import WaveStarNmpcActuator
+
+actuator = WaveStarNmpcActuator()
+axial_force = actuator.step(command_torque, stroke)
+```
+
+The controller converts torque to force with its own idealized neutral rod
+length, which differs slightly from the physical B-to-C linkage. The source
+sea, linkage, resistive startup, and actuator force have paired gates. An
+independent closed-loop NMPC trajectory is not yet established.
 
 The WaveStar fault application has separately paired PTO components:
 
