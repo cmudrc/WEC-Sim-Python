@@ -1,0 +1,64 @@
+name: MATLAB MOST baseline controller parity
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/most-controller-parity.yml'
+      - 'tests/matlab/most_baseline_controller_baseline.m'
+      - 'tests/test_most_controller_source.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/__init__.py'
+  pull_request:
+    paths:
+      - '.github/workflows/most-controller-parity.yml'
+      - 'tests/matlab/most_baseline_controller_baseline.m'
+      - 'tests/test_most_controller_source.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/__init__.py'
+  workflow_dispatch:
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim
+          ref: 0753b2e47f2457c078751dcfe5d251d1767b80ab
+          path: matlab-ref
+          filter: blob:none
+          sparse-checkout: source/lib/MOST
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim_Applications
+          ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+          path: applications
+          filter: blob:none
+          sparse-checkout: |
+            MOST/mostData/windTurbine/control
+            MOST/mostData/windTurbine/turbine_properties
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+          products: Simulink Optimization_Toolbox
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../control'); Steady_States_IEA15MW; Controller_IEA15MW; cd('../../../../..'); addpath('tests/matlab'); most_baseline_controller_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_controller_source.py
+        env:
+          WEC_SIM_MOST_CONTROLLER_BASELINE: matlab-most-controller.mat
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matlab-most-controller
+          path: |
+            matlab-most-controller.mat
+            applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
+            applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat

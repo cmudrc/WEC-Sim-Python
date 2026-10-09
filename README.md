@@ -93,9 +93,11 @@ and vertical tension for a six-coordinate platform pose. For the published
 IEA 15 MW turbine, `wecsim.MostBEM.from_iea15mw(blade_data_directory)` reads
 its raw AeroDyn blade and airfoil tables; `model.loads(hub_state, pitch, wind)`
 returns six root loads per blade for a 14-state hub, blade pitch in radians,
-and either a wind three-vector or a position-to-wind callable. Turbine control
-and coupled platform motion are not yet available through the Python device
-runner.
+and either a wind three-vector or a position-to-wind callable.
+`wecsim.MostBaselineController.iea15mw().simulate(time, rotor_speed)` returns
+the published baseline generator torque and blade pitch for a prescribed
+rotor-speed history. Coupled turbine and platform motion are not yet available
+through the Python device runner.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
