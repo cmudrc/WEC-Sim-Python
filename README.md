@@ -87,6 +87,8 @@ five-dimensional shifted wind array. This covers the MOST wind input and its
 frozen-turbulence time shift. `MostWindField(wind).sampler(i)` returns the
 trilinear world-position wind callable for that output time, suitable for
 `MostBEM.loads(hub_state, pitch, sampler)`.
+`MostWindField(wind).sampler_at(time)` also interpolates between advection
+frames at the simulation time in seconds.
 `wecsim.MostStaticMooring().force(pose)` evaluates
 the published three-line static catenary load and each fairlead's horizontal
 and vertical tension for a six-coordinate platform pose. For the published
@@ -96,8 +98,21 @@ returns six root loads per blade for a 14-state hub, blade pitch in radians,
 and either a wind three-vector or a position-to-wind callable.
 `wecsim.MostBaselineController.iea15mw().simulate(time, rotor_speed)` returns
 the published baseline generator torque and blade pitch for a prescribed
-rotor-speed history. Coupled turbine and platform motion are not yet available
-through the Python device runner.
+rotor-speed history. `wecsim.MostRotor.from_iea15mw(blade_data_directory)`
+advances the published rotor speed, azimuth, generator torque, and blade pitch
+from a supplied six-DOF platform position and velocity history and a
+`MostWindField`:
+
+```python
+from wecsim import MostRotor
+
+rotor = MostRotor.from_iea15mw(blade_data_directory)
+result = rotor.simulate(time, platform_position, platform_velocity, wind_field)
+```
+
+Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
+runner takes platform motion as input; turbine mass and aerodynamic loads do
+not yet feed back into independently advanced platform motion.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 

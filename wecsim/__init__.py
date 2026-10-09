@@ -60,6 +60,7 @@ from .sphereMpc import SphereMPCResult, run_sphere_mpc
 from .mostMooring import MostStaticMooring
 from .mostBEM import MostBEM
 from .mostController import MostBaselineController
+from .mostRotor import MostRotor, MostRotorResponse
 from .turbSim import MostWindField, TurbSimWind, read_turbsim_bts
 
 __all__ = [
@@ -100,5 +101,5 @@ __all__ = [
     "WaveBotImpedanceResponse", "run_wavebot_impedance",
     "WaveStarLinkage", "WaveStarResponse", "run_wavestar_published",
     "imported_full_directional_components", "synthesize_full_directional_response",
-    "MostBEM", "MostBaselineController", "MostStaticMooring", "MostWindField", "TurbSimWind", "read_turbsim_bts",
+    "MostBEM", "MostBaselineController", "MostRotor", "MostRotorResponse", "MostStaticMooring", "MostWindField", "TurbSimWind", "read_turbsim_bts",
 ]
