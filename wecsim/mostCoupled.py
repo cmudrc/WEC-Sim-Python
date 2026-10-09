@@ -37,7 +37,7 @@ class MostCoupled:
     def simulate(self, time, wave_excitation, wind: MostWindField, *,
                  position_tolerance: float = 1e-6,
                  velocity_tolerance: float = 1e-6,
-                 max_iterations: int = 12,
+                 max_iterations: int = 20,
                  mooring: MostStaticMooring | None = None,
                  full_six_dof: bool = True) -> MostCoupledResponse:
         """Use only wave and wind inputs to advance the coupled case."""

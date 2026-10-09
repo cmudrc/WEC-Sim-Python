@@ -4,11 +4,12 @@ on:
   push:
     branches: [master]
     paths:
-      - '.github/workflows/most-second-sea.yml'
+      - '.github/workflows/most-developed-sea.yml'
       - 'tests/matlab/most_developed_sea_source_baseline.m'
       - 'tests/matlab/most_short_source_baseline.m'
       - 'tests/matlab/most_wind_advection_baseline.m'
       - 'tests/test_most_coupled_source.py'
+      - 'tests/test_most_wind_advection.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
       - 'wecsim/mostTower.py'
@@ -22,11 +23,12 @@ on:
       - 'wecsim/__init__.py'
   pull_request:
     paths:
-      - '.github/workflows/most-second-sea.yml'
+      - '.github/workflows/most-developed-sea.yml'
       - 'tests/matlab/most_developed_sea_source_baseline.m'
       - 'tests/matlab/most_short_source_baseline.m'
       - 'tests/matlab/most_wind_advection_baseline.m'
       - 'tests/test_most_coupled_source.py'
+      - 'tests/test_most_wind_advection.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
       - 'wecsim/mostTower.py'
@@ -77,6 +79,10 @@ jobs:
         with:
           python-version: '3.12'
       - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_wind_advection.py
+        env:
+          WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
+          WEC_SIM_MOST_EXPECTED_WIND_TIMES: '749'
       - run: python -m pytest -q tests/test_most_coupled_source.py
         env:
           WEC_SIM_MOST_SHORT_BASELINE: matlab-most-developed-sea.mat
