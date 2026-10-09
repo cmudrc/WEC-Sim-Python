@@ -8,12 +8,14 @@ on:
       - 'tests/matlab/most_baseline_controller_baseline.m'
       - 'tests/test_most_controller_source.py'
       - 'wecsim/mostController.py'
+      - 'wecsim/__init__.py'
   pull_request:
     paths:
       - '.github/workflows/most-controller-parity.yml'
       - 'tests/matlab/most_baseline_controller_baseline.m'
       - 'tests/test_most_controller_source.py'
       - 'wecsim/mostController.py'
+      - 'wecsim/__init__.py'
   workflow_dispatch:
 
 jobs:
@@ -45,6 +47,13 @@ jobs:
       - uses: matlab-actions/run-command@v3
         with:
           command: cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../control'); Steady_States_IEA15MW; Controller_IEA15MW; cd('../../../../..'); addpath('tests/matlab'); most_baseline_controller_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_controller_source.py
+        env:
+          WEC_SIM_MOST_CONTROLLER_BASELINE: matlab-most-controller.mat
       - uses: actions/upload-artifact@v4
         if: always()
         with:
