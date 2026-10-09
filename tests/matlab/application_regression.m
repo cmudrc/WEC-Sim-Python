@@ -3,9 +3,8 @@ function application_regression(folder, forceMoorDyn)
 if nargin < 2
     forceMoorDyn = 'false';
 end
-if strcmpi(forceMoorDyn, 'true')
-    assert(any(string(folder) == ["Mooring", "Paraview_Visualization"]), ...
-        'The MoorDyn override only applies to its two application folders');
+if strcmpi(forceMoorDyn, 'true') && ...
+        any(string(folder) == ["Mooring", "Paraview_Visualization"])
     originalActions = getenv('GITHUB_ACTIONS');
     restoreActions = onCleanup(@() setenv('GITHUB_ACTIONS', originalActions));
     setenv('GITHUB_ACTIONS', 'false');
