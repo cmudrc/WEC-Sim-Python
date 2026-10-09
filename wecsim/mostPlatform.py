@@ -214,7 +214,7 @@ class MostPlatformHydrodynamics:
         if not isinstance(mooring, MostStaticMooring):
             raise TypeError("mooring must be MostStaticMooring")
 
-        jacobian = np.eye(6)[:, coordinate_axes]
+        projection = np.eye(6)[:, coordinate_axes]
         mooring_offset = -self.equilibrium_pose[:3]
         tower_offset = mooring_offset + np.array([0, 0, self.tower_base_height])
         if turbine is not None:
@@ -223,12 +223,34 @@ class MostPlatformHydrodynamics:
             zero_acceleration = np.zeros((1, 6))
 
         def motion(coordinate, speed):
-            return BodyMotion(jacobian @ coordinate, jacobian, np.zeros(6))
+            displacement = projection @ coordinate
+            rates = projection @ speed
+            _, pitch, yaw = displacement[3:]
+            # The pose uses roll/pitch/yaw; WEC-Sim reports world angular
+            # velocity, which is not the derivative of those three angles.
+            cp, sp = np.cos(pitch), np.sin(pitch)
+            cy, sy = np.cos(yaw), np.sin(yaw)
+            angular_jacobian = np.array([
+                [cy * cp, -sy, 0],
+                [sy * cp, cy, 0],
+                [-sp, 0, 1],
+            ])
+            jacobian = projection.copy()
+            jacobian[3:] = angular_jacobian @ projection[3:]
+            roll_rate, pitch_rate, yaw_rate = rates[3:]
+            angular_bias = (
+                roll_rate * pitch_rate * np.array([-cy * sp, -sy * sp, -cp])
+                + roll_rate * yaw_rate * np.array([-sy * cp, cy * cp, 0])
+                + pitch_rate * yaw_rate * np.array([-cy, -sy, 0])
+            )
+            return BodyMotion(displacement, jacobian,
+                              np.r_[np.zeros(3), angular_bias])
 
         def state(at_time, coordinate, speed):
             index = min(len(time) - 1, max(0, int(round(at_time / dt))))
-            pose = self.equilibrium_pose + jacobian @ coordinate
-            velocity = jacobian @ speed
+            body_motion = motion(coordinate, speed)
+            pose = self.equilibrium_pose + body_motion.displacement
+            velocity = body_motion.jacobian @ speed
             rotation = mooring._rotation(*pose[3:])
             arm_mooring = rotation @ mooring_offset
             arm_tower = rotation @ tower_offset
@@ -279,7 +301,17 @@ class MostPlatformHydrodynamics:
                 [rotation.T, np.zeros((3, 3))],
                 [np.zeros((3, 3)), rotation.T],
             ])
-            return transform @ bias, transform @ local_mass[index] @ to_local
+            # Simscape rotates rigid inertia with the platform and includes
+            # its gyroscopic moment; the hydro added mass remains separate.
+            inertia_world = rotation @ self.inertia @ rotation.T
+            platform_force = np.r_[
+                np.zeros(3),
+                -np.cross(velocity[3:], inertia_world @ velocity[3:]),
+            ]
+            platform_mass = np.zeros((6, 6))
+            platform_mass[3:, 3:] = inertia_world - self.inertia
+            return (transform @ bias + platform_force,
+                    transform @ local_mass[index] @ to_local + platform_mass)
 
         rigid_mass = np.diag([self.mass] * 3 + [0.] * 3)
         rigid_mass[3:, 3:] = self.inertia
