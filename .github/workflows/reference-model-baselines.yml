@@ -549,6 +549,7 @@ jobs:
             applications/OWC/OrificeModel/hydroData/test17a_clean.h5
             applications/Cable/hydroData/mbari.h5
             applications/Load_Mitigating_Controls/hydroData/waveBotBuoy.h5
+            applications/WECCCOMP/hydroData/wavestar.h5
             applications/Morison_Element/hydroData/monopile.h5
             applications/Controls/MPC/coeff.mat
 
