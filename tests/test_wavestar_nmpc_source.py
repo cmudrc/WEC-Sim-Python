@@ -11,7 +11,9 @@ from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
 from wecsim.wavestar import WaveStarLinkage, run_wavestar_published
-from wecsim import WaveStarNmpcActuator, WaveStarNmpcObserver
+from wecsim import (
+    WaveStarNmpcActuator, WaveStarNmpcObserver, WaveStarNmpcPredictor,
+)
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -161,6 +163,54 @@ def test_nmpc_observer_on_source_command_and_stroke():
         for index, position in enumerate(stroke)
     ])
     np.testing.assert_allclose(replay, saved, rtol=0, atol=1e-10)
+
+
+def test_nmpc_ar_forecast_from_estimated_excitation():
+    controller = loadmat(
+        Path(REFERENCE) / "WECCCOMP_NMPC_SOURCE_controller.mat",
+        simplify_cells=True,
+    )
+    moment = np.asarray(
+        controller["estimated_states"]["signals"]["values"]
+    )[:, 4]
+    source_forecast = np.asarray(
+        controller["AR_excM_pred"]["signals"]["values"]
+    )
+    assert moment.shape == (4501,)
+    assert source_forecast.shape == (40, 4501)
+    predictor = WaveStarNmpcPredictor()
+    replay = np.column_stack([predictor.step(value) for value in moment])
+    np.testing.assert_allclose(replay[:, :200], source_forecast[:, :200],
+                               rtol=0, atol=1e-12)
+    # The first fit produces an unstable 10.05-10.95 s source forecast
+    # exceeding 5e6 N m. Its long horizon amplifies tiny solver differences.
+    np.testing.assert_allclose(replay[:, 200:220],
+                               source_forecast[:, 200:220],
+                               rtol=0, atol=.1)
+    np.testing.assert_allclose(replay[:, 220:],
+                               source_forecast[:, 220:],
+                               rtol=0, atol=1e-9)
+
+    # Compose both Python components from measured source inputs. After the
+    # first AR refit at 11 s, the forecast remains tightly paired without
+    # feeding either saved estimator state or saved forecast into Python.
+    command = np.asarray(controller["cmd_ptoM"]["signals"]["values"])
+    stroke = np.asarray(
+        controller["motor_displacement"]["signals"]["values"]
+    )
+    observer = WaveStarNmpcObserver()
+    predictor = WaveStarNmpcPredictor()
+    composed = np.column_stack([
+        predictor.step(observer.step(
+            position, command[index - 1] if index else 0.,
+        )[-1])
+        for index, position in enumerate(stroke)
+    ])
+    np.testing.assert_allclose(composed[:, 220:],
+                               source_forecast[:, 220:],
+                               rtol=0, atol=1e-9)
+    assert np.max(np.abs(composed[:, 200:220]
+                         - source_forecast[:, 200:220])) < 25
 
 
 def test_nmpc_unforced_plant_motion_diagnostic():

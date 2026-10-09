@@ -133,3 +133,78 @@ class WaveStarNmpcObserver:
         # excitation state after every update, including the first sample.
         self._state[-1] -= .6979
         return self._state.copy()
+
+
+class WaveStarNmpcPredictor:
+    """The published forward-backward AR forecast of excitation moment.
+
+    The source keeps ``training_set * order`` past samples, refits the AR
+    coefficients at each integer second, and forecasts ``horizon`` samples.
+    Defaults reproduce Sea State 6 of the pinned WaveStar NMPC application.
+    """
+
+    def __init__(
+        self, *, dt: float = .05, order: int = 18,
+        training_set: int = 10, horizon: int = 40,
+        start_time: float = 10.,
+    ):
+        if (not np.isfinite([dt, start_time]).all() or dt <= 0
+                or start_time < 0 or not all(
+                    isinstance(value, int) and value > 0
+                    for value in (order, training_set, horizon)
+                )):
+            raise ValueError("WaveStar NMPC predictor settings are invalid")
+        window = order * training_set
+        samples_per_second = round(1 / dt)
+        start_sample = round(start_time / dt)
+        if (window <= order or samples_per_second < 1
+                or not np.isclose(samples_per_second * dt, 1,
+                                  rtol=0, atol=1e-12)
+                or not np.isclose(start_sample * dt, start_time,
+                                  rtol=0, atol=1e-12)):
+            raise ValueError("WaveStar NMPC predictor needs aligned samples")
+        self.order = order
+        self.horizon = horizon
+        self._samples_per_second = samples_per_second
+        self._start_sample = start_sample
+        self._past = np.zeros(window)
+        self._coefficients = None
+        self._sample = -1
+
+    def step(self, estimated_excitation_moment: float) -> np.ndarray:
+        """Advance one sample and return the future moment, in N m."""
+        if not np.isfinite(estimated_excitation_moment):
+            raise ValueError("WaveStar NMPC estimated moment must be finite")
+        self._sample += 1
+        self._past[:-1] = self._past[1:]
+        self._past[-1] = estimated_excitation_moment
+        forecast = np.zeros(self.horizon)
+        if self._sample < self._start_sample:
+            return forecast
+
+        if (self._coefficients is None
+                or self._sample % self._samples_per_second == 0):
+            # MATLAB ar(y, order) defaults to the modified-covariance,
+            # forward-backward fit without windowing. Both regressions use
+            # the same coefficient vector, with the second series reversed.
+            p = self.order
+            n = len(self._past)
+            forward = np.array([
+                self._past[t - p:t][::-1] for t in range(p, n)
+            ])
+            backward = np.array([
+                self._past[t - p + 1:t + 1] for t in range(p, n)
+            ])
+            targets = np.r_[self._past[p:], self._past[:n - p]]
+            self._coefficients = np.linalg.lstsq(
+                np.vstack((forward, backward)), targets, rcond=None,
+            )[0]
+
+        history = list(self._past[-self.order:])
+        for index in range(self.horizon):
+            prediction = self._coefficients @ np.asarray(
+                history[-self.order:][::-1]
+            )
+            forecast[index] = prediction
+            history.append(prediction)
+        return forecast
