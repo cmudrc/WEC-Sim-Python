@@ -95,6 +95,16 @@ evidence that the discrete heading events can amplify small trajectory
 offsets; it does not establish which numerical path is physically preferable
 or full published-case parity.
 
+The seed-2 Python held-heading result is also sensitive to time step: with
+the same sea phases and configuration, PTO damper work is `2,795`, `3,188`,
+and `2,681` J at `dt = 0.01`, `0.005`, and `0.0025` s. For comparison, the
+continuous-heading Python variant gives `4,420.58` and `4,419.92` J at the
+first two steps, a `0.015%` change. Refining `dt` also refines incident-force
+sampling and radiation convolution, so this experiment alone cannot assign
+the entire sensitivity to the heading switch. It does show that the held
+result at the published step should not be treated as a step-converged
+physical estimate.
+
 The pinned OWC Simulink model has a force-path difference:
 its flexible `GBM` state-space block integrates inverse effective mass times
 the hydrodynamic force, while the piston force joins a separate reported
