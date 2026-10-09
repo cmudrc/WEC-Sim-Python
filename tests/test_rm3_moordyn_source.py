@@ -22,8 +22,13 @@ def _read(name):
 def test_published_moordyn_case_exports_motion_and_line_tension():
     prefix = "RM3_MOORDYN"
     wave = _read(f"{prefix}_wave.csv")
+    coupling = _read(f"{prefix}_coupling.csv")
     fairlead = _read(f"{prefix}_fairlead_tension.csv")
     assert wave.shape[1] == 2
+    assert coupling.shape == (40_001, 19)
+    np.testing.assert_allclose(coupling[:, 0], np.arange(40_001) * 0.01,
+                               rtol=0, atol=1e-8)
+    assert np.max(np.abs(coupling[:, 13:19])) > 1_000
     assert fairlead.shape[1] == 4
     assert fairlead.shape[0] > 100
     assert np.all(np.diff(fairlead[:, 0]) > 0)
