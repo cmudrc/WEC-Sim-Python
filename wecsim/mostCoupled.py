@@ -1,4 +1,4 @@
-"""Reduced, bidirectionally coupled MOST platform and turbine motion."""
+"""Bidirectionally coupled MOST platform and turbine motion."""
 
 from dataclasses import dataclass
 
@@ -22,12 +22,12 @@ class MostCoupledResponse:
 
 @dataclass(frozen=True)
 class MostCoupled:
-    """Advance the published MOST turbine with platform surge, heave, and pitch.
+    """Advance the published MOST turbine with six-coordinate platform motion.
 
     Each pass advances the Python rotor from the current platform trajectory,
     then solves platform motion with the resulting blade loads and implicit
     turbine inertia. Passes continue until both trajectories are consistent.
-    The remaining platform sway, roll, and yaw coordinates are held fixed.
+    ``full_six_dof=False`` retains the earlier surge/heave/pitch reduction.
     """
 
     platform: MostPlatformHydrodynamics
@@ -38,8 +38,9 @@ class MostCoupled:
                  position_tolerance: float = 1e-6,
                  velocity_tolerance: float = 1e-6,
                  max_iterations: int = 12,
-                 mooring: MostStaticMooring | None = None) -> MostCoupledResponse:
-        """Use only wave and wind inputs to advance the reduced coupled case."""
+                 mooring: MostStaticMooring | None = None,
+                 full_six_dof: bool = True) -> MostCoupledResponse:
+        """Use only wave and wind inputs to advance the coupled case."""
         if (not isinstance(self.platform, MostPlatformHydrodynamics)
                 or not isinstance(self.rotor, MostRotor)
                 or not isinstance(self.tower, MostTowerReaction)):
@@ -54,7 +55,7 @@ class MostCoupled:
             raise ValueError("MOST coupling needs a time history")
         position = np.tile(self.platform.equilibrium_pose, (time.size, 1))
         velocity = np.zeros_like(position)
-        axes = (0, 2, 4)
+        axes = tuple(range(6)) if full_six_dof else (0, 2, 4)
         for iteration in range(1, max_iterations + 1):
             rotor_response = self.rotor.simulate(
                 time, position, velocity, wind,
@@ -64,6 +65,7 @@ class MostCoupled:
                 rotor_response.rotor_speed, rotor_response.azimuth,
                 rotor_response.generator_torque,
                 rotor_response.blade_root_load, mooring=mooring,
+                full_six_dof=full_six_dof,
             )
             position_residual = float(np.max(np.abs(
                 platform_response.position[:, axes] - position[:, axes]

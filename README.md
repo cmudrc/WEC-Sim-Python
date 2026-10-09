@@ -139,7 +139,7 @@ six-component output of Python's JONSWAP/HDF5 synthesis;
 one-way solve takes tower reaction as input and does not yet feed Python
 turbine loads back to the platform.
 
-For a reduced coupled trajectory, use `MostCoupled(platform, rotor, tower)`
+For a coupled trajectory, use `MostCoupled(platform, rotor, tower)`
 with a Python-generated six-component wave-excitation history and the MOST
 wind field:
 
@@ -153,9 +153,11 @@ rotor_motion = result.rotor
 ```
 
 The runner advances its own rotor, BEM loads, controller, tower reaction, and
-platform surge/heave/pitch until the two trajectories agree within the
-reported `position_residual` and `velocity_residual`. Sway, roll, and yaw
-remain fixed in this reduced model.
+all six platform coordinates until the two trajectories agree within the
+reported `position_residual` and `velocity_residual`. Pass
+`full_six_dof=False` for the earlier surge/heave/pitch reduction. The paired
+six-coordinate gate covers the pinned 10 s MOST case; longer and different
+operating conditions remain to be validated.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 

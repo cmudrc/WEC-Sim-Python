@@ -17,7 +17,7 @@ class MostPlatformResponse:
     time: np.ndarray
     position: np.ndarray  # world-frame center-of-gravity pose, m and rad
     velocity: np.ndarray  # world-frame center-of-gravity velocity, m/s and rad/s
-    acceleration: np.ndarray  # independent surge, heave, pitch acceleration
+    acceleration: np.ndarray  # active independent-coordinate acceleration
 
 
 @dataclass(frozen=True)
@@ -146,12 +146,15 @@ class MostPlatformHydrodynamics:
             azimuth: np.ndarray, generator_torque: np.ndarray,
             blade_root_load: np.ndarray, *,
             mooring: MostStaticMooring | None = None,
-            radiation_memory: float = 60.0) -> MostPlatformResponse:
+            radiation_memory: float = 60.0,
+            full_six_dof: bool = True) -> MostPlatformResponse:
         """Advance platform motion with the turbine's live inertia and force.
 
         Rotor state, generator torque, and blade-root loads are prescribed
         histories; the tower reaction is recomputed at each platform state.
-        This does not independently advance the rotor or inactive coordinates.
+        This does not independently advance the rotor. All six platform
+        coordinates are active by default; the reduced three-coordinate
+        comparison remains available with ``full_six_dof=False``.
         """
         if not isinstance(tower, MostTowerReaction):
             raise TypeError("tower must be MostTowerReaction")
@@ -179,10 +182,12 @@ class MostPlatformHydrodynamics:
             radiation_memory=radiation_memory,
             turbine=(tower, rotor_speed, azimuth, generator_torque,
                      blade_root_load),
+            coordinate_axes=tuple(range(6)) if full_six_dof else (0, 2, 4),
         )
 
     def _simulate(self, time, wave_excitation, tower_base_load, *, mooring,
-                  radiation_memory, turbine=None) -> MostPlatformResponse:
+                  radiation_memory, turbine=None,
+                  coordinate_axes=(0, 2, 4)) -> MostPlatformResponse:
         time = np.asarray(time, dtype=float)
         wave_excitation = np.asarray(wave_excitation, dtype=float)
         if turbine is None:
@@ -209,8 +214,7 @@ class MostPlatformHydrodynamics:
         if not isinstance(mooring, MostStaticMooring):
             raise TypeError("mooring must be MostStaticMooring")
 
-        jacobian = np.zeros((6, 3))
-        jacobian[0, 0] = jacobian[2, 1] = jacobian[4, 2] = 1
+        jacobian = np.eye(6)[:, coordinate_axes]
         mooring_offset = -self.equilibrium_pose[:3]
         tower_offset = mooring_offset + np.array([0, 0, self.tower_base_height])
         if turbine is not None:
@@ -288,7 +292,7 @@ class MostPlatformHydrodynamics:
             state_inertia=tower_inertia if turbine is not None else None,
         )
         response = GeneralizedDynamics(
-            (body,), 3, added_mass_delay=1e-7,
+            (body,), len(coordinate_axes), added_mass_delay=1e-7,
         ).integrate(dt=dt, end_time=float(time[-1]))
         return MostPlatformResponse(
             response.time, response.body_position[:, 0],

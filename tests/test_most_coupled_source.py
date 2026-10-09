@@ -1,4 +1,4 @@
-"""Pair a source-free reduced MOST platform/turbine trajectory with MATLAB."""
+"""Pair a source-free six-DOF MOST platform/turbine trajectory with MATLAB."""
 
 import os
 from pathlib import Path
@@ -24,7 +24,7 @@ from wecsim.irregularWave import (
     )),
     reason="pinned MATLAB MOST coupled-run inputs not provided",
 )
-def test_most_reduced_coupled_trajectory_against_pinned_source():
+def test_most_six_dof_coupled_trajectory_against_pinned_source():
     h5_file = os.environ["WEC_SIM_MOST_H5"]
     platform = MostPlatformHydrodynamics.from_volturnus(
         h5_file, os.environ["WEC_SIM_MOST_MASS_PROPERTIES"],
@@ -60,9 +60,12 @@ def test_most_reduced_coupled_trajectory_against_pinned_source():
     assert result.position_residual <= 1e-6
     assert result.velocity_residual <= 1e-6
     for axis, position_gate, velocity_gate in (
-        (0, 4e-4, 1e-4),    # surge, m and m/s
+        (0, 2e-4, 5e-5),    # surge, m and m/s
+        (1, 5e-4, 2e-4),    # sway, m and m/s
         (2, 1.5e-4, 7e-5),  # heave, m and m/s
-        (4, 4e-5, 1e-5),    # pitch, rad and rad/s
+        (3, 4e-5, 2e-5),    # roll, rad and rad/s
+        (4, 5e-6, 2e-6),    # pitch, rad and rad/s
+        (5, 1.5e-4, 2e-6),  # yaw, rad and rad/s
     ):
         np.testing.assert_allclose(
             result.platform.position[:, axis], source["body_position"][:, axis],
@@ -74,13 +77,13 @@ def test_most_reduced_coupled_trajectory_against_pinned_source():
         )
     np.testing.assert_allclose(
         result.rotor.rotor_speed*60/(2*np.pi), source["rotor_speed"].ravel(),
-        rtol=0, atol=.01,
+        rtol=0, atol=.001,
     )
     np.testing.assert_allclose(
         result.rotor.azimuth, source["azimuth"].ravel(),
-        rtol=0, atol=.006,
+        rtol=0, atol=.0003,
     )
     np.testing.assert_allclose(
         result.rotor.generator_torque, source["generator_torque"].ravel(),
-        rtol=0, atol=25000,
+        rtol=0, atol=1000,
     )

@@ -159,7 +159,7 @@ def test_most_tower_reaction_against_pinned_source():
     )),
     reason="pinned MATLAB MOST coupled-platform inputs not provided",
 )
-def test_most_platform_with_implicit_turbine_against_pinned_source():
+def test_most_platform_six_dof_with_implicit_turbine_against_pinned_source():
     source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
     time = source["body_time"].ravel()
     h5_file = os.environ["WEC_SIM_MOST_H5"]
@@ -188,9 +188,12 @@ def test_most_platform_with_implicit_turbine_against_pinned_source():
         source["blade_aero_load"],
     )
     for axis, pose_gate, speed_gate in (
-        (0, 5e-5, 5e-5),   # surge, m and m/s
-        (2, 1.5e-4, 1e-4),  # heave, m and m/s
-        (4, 4e-5, 1e-5),   # pitch, rad and rad/s
+        (0, 2e-4, 5e-5),    # surge, m and m/s
+        (1, 5e-4, 2e-4),    # sway, m and m/s
+        (2, 1.5e-4, 7e-5),  # heave, m and m/s
+        (3, 4e-5, 2e-5),    # roll, rad and rad/s
+        (4, 3e-6, 2e-6),    # pitch, rad and rad/s
+        (5, 1.5e-4, 2e-6),  # yaw, rad and rad/s
     ):
         np.testing.assert_allclose(
             response.position[:, axis], source["body_position"][:, axis],
