@@ -1233,6 +1233,13 @@ saved stroke and preceding torque request meets the same gate. This command
 replay uses the saved MATLAB motion as input; independent closed-loop NMPC
 motion remains unpaired.
 
+A separate 1 ms MATLAB `ode4` diagnostic runs the same WaveStar sea and
+geometry through 14.95 s with resistive control active from 10 s. An
+independent Python run pairs pitch within `5e-5` rad, PTO stroke within
+`10` µm, and axial PTO force within `0.03` N across all 14,951 samples.
+That derived run also samples the controller at 1 ms; the published 0.05 s
+`ode8` closed loop and NMPC motion after 15 s remain open.
+
 The WaveStar fault application has separately paired PTO components:
 
 ```python

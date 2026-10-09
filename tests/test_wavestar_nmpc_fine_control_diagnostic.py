@@ -72,13 +72,20 @@ def test_fine_step_resistive_control_diagnostic():
                                np.clip(-19.4 * estimated[time >= 10, 1],
                                        -12, 12),
                                rtol=0, atol=1e-11)
+    observer = WaveStarNmpcObserver(dt=.001)
+    replay_state = np.array([
+        observer.step(position, command[index - 1] if index else 0.)
+        for index, position in enumerate(stroke)
+    ])
+    np.testing.assert_allclose(replay_state, estimated,
+                               rtol=0, atol=1e-10)
     actuator = WaveStarNmpcActuator()
     replay_force = np.array([
         actuator.step(request, position)
         for request, position in zip(command, stroke)
     ])
     np.testing.assert_allclose(replay_force, source_pto[:, 33],
-                               rtol=0, atol=1e-6)
+                               rtol=0, atol=1e-8)
 
     sea = jonswap_equal_energy_components(
         HYDRO, significant_height=.1042, peak_period=1.836,
@@ -95,14 +102,37 @@ def test_fine_step_resistive_control_diagnostic():
     assert np.max(np.abs(
         response.angle[precontrol] - source_float[precontrol, 5]
     )) < 2e-5
+    source_forces = _source("body1_forces")
+    assert source_forces.shape == (14951, 37)
     errors = {
         "pitch_rad": np.max(np.abs(response.angle - source_float[:, 5])),
         "pitch_speed_rad_s": np.max(np.abs(
             response.angular_speed - source_float[:, 11])),
+        "float_center_m": np.max(np.abs(
+            response.float_position[:, [0, 2]] - source_float[:, [1, 3]])),
+        "float_center_speed_m_s": np.max(np.abs(
+            response.float_velocity[:, [0, 2]] - source_float[:, [7, 9]])),
         "pto_stroke_m": np.max(np.abs(
             response.pto_stroke - source_pto[:, 3])),
+        "pto_speed_m_s": np.max(np.abs(
+            response.pto_speed - source_pto[:, 9])),
         "command_Nm": np.max(np.abs(np.asarray(pto.commands) - command)),
         "pto_force_N": np.max(np.abs(
             response.pto_force - source_pto[:, 33])),
+        "radiation_N_or_Nm": np.max(np.abs(
+            response.radiation_force - source_forces[:, 1:7])),
     }
+    limits = {
+        "pitch_rad": 5e-5,
+        "pitch_speed_rad_s": 4e-4,
+        "float_center_m": 2.5e-5,
+        "float_center_speed_m_s": 2.5e-4,
+        "pto_stroke_m": 1e-5,
+        "pto_speed_m_s": 1e-4,
+        "command_Nm": 5e-3,
+        "pto_force_N": 3e-2,
+        "radiation_N_or_Nm": 1e-3,
+    }
+    for name, limit in limits.items():
+        assert errors[name] < limit, f"{name}: {errors[name]} >= {limit}"
     print("fine-step resistive-control errors:", errors)
