@@ -31,7 +31,7 @@ from .mbariCable import MBARICableResponse, run_mbari_cable
 from .wavebotImpedance import WaveBotImpedanceResponse, run_wavebot_impedance
 from .wavestar import WaveStarLinkage, WaveStarResponse, run_wavestar_published
 from .wavestarFault import WaveStarFaultController, run_wavestar_fault_published
-from .wavestarNmpc import WaveStarNmpcActuator
+from .wavestarNmpc import WaveStarNmpcActuator, WaveStarNmpcObserver
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
@@ -76,6 +76,7 @@ __all__ = [
     "StribeckFriction",
     "WaveStarFaultController",
     "WaveStarNmpcActuator",
+    "WaveStarNmpcObserver",
     "run_wavestar_fault_published",
     "MBARICableResponse", "run_mbari_cable",
     "WaveBotImpedanceResponse", "run_wavebot_impedance",

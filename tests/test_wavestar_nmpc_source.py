@@ -11,7 +11,7 @@ from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
 from wecsim.wavestar import WaveStarLinkage, run_wavestar_published
-from wecsim.wavestarNmpc import WaveStarNmpcActuator
+from wecsim import WaveStarNmpcActuator, WaveStarNmpcObserver
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -139,6 +139,28 @@ def test_nmpc_actuator_on_source_command_and_stroke():
                                rtol=0, atol=1e-12)
     np.testing.assert_allclose(force[indices], pto[:, 33],
                                rtol=0, atol=1e-7)
+
+
+def test_nmpc_observer_on_source_command_and_stroke():
+    controller = loadmat(
+        Path(REFERENCE) / "WECCCOMP_NMPC_SOURCE_controller.mat",
+        simplify_cells=True,
+    )
+    command = np.asarray(controller["cmd_ptoM"]["signals"]["values"])
+    stroke = np.asarray(
+        controller["motor_displacement"]["signals"]["values"]
+    )
+    saved = np.asarray(
+        controller["estimated_states"]["signals"]["values"]
+    )
+    assert command.shape == stroke.shape == (4501,)
+    assert saved.shape == (4501, 5)
+    observer = WaveStarNmpcObserver()
+    replay = np.array([
+        observer.step(position, command[index - 1] if index else 0.)
+        for index, position in enumerate(stroke)
+    ])
+    np.testing.assert_allclose(replay, saved, rtol=0, atol=1e-10)
 
 
 def test_nmpc_unforced_plant_motion_diagnostic():

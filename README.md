@@ -1198,18 +1198,23 @@ component. It accepts the controller's sampled torque request and the current
 rod stroke every 0.05 s:
 
 ```python
-from wecsim import WaveStarNmpcActuator
+from wecsim import WaveStarNmpcActuator, WaveStarNmpcObserver
 
 actuator = WaveStarNmpcActuator()
 axial_force = actuator.step(command_torque, stroke)
+
+observer = WaveStarNmpcObserver(dt=0.05)
+estimated_state = observer.step(stroke, previous_command_torque)
 ```
 
 The controller converts torque to force with its own idealized neutral rod
 length, which differs slightly from the physical B-to-C linkage. The source
 sea, linkage, resistive startup, and actuator force have paired gates. A
 derived 0.001 s MATLAB run also pairs the unforced plant through 9.95 s; the
-published 0.05 s run has a larger numerical difference. An independent
-closed-loop NMPC trajectory is not yet established.
+published 0.05 s run has a larger numerical difference. The observer replays
+all five published estimator states from saved stroke and the previous torque
+request. The autoregressive forecast, optimizer, and independent closed-loop
+NMPC trajectory remain unpaired.
 
 The WaveStar fault application has separately paired PTO components:
 
