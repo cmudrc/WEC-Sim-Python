@@ -27,6 +27,7 @@ on:
       - 'tests/test_rm3_mooring_source.py'
       - 'tests/test_rm3_moordyn_source.py'
       - 'tests/test_rm3_moordyn_replay.py'
+      - 'tests/test_rm3_moordyn_coupled_parity.py'
       - 'tests/test_rm3_mooring_parity.py'
       - 'tests/test_rm3_public_mooring_parity.py'
       - 'tests/test_sphere_mean_drift_source.py'
@@ -487,6 +488,12 @@ jobs:
         env:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q -s tests/test_rm3_moordyn_replay.py
+        if: matrix.model == 'RM3_MOORDYN'
+        env:
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MOORDYN_LIBRARY: matlab-ref/source/functions/moorDyn/libmoordyn.so
+      - run: python -m pytest -q -s tests/test_rm3_moordyn_coupled_parity.py
         if: matrix.model == 'RM3_MOORDYN'
         env:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output

@@ -19,6 +19,7 @@ from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
 from .hardStops import LinearHardStops
 from .morison import MorisonElement
+from .moorDyn import MoorDyn
 from .orifice import OrificePTO
 
 
@@ -115,6 +116,8 @@ class _FloatingJoint:
     hard_stops: LinearHardStops | None
     radiation_method: str | None
     added_mass_scheme: str
+    moordyn: MoorDyn | None
+    moordyn_point: BodyPoint | None
 
 
 @dataclass(frozen=True)
@@ -576,6 +579,8 @@ class WEC:
                        damping: float = 0.0, stiffness: float = 0.0,
                        equilibrium_position: float = 0.0,
                        mooring_surge_stiffness: float = 0.0,
+                       moordyn: MoorDyn | None = None,
+                       moordyn_point: BodyPoint | None = None,
                        hard_stops: LinearHardStops | None = None,
                        radiation_method: str | None = None,
                        added_mass_scheme: str = "implicit") -> None:
@@ -583,6 +588,8 @@ class WEC:
 
         The PTO acts on float heave minus spar heave. The reduced joint does
         not model off-axis PTO endpoints or arbitrary Simscape constraints.
+        A native MoorDyn model can attach to one spar-local ``BodyPoint``;
+        it is advanced once per time step with convolution radiation.
         """
         if (len(self.bodies) != 2 or self.bodies[0] is not float_body
                 or self.bodies[1] is not spar_body or self._floating_joint is not None
@@ -600,10 +607,20 @@ class WEC:
             raise ValueError("unsupported floating_joint radiation method")
         if added_mass_scheme not in ("implicit", "simulink_delay"):
             raise ValueError("unsupported floating_joint added-mass scheme")
+        if moordyn is not None:
+            if (not isinstance(moordyn, MoorDyn)
+                    or not isinstance(moordyn_point, BodyPoint)
+                    or moordyn_point.body is not spar_body
+                    or not np.isfinite(moordyn_point.coordinates()).all()):
+                raise ValueError("MoorDyn needs a session and a finite spar-local point")
+            if mooring_surge_stiffness:
+                raise ValueError("MoorDyn and the joint surge spring cannot be combined")
+        elif moordyn_point is not None:
+            raise ValueError("a MoorDyn attachment point needs a MoorDyn session")
         self._floating_joint = _FloatingJoint(
             float_body, spar_body, location, pto_name, damping, stiffness,
             equilibrium_position, mooring_surge_stiffness, hard_stops,
-            radiation_method, added_mass_scheme,
+            radiation_method, added_mass_scheme, moordyn, moordyn_point,
         )
 
     def fixed_hinge(self, flap: Body, base: Body | None = None, *,
@@ -931,6 +948,9 @@ class WEC:
         if joint.mooring_surge_stiffness:
             case["mooring"] = {"kind": "joint_surge_spring",
                                "stiffness": joint.mooring_surge_stiffness}
+        if joint.moordyn is not None:
+            case["mooring"] = {"kind": "moor_dyn", "session": joint.moordyn,
+                               "point": joint.moordyn_point.coordinates()}
         return case
 
     def _fixed_hinge_case(self, wave, simulation,

@@ -13,6 +13,7 @@ import numpy as np
 from .bodyClass import BodyClass
 from .generalDynamics import BodyMotion, DynamicBody, GeneralizedDynamics
 from .hardStops import LinearHardStops
+from .moorDyn import MoorDyn
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,9 @@ class RM3RegularResponse:
     pto_stop_force: np.ndarray | None = None
     mooring_surge_position: np.ndarray | None = None
     mooring_surge_force: np.ndarray | None = None
+    moordyn_connection_position: np.ndarray | None = None
+    moordyn_connection_velocity: np.ndarray | None = None
+    moordyn_connection_force: np.ndarray | None = None
 
 
 def _rm3_slider_motion(coordinate, speed, *, body_index, lever):
@@ -77,6 +81,8 @@ def solve_rm3_regular(
     pto_equilibrium: float = 0.0,
     pto_hard_stops: LinearHardStops | None = None,
     mooring_surge_stiffness: float = 0.0,
+    moordyn: MoorDyn | None = None,
+    moordyn_point: tuple[float, float, float] | None = None,
     b2b: bool = False,
     radiation_memory: float | None = None,
     radiation_method: str | None = None,
@@ -115,6 +121,10 @@ def solve_rm3_regular(
     linearly interpolated between those samples.
     ``mooring_surge_stiffness`` connects a linear surge spring to the floating
     joint, as in the published RM3 MooringMatrix case.
+    ``moordyn`` instead couples a native MoorDyn model at ``moordyn_point``
+    in spar-local coordinates. MoorDyn receives a predicted pose and velocity
+    once per step; returned loads act during the body solve. The recorded
+    connection pose is the pose supplied to MoorDyn.
     ``no_wave=True`` uses the noWaveCIC preprocessing and requires a radiation
     memory. Initial coordinates are shared surge, float heave, spar heave,
     and shared pitch. ``b2b=True`` includes cross-body radiation blocks.
@@ -159,6 +169,17 @@ def solve_rm3_regular(
             raise TypeError("pto_hard_stops must be LinearHardStops")
         if radiation_method != "constant" or added_mass_scheme != "implicit":
             raise ValueError("PTO hard stops currently need constant radiation and implicit added mass")
+    if moordyn is not None:
+        if not isinstance(moordyn, MoorDyn) or moordyn_point is None:
+            raise ValueError("MoorDyn coupling needs a MoorDyn session and spar-local point")
+        point = np.asarray(moordyn_point, dtype=float)
+        if point.shape != (3,) or not np.isfinite(point).all():
+            raise ValueError("moordyn_point must be a finite spar-local three-vector")
+        if (radiation_method != "convolution" or pto_hard_stops is not None
+                or mooring_surge_stiffness):
+            raise ValueError("MoorDyn coupling needs convolution radiation and no other mooring or hard stops")
+    elif moordyn_point is not None:
+        raise ValueError("moordyn_point needs a MoorDyn session")
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("end_time must be an integer multiple of dt")
@@ -308,11 +329,59 @@ def solve_rm3_regular(
         nonlinear_force=(stop_generalized_force
                          if pto_hard_stops is not None else None),
     )
-    solved = system.integrate(
-        dt=dt, end_time=end_time,
-        initial_coordinate=initial_coordinate, initial_speed=initial_speed,
-        adaptive_regular=pto_hard_stops is not None,
-    )
+    connection_position = connection_velocity = connection_force = None
+    if moordyn is not None:
+        connection_position = np.zeros((steps + 1, 6))
+        connection_velocity = np.zeros_like(connection_position)
+        connection_force = np.zeros_like(connection_position)
+        spar = dynamic_bodies[1]
+
+        def connection_motion(q, v):
+            body_motion = spar.motion(q, v)
+            angle = q[3]
+            sine, cosine = np.sin(angle), np.cos(angle)
+            rotated = np.array([
+                cosine * point[0] + sine * point[2], point[1],
+                -sine * point[0] + cosine * point[2],
+            ])
+            tangent = np.array([
+                -sine * point[0] + cosine * point[2], 0.0,
+                -cosine * point[0] - sine * point[2],
+            ])
+            jacobian = body_motion.jacobian.copy()
+            jacobian[:3, 3] += tangent
+            position = spar.reference_position + body_motion.displacement
+            position[:3] += rotated
+            return position, jacobian @ v, jacobian
+
+        q0 = (np.zeros(4) if initial_coordinate is None
+              else np.asarray(initial_coordinate, dtype=float))
+        v0 = (np.zeros(4) if initial_speed is None
+              else np.asarray(initial_speed, dtype=float))
+        connection_position[0], connection_velocity[0], _ = connection_motion(q0, v0)
+
+        def step_force(at_time, interval, predicted_coordinate, predicted_speed):
+            index = round(at_time / dt) + 1
+            position, velocity, jacobian = connection_motion(
+                predicted_coordinate, predicted_speed)
+            connection_position[index] = position
+            connection_velocity[index] = velocity
+            connection_force[index] = moordyn.step(
+                position, velocity, at_time, interval)
+            return jacobian.T @ connection_force[index]
+
+        with moordyn.start(connection_position[0], connection_velocity[0]):
+            solved = system.integrate(
+                dt=dt, end_time=end_time,
+                initial_coordinate=initial_coordinate, initial_speed=initial_speed,
+                step_force=step_force,
+            )
+    else:
+        solved = system.integrate(
+            dt=dt, end_time=end_time,
+            initial_coordinate=initial_coordinate, initial_speed=initial_speed,
+            adaptive_regular=pto_hard_stops is not None,
+        )
     q = solved.coordinate
     v = solved.speed
     pto_stroke = q[:, 1] - q[:, 2]
@@ -334,4 +403,7 @@ def solve_rm3_regular(
         mooring_surge_position=q[:, 0] if mooring_surge_stiffness else None,
         mooring_surge_force=(-mooring_surge_stiffness * q[:, 0]
                              if mooring_surge_stiffness else None),
+        moordyn_connection_position=connection_position,
+        moordyn_connection_velocity=connection_velocity,
+        moordyn_connection_force=connection_force,
     )

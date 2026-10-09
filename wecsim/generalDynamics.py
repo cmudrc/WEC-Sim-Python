@@ -277,8 +277,15 @@ class GeneralizedDynamics:
         initial_speed: np.ndarray | None = None,
         adaptive_regular: bool = False,
         applied_force_history: np.ndarray | None = None,
+        step_force: Callable[[float, float, np.ndarray, np.ndarray], np.ndarray] | None = None,
     ) -> DynamicsResponse:
-        """Integrate using the radiation representation supplied by the bodies."""
+        """Integrate the body dynamics with optional sampled external loading.
+
+        ``step_force`` receives the previous time, interval, and predicted
+        next coordinate and speed. It advances once per radiation-memory
+        step; its force acts during the ensuing implicit body solve. The
+        initial external force is zero.
+        """
         if not np.isfinite([dt, end_time]).all() or dt <= 0 or end_time < 0:
             raise ValueError("dt must be positive and end_time nonnegative")
         steps = round(end_time / dt)
@@ -305,6 +312,11 @@ class GeneralizedDynamics:
             if (not memory or applied_force_history.shape != (steps + 1, n)
                     or not np.isfinite(applied_force_history).all()):
                 raise ValueError("sampled applied force needs finite radiation-memory coordinate history")
+        if step_force is not None:
+            if not callable(step_force) or not memory or self.radiation_discretization != "trapezoid":
+                raise ValueError("step_force needs callable and trapezoidal radiation memory")
+            if applied_force_history is not None:
+                raise ValueError("step_force and applied_force_history are mutually exclusive")
         if adaptive_regular and (memory or self.controlled_ptos
                                  or self.linear_generators
                                  or self.added_mass_delay is not None):
@@ -318,7 +330,8 @@ class GeneralizedDynamics:
             if self.radiation_discretization == "fir":
                 self._integrate_fir(time, q, v, a, dt)
             else:
-                self._integrate_memory(time, q, v, a, dt, applied_force_history)
+                self._integrate_memory(time, q, v, a, dt, applied_force_history,
+                                       step_force)
         elif self.controlled_ptos:
             controlled_force = self._integrate_controlled_regular(time, q, v, a, dt)
         elif self.linear_generators:
@@ -484,7 +497,8 @@ class GeneralizedDynamics:
         for step, at_time in enumerate(time):
             a[step] = self.acceleration(at_time, q[step], v[step])
 
-    def _integrate_memory(self, time, q, v, a, dt, applied_force_history=None):
+    def _integrate_memory(self, time, q, v, a, dt, applied_force_history=None,
+                          step_force=None):
         count = len(self.bodies)
         kernels = [body.radiation_kernel for body in self.bodies]
         if any(kernel is None for kernel in kernels):
@@ -537,6 +551,22 @@ class GeneralizedDynamics:
         commit_sampled_excitation(0)
         save_body_state(0)
         for step in range(1, len(time)):
+            if step_force is not None:
+                # Native co-simulators may advance irreversibly. Predict the
+                # next pose, then advance them exactly once before the body
+                # solver's fixed-point iterations.
+                predicted_speed = v[step - 1] + dt * a[step - 1]
+                predicted_coordinate = (q[step - 1] + dt * v[step - 1]
+                                        + dt * dt * a[step - 1] / 2)
+                sampled_force = np.asarray(step_force(
+                    time[step - 1], dt, predicted_coordinate,
+                    predicted_speed), dtype=float)
+                if (sampled_force.shape != (self.coordinate_count,)
+                        or not np.isfinite(sampled_force).all()):
+                    raise ValueError("step_force must return a finite generalized vector")
+            else:
+                sampled_force = (None if applied_force_history is None
+                                 else applied_force_history[step])
             if body_acceleration is not None:
                 if step == 1:
                     delayed = body_acceleration[0]
@@ -557,8 +587,7 @@ class GeneralizedDynamics:
                 trial_acceleration = self.acceleration(
                     time[step], trial_coordinate, trial_speed,
                     known_radiation=known, dt=dt,
-                    applied_force=(None if applied_force_history is None
-                                   else applied_force_history[step]),
+                    applied_force=sampled_force,
                 )
                 next_speed = v[step - 1] + dt * (
                     a[step - 1] + trial_acceleration
@@ -573,8 +602,7 @@ class GeneralizedDynamics:
             q[step] = q[step - 1] + dt * (v[step - 1] + v[step]) / 2
             a[step] = self.acceleration(
                 time[step], q[step], v[step], known_radiation=known, dt=dt,
-                applied_force=(None if applied_force_history is None
-                               else applied_force_history[step]),
+                applied_force=sampled_force,
             )
             commit_sampled_excitation(step)
             save_body_state(step)

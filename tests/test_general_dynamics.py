@@ -113,6 +113,30 @@ def test_trapezoidal_radiation_halves_full_window_endpoint():
                                [0, 0, -0.05], rtol=0, atol=1e-12)
 
 
+def test_stateful_external_force_advances_once_per_memory_step():
+    kernel = np.zeros((3, 6, 6))
+    system = _oscillator(mass=2, stiffness=0, radiation=kernel)
+    calls = []
+
+    def step_force(time, dt, predicted_coordinate, predicted_speed):
+        calls.append((time, dt, predicted_coordinate.copy(),
+                      predicted_speed.copy()))
+        return np.array([2.0])
+
+    response = system.integrate(dt=0.1, end_time=0.2,
+                                step_force=step_force)
+    assert len(calls) == 2
+    np.testing.assert_allclose([call[0] for call in calls], [0, 0.1])
+    np.testing.assert_allclose([call[1] for call in calls], [0.1, 0.1])
+    np.testing.assert_allclose(calls[0][2:], [[0], [0]])
+    np.testing.assert_allclose(response.acceleration[:, 0], [0, 1, 1],
+                               rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.speed[:, 0], [0, 0.05, 0.15],
+                               rtol=0, atol=1e-12)
+    np.testing.assert_allclose(response.coordinate[:, 0],
+                               [0, 0.0025, 0.0125], rtol=0, atol=1e-12)
+
+
 def test_delayed_added_mass_matches_independent_oscillator_recurrence():
     kernel = np.zeros((3, 6, 6))
     dt, mass, added, stiffness = 0.1, 2.0, 1.0, 8.0
