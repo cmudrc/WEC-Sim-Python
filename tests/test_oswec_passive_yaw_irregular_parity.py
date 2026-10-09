@@ -34,17 +34,19 @@ def _max_error(actual, expected, limit, label):
     assert error < limit, f"{label}: {error:.6g} exceeds {limit}"
 
 
-def test_published_irregular_passive_yaw_with_source_force(tmp_path):
-    """Replay the published forcing to isolate wave and motion integration."""
+@pytest.mark.parametrize("seed", (1, 2, 3))
+def test_published_irregular_passive_yaw_with_source_force(tmp_path, seed):
+    """Replay three source forces to isolate wave and motion integration."""
     source = Path(REFERENCE)
     hydro = (Path(APPLICATIONS)
              / "_Common_Input_Files/OSWEC/hydroData/oswec.h5").resolve()
-    prefix = "OSWEC_PASSIVE_YAW_IRR"
-    case = "PassiveYawRegression"
+    model = "OSWEC_PASSIVE_YAW_IRR"
+    prefix = model + (f"_SEED{seed}" if seed > 1 else "")
+    case = "PassiveYawRegression" + (f"Seed{seed}" if seed > 1 else "")
     components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
-    flap = np.loadtxt(source / f"{prefix}_{case}_body1.csv", delimiter=",")
-    base = np.loadtxt(source / f"{prefix}_{case}_body2.csv", delimiter=",")
-    pto = np.loadtxt(source / f"{prefix}_{case}_pto1.csv", delimiter=",")
+    flap = np.loadtxt(source / f"{model}_{case}_body1.csv", delimiter=",")
+    base = np.loadtxt(source / f"{model}_{case}_body2.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{model}_{case}_pto1.csv", delimiter=",")
     wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
     assert components_csv.shape == (500, 4)
     assert flap.shape == base.shape == pto.shape == (25001, 25)
@@ -72,6 +74,11 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path):
         ramp_time=100, rho=1000, g=9.81,
     )
     _max_error(sampled.elevation, wave[:, 1], 1e-11, "wave elevation")
+    held = HeldPassiveYawExcitation(sampled, threshold=1)
+    for at_time, angle in zip(flap[:, 0], flap[:, 6]):
+        held.commit(at_time, np.array([angle]))
+    _max_error(np.asarray(held.force_history), flap[:, 19:25], 1e-6,
+               "published held-heading excitation on MATLAB yaw")
 
     class LoggedSourceForce:
         elevation = sampled.elevation
@@ -108,6 +115,9 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path):
     _max_error(hinge.force, pto[:, 17], 25, "source-forced PTO torque")
     _max_error(-hinge.absorbed_power, pto[:, 23], 4,
                "source-forced source-signed PTO power")
+    source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
+    python_work = np.trapezoid(hinge.absorbed_power, result.time)
+    assert abs(python_work - source_work) / source_work < .001
     _max_error(pto[:, 17], -120000 * pto[:, 11], 1e-5,
                "source PTO damping law")
 
@@ -127,10 +137,6 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
     components_csv = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
     phases = tmp_path / "phases.csv"
     np.savetxt(phases, components_csv[:, 3, None], delimiter=",")
-    components = pm_equal_energy_components(
-        hydro, significant_height=2.5, peak_period=8,
-        directions=[10], spreading=[1], phase=components_csv[:, 3, None],
-    )
     body = BodyClass(str(hydro))
     body.bodyNumber = 1
     body.bodyTotal = 2
@@ -163,16 +169,6 @@ def test_published_irregular_passive_yaw_heading_threshold(tmp_path):
                "source yaw hydrodynamic force balance")
     _max_error(flap[:, 18] + pto[:, 17], mass[3] * forces[:, 24],
                1e-6, "source yaw rigid inertia balance")
-    model = SampledPassiveYawExcitation.from_hydro_data(
-        body.hydroData, components, dt=.01, end_time=250,
-        ramp_time=100, rho=1000, g=9.81,
-    )
-    held = HeldPassiveYawExcitation(model, threshold=1)
-    for at_time, angle in zip(flap[:, 0], flap[:, 6]):
-        held.commit(at_time, np.array([angle]))
-    _max_error(np.asarray(held.force_history), flap[:, 19:25], 1e-6,
-               "published sampled heading force on MATLAB yaw")
-
     wec = WEC("OSWEC sampled irregular passive yaw")
     moving = wec.body(
         "flap", hydro, mass=12700, inertia=(1.85e6,) * 3,
