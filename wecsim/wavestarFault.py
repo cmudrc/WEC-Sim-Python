@@ -2,6 +2,9 @@
 
 import numpy as np
 
+from .friction import StribeckFriction
+from .wavestar import run_wavestar_published
+
 
 class WaveStarFaultController:
     """Advance the published rotary damping controller one sample.
@@ -63,3 +66,24 @@ class WaveStarFaultController:
         angle = true_angle + 1.170165
         moment_arm = .412 * .2 * np.sin(angle) / (.381408 + stroke)
         return -actuator / moment_arm
+
+
+def run_wavestar_fault_published(
+    hydro_file, components, sensor_noise, sensor_dropout, *,
+    end_time=141.2, output_stride=10, gain=10., filter_frequency=30.,
+):
+    """Integrate the pinned fault case using an exogenous sensor disturbance.
+
+    Noise and dropout records contain the stochastic disturbance alone. The
+    controller computes its true position from Python's evolving PTO stroke.
+    MATLAB motion and PTO force are never inputs to the integration.
+    """
+    return run_wavestar_published(
+        hydro_file, components, dt=.001, end_time=end_time,
+        output_stride=output_stride,
+        pto_controller=WaveStarFaultController(
+            gain=gain, filter_frequency=filter_frequency,
+        ),
+        sensor_noise=sensor_noise, sensor_dropout=sensor_dropout,
+        fault_joint_friction=StribeckFriction(.25, .1, .2, .001),
+    )

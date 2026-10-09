@@ -68,6 +68,7 @@ class WaveStarResponse:
     pto_speed: np.ndarray
     excitation_force: np.ndarray
     radiation_force: np.ndarray
+    pto_force: np.ndarray
 
 
 def run_wavestar_published(
@@ -79,6 +80,11 @@ def run_wavestar_published(
     ramp_time: float = 7.06,
     rho: float = 1000.,
     g: float = 9.81,
+    pto_controller=None,
+    sensor_noise=None,
+    sensor_dropout=None,
+    fault_joint_friction=None,
+    output_stride: int = 1,
 ) -> WaveStarResponse:
     """Integrate the published unforced WECCCOMP WaveStar linkage.
 
@@ -95,6 +101,23 @@ def run_wavestar_published(
     steps = round(end_time / dt)
     if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
         raise ValueError("WaveStar duration needs an integer number of steps")
+    if (not isinstance(output_stride, int) or output_stride < 1
+            or steps % output_stride):
+        raise ValueError("WaveStar output_stride must divide the step count")
+    if pto_controller is None:
+        if sensor_noise is not None or sensor_dropout is not None:
+            raise ValueError("WaveStar sensor inputs need a PTO controller")
+    else:
+        if sensor_noise is None:
+            sensor_noise = np.zeros(steps + 1)
+        if sensor_dropout is None:
+            sensor_dropout = np.zeros(steps + 1, dtype=bool)
+        sensor_noise = np.asarray(sensor_noise, dtype=float)
+        sensor_dropout = np.asarray(sensor_dropout, dtype=bool)
+        if (sensor_noise.shape != (steps + 1,)
+                or sensor_dropout.shape != (steps + 1,)
+                or not np.isfinite(sensor_noise).all()):
+            raise ValueError("WaveStar sensor records must cover every step")
     incident = synthesize_irregular_response(
         hydro_file, components, dt=dt / 2, end_time=end_time,
         ramp_time=ramp_time, rho=rho, g=g,
@@ -164,7 +187,7 @@ def run_wavestar_published(
         bias_acceleration = np.array([bias[0], 0., bias[1], 0., 0., 0.])
         return position, jacobian, bias_acceleration
 
-    def derivative(state, excitation):
+    def derivative(state, excitation, time, pto_force):
         angle, speed = state[:2]
         float_position, float_jacobian, float_bias = body_motion(
             float_center, angle, speed,
@@ -182,28 +205,57 @@ def run_wavestar_published(
                 + arm_jacobian @ arm_rigid @ arm_jacobian)
         torque = (float_jacobian @ (force - float_effective @ float_bias)
                   + arm_jacobian @ (arm_gravity - arm_rigid @ arm_bias))
+        torque += pto_force * linkage.pto_speed(angle, 1.)
+        if fault_joint_friction is not None:
+            rod = (linkage.point_position(linkage.pto_arm, angle)
+                   - linkage.pto_base)
+            rod_tangent = linkage.point_velocity(linkage.pto_arm, angle, 1.)
+            rod_angle_jacobian = ((rod[0] * rod_tangent[1]
+                                   - rod[1] * rod_tangent[0]) / (rod @ rod))
+            joint_jacobians = (-1 - rod_angle_jacobian,
+                               -rod_angle_jacobian, 1.)
+            for joint, joint_jacobian in enumerate(joint_jacobians):
+                if joint == 2 and not (55 < time < 115):
+                    continue
+                torque += (fault_joint_friction.torque(joint_jacobian * speed)
+                           * joint_jacobian)
         radiation_state = (state_matrix @ state[2:]
                            + input_matrix @ (float_jacobian * speed))
         return np.r_[speed, torque / mass, radiation_state]
 
     state = np.zeros(count + 2)
-    history = np.zeros((steps + 1, count + 2))
-    for index in range(steps):
-        first = derivative(state, incident.excitation_force[2 * index])
+    sample_count = steps // output_stride + 1
+    history = np.zeros((sample_count, count + 2))
+    pto_forces = np.zeros(sample_count)
+    for index in range(steps + 1):
+        pto_force = (0. if pto_controller is None else pto_controller.step(
+            linkage.pto_stroke(state[0]),
+            noise=sensor_noise[index], dropout=sensor_dropout[index],
+        ))
+        if index % output_stride == 0:
+            history[index // output_stride] = state
+            pto_forces[index // output_stride] = pto_force
+        if index == steps:
+            break
+        time = index * dt
+        first = derivative(state, incident.excitation_force[2 * index],
+                           time, pto_force)
         second = derivative(state + dt * first / 2,
-                            incident.excitation_force[2 * index + 1])
+                            incident.excitation_force[2 * index + 1],
+                            time + dt / 2, pto_force)
         third = derivative(state + dt * second / 2,
-                           incident.excitation_force[2 * index + 1])
+                           incident.excitation_force[2 * index + 1],
+                           time + dt / 2, pto_force)
         fourth = derivative(state + dt * third,
-                            incident.excitation_force[2 * index + 2])
+                            incident.excitation_force[2 * index + 2],
+                            time + dt, pto_force)
         state += dt * (first + 2 * second + 2 * third + fourth) / 6
-        history[index + 1] = state
 
     angle = history[:, 0]
     speed = history[:, 1]
 
     def body_output(neutral_center):
-        positions = np.zeros((steps + 1, 6))
+        positions = np.zeros((sample_count, 6))
         velocities = np.zeros_like(positions)
         positions[:, [0, 2]] = linkage.point_position(neutral_center, angle)
         positions[:, 4] = angle
@@ -216,8 +268,8 @@ def run_wavestar_published(
     float_position, float_velocity = body_output(float_center)
     arm_position, arm_velocity = body_output(arm_center)
     return WaveStarResponse(
-        time=np.arange(steps + 1) * dt,
-        wave_elevation=incident.elevation[::2],
+        time=np.arange(sample_count) * (dt * output_stride),
+        wave_elevation=incident.elevation[::2 * output_stride],
         angle=angle,
         angular_speed=speed,
         float_position=float_position,
@@ -226,6 +278,7 @@ def run_wavestar_published(
         arm_velocity=arm_velocity,
         pto_stroke=linkage.pto_stroke(angle),
         pto_speed=linkage.pto_speed(angle, speed),
-        excitation_force=incident.excitation_force[::2],
+        excitation_force=incident.excitation_force[::2 * output_stride],
         radiation_force=history[:, 2:] @ output_matrix.T,
+        pto_force=pto_forces,
     )

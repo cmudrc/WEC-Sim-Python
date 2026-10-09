@@ -1205,9 +1205,25 @@ axial_force = controller.step(stroke, noise=position_noise, dropout=False)
 ```
 
 Call `step` every 0.001 s with the current B-to-C stroke. Its sensor noise
-and dropout inputs make the stochastic fault realization explicit. These PTO
-component checks do not yet establish coupled motion parity for that
-application; see [PARITY.md](PARITY.md).
+and dropout inputs make the stochastic fault realization explicit. For the
+published fault application's coupled dynamics, use the same sea and HDF5
+from above with a chosen sensor disturbance:
+
+```python
+from wecsim import run_wavestar_fault_published
+
+rng = np.random.default_rng(1)
+samples = 141_201  # 141.2 s at 0.001 s, including the initial sample
+noise = rng.normal(0, 0.003, samples)
+dropout = rng.random(samples) < 0.03
+response = run_wavestar_fault_published(hydro, sea, noise, dropout)
+print(response.angle, response.pto_force)
+```
+
+For an exact paired MATLAB run, supply its realized noise and dropout record.
+The runner calculates its own body motion, sensor geometry, controller states,
+and forces. The source's fitted radiation model is confined to this case; see
+[PARITY.md](PARITY.md) for the full paired gates and limits.
 
 The paired 300 s test drives the network and valve model with MATLAB's saved
 rod speed, without saved pressure, flow, or force as inputs. The legacy source
