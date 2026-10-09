@@ -239,6 +239,33 @@ uses the published regular-wave fixed-frequency hydrodynamic formulation,
 with body-to-body radiation coupling disabled as in the source case. Its
 paired trajectory and remaining scope are in [PARITY.md](PARITY.md).
 
+The same coupled dynamics can be configured with the public `WEC` builder:
+
+```python
+from wecsim import MoorDyn, RegularWave, WEC
+
+wec = WEC("Floating OWC")
+floater = wec.body("floater", "floatingOWC.h5", hydro_body=1,
+                   inertia=(1.531e9, 1.531e9, 0.1118e9))
+column = wec.body("column", "floatingOWC.h5", hydro_body=2,
+                  mass=4_493_450)
+wec.floating_owc(
+    floater, column,
+    moordyn=MoorDyn("path/to/libmoordyn.so", "path/to/writable/lines.txt"),
+    moordyn_point=floater.at(0, 0, 31.945),
+    column_height=50.69, column_diameter=5.89,
+    pto_name="slider", pto_stiffness=15_000, pto_damping=60_000,
+)
+result = wec.run(RegularWave(4.5, 11.2), dt=0.01,
+                 end_time=150, ramp_time=50)
+print(result.bodies["column"].position[-1], result.ptos["slider"].force[-1])
+```
+
+`result.ptos["slider"].absorbed_power` is damper dissipation. The complete
+spring-plus-damper mechanical power, chamber pressure, turbine outputs, and
+MoorDyn coupling histories are in `dict(result.raw.extra_outputs)`. The
+column inertia defaults to that of a uniform cylinder when omitted.
+
 For a regular-wave declutching PTO, pass
 `control=DeclutchingControl(gain=232_020, declutch_time=0.8)` to `wec.pto`
 instead of constant damping. Import `DeclutchingControl` from `wecsim`.

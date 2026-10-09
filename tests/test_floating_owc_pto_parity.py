@@ -7,7 +7,7 @@ import shutil
 import numpy as np
 import pytest
 
-from wecsim import MoorDyn, solve_floating_owc
+from wecsim import MoorDyn, RegularWave, WEC
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -60,27 +60,47 @@ def test_nonzero_floating_owc_pto_dynamics(tmp_path):
     input_file = input_dir / "lines.txt"
     shutil.copyfile(Path(APPLICATIONS) / "OWC/FloatingOWC/Mooring/lines.txt",
                     input_file)
-    response = solve_floating_owc(
-        HYDRO, MoorDyn(LIBRARY, input_file), end_time=150,
-        pto_stiffness=15_000, pto_damping=60_000,
+    wec = WEC("Floating OWC")
+    float_body = wec.body(
+        "floater", HYDRO, hydro_body=1,
+        inertia=(1.531e9, 1.531e9, 0.1118e9),
     )
+    column_body = wec.body(
+        "column", HYDRO, hydro_body=2, mass=4_493_450,
+    )
+    wec.floating_owc(
+        float_body, column_body, moordyn=MoorDyn(LIBRARY, input_file),
+        moordyn_point=float_body.at(0, 0, 31.945),
+        column_height=50.69, column_diameter=5.89,
+        pto_name="turbine_slider", pto_stiffness=15_000,
+        pto_damping=60_000,
+    )
+    response = wec.run(RegularWave(4.5, 11.2), dt=.01,
+                       end_time=150, ramp_time=50)
+    extras = dict(response.raw.extra_outputs)
     np.testing.assert_allclose(response.time, floater[:, 0], rtol=0, atol=1e-8)
-    _bound("floater position (m)", response.floater_pose[:, :3],
+    _bound("wave elevation (m)", response.wave_elevation, wave[:, 1], 1e-10)
+    np.testing.assert_allclose(response.coordinates["column_stroke"].position,
+                               response.ptos["turbine_slider"].stroke,
+                               rtol=0, atol=0)
+    _bound("floater position (m)", response.bodies["floater"].position[:, :3],
            floater[:, 1:4], .007)
-    _bound("floater rotation (rad)", response.floater_pose[:, 3:6],
+    _bound("floater rotation (rad)", response.bodies["floater"].position[:, 3:6],
            floater[:, 4:7], 1e-4)
-    _bound("column position (m)", response.column_pose[:, :3],
+    _bound("column position (m)", response.bodies["column"].position[:, :3],
            column[:, 1:4], .003)
-    _bound("PTO stroke (m)", response.stroke, pto[:, 3], .008)
-    _bound("PTO force (N)", response.pto_force, source_pto_force, 400)
-    _bound("PTO mechanical power (W)", -response.pto_mechanical_power,
+    _bound("PTO stroke (m)", response.ptos["turbine_slider"].stroke,
+           pto[:, 3], .008)
+    _bound("PTO force (N)", response.ptos["turbine_slider"].force,
+           source_pto_force, 400)
+    _bound("PTO mechanical power (W)", -extras["pto_mechanical_power"],
            pto[:, 21], 1_500)
-    _bound("chamber pressure (Pa)", response.chamber_pressure,
+    _bound("chamber pressure (Pa)", extras["chamber_pressure"],
            pressure[:, 1], 20)
-    _bound("rotor speed (rad/s)", response.turbine_speed, rotor[:, 1], .8)
-    _bound("turbine load power (W)", response.turbine_power,
+    _bound("rotor speed (rad/s)", extras["turbine_speed"], rotor[:, 1], .8)
+    _bound("turbine load power (W)", extras["turbine_power"],
            turbine_power[:, 1], 50)
     force_peak = np.max(np.abs(coupling[1:, 13:19]), axis=0)
     force_error = np.max(np.abs(
-        response.mooring_force[1:] - coupling[1:, 13:19]), axis=0)
+        extras["moordyn_connection_force"][1:] - coupling[1:, 13:19]), axis=0)
     assert np.all(force_error < .015 * force_peak), force_error / force_peak

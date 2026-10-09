@@ -17,6 +17,7 @@ import numpy as np
 from .caseDynamics import CaseResponse, run_case
 from .controls import DeclutchingControl, LatchingControl
 from .directLinearGenerator import DirectLinearGenerator
+from .floatingOwc import FloatingOwcChamber, FloatingOwcTurbine
 from .hardStops import LinearHardStops
 from .morison import MorisonElement
 from .moorDyn import MoorDyn
@@ -131,6 +132,22 @@ class _FixedHinge:
     stiffness: float
     equilibrium_angle: float
     added_mass_scheme: str
+
+
+@dataclass(frozen=True)
+class _FloatingOwc:
+    floater: Body
+    column: Body
+    moordyn: MoorDyn
+    moordyn_point: BodyPoint | None
+    column_height: float
+    column_diameter: float
+    pto_name: str
+    pto_stiffness: float
+    pto_damping: float
+    chamber: FloatingOwcChamber | None
+    turbine: FloatingOwcTurbine | None
+    initial_rotor_speed: float
 
 
 @dataclass(frozen=True)
@@ -426,6 +443,7 @@ class WEC:
         self._floating_gbm_orifice: dict | None = None
         self._floating_joint: _FloatingJoint | None = None
         self._fixed_hinge: _FixedHinge | None = None
+        self._floating_owc: _FloatingOwc | None = None
         self._morison_elements: list[tuple[Body, MorisonElement]] = []
 
     def body(self, name: str, hydro_file: str | Path, *,
@@ -541,7 +559,7 @@ class WEC:
         """
         if not any(body is item for item in self.bodies):
             raise ValueError("floating GBM body must belong to this WEC")
-        if self._floating_gbm_body is not None:
+        if self._floating_gbm_body is not None or self._floating_owc is not None:
             raise ValueError("a floating GBM body is already selected")
         if orifice is not None and not isinstance(orifice, OrificePTO):
             raise TypeError("orifice must be an OrificePTO")
@@ -594,6 +612,7 @@ class WEC:
         if (len(self.bodies) != 2 or self.bodies[0] is not float_body
                 or self.bodies[1] is not spar_body or self._floating_joint is not None
                 or self._floating_gbm_body is not None or self._fixed_hinge is not None
+                or self._floating_owc is not None
                 or self.coordinates
                 or self.ptos or self.rotational_ptos or self._morison_elements):
             raise ValueError("floating_joint needs exactly two ordered bodies and no other layout or PTO")
@@ -623,6 +642,55 @@ class WEC:
             radiation_method, added_mass_scheme, moordyn, moordyn_point,
         )
 
+    def floating_owc(
+        self, floater: Body, column: Body, *, moordyn: MoorDyn,
+        column_height: float, column_diameter: float,
+        moordyn_point: BodyPoint | None = None,
+        pto_name: str = "column_slider", pto_stiffness: float = 0.0,
+        pto_damping: float = 0.0,
+        chamber: FloatingOwcChamber | None = None,
+        turbine: FloatingOwcTurbine | None = None,
+        initial_rotor_speed: float = 150.0,
+    ) -> None:
+        """Select the coupled two-body OWC, axial PTO, air train, and mooring.
+
+        The floater has six motions and the water column slides on its local
+        z axis. Both bodies must use the same two-body HDF5 file in order.
+        """
+        if (len(self.bodies) != 2 or self.bodies[0] is not floater
+                or self.bodies[1] is not column or self.body_to_body
+                or self._floating_owc is not None or self._floating_joint is not None
+                or self._fixed_hinge is not None or self._floating_gbm_body is not None
+                or self.coordinates or self.ptos or self.rotational_ptos
+                or self._morison_elements):
+            raise ValueError("floating_owc needs exactly two ordered bodies and no other layout")
+        if not isinstance(moordyn, MoorDyn):
+            raise TypeError("floating_owc needs a MoorDyn session")
+        if moordyn_point is not None and (
+                not isinstance(moordyn_point, BodyPoint)
+                or moordyn_point.body is not floater
+                or not np.isfinite(moordyn_point.coordinates()).all()):
+            raise ValueError("MoorDyn point must be finite and floater-local")
+        if chamber is not None and not isinstance(chamber, FloatingOwcChamber):
+            raise TypeError("chamber must be FloatingOwcChamber")
+        if turbine is not None and not isinstance(turbine, FloatingOwcTurbine):
+            raise TypeError("turbine must be FloatingOwcTurbine")
+        if not isinstance(pto_name, str) or not pto_name:
+            raise ValueError("floating_owc PTO name must be nonempty")
+        settings = (column_height, column_diameter, pto_stiffness,
+                    pto_damping, initial_rotor_speed)
+        if (any(isinstance(value, bool) or not isinstance(value, Real)
+                for value in settings) or not np.isfinite(settings).all()
+                or column_height <= 0 or column_diameter <= 0
+                or initial_rotor_speed <= 0):
+            raise ValueError("floating_owc settings must be finite and physical")
+        self._floating_owc = _FloatingOwc(
+            floater, column, moordyn, moordyn_point,
+            float(column_height), float(column_diameter), pto_name,
+            float(pto_stiffness), float(pto_damping), chamber, turbine,
+            float(initial_rotor_speed),
+        )
+
     def fixed_hinge(self, flap: Body, base: Body | None = None, *,
                     location: WorldPoint = WorldPoint(0, 0, -10),
                     pto_location: WorldPoint = WorldPoint(0, 0, -8.9),
@@ -639,6 +707,7 @@ class WEC:
                 or base is not None and self.bodies[1] is not base
                 or flap.fixed or self.body_to_body
                 or self._fixed_hinge is not None or self._floating_joint is not None
+                or self._floating_owc is not None
                 or self._floating_gbm_body is not None or self.coordinates
                 or self.ptos or self.rotational_ptos or self._morison_elements):
             raise ValueError("fixed_hinge needs one flap, optional ordered base, and no other layout or PTO")
@@ -762,6 +831,11 @@ class WEC:
         if self._floating_joint is not None:
             return self._floating_joint_case(
                 wave, simulation, initial_coordinate, initial_speed,
+            )
+        if self._floating_owc is not None:
+            return self._floating_owc_case(
+                wave, simulation, radiation_memory,
+                initial_coordinate, initial_speed,
             )
         if self._fixed_hinge is not None:
             return self._fixed_hinge_case(
@@ -953,6 +1027,74 @@ class WEC:
                                "point": joint.moordyn_point.coordinates()}
         return case
 
+    def _floating_owc_case(self, wave, simulation, radiation_memory,
+                           initial_coordinate, initial_speed) -> dict:
+        layout = self._floating_owc
+        if (len(self.bodies) != 2 or self.bodies[0] is not layout.floater
+                or self.bodies[1] is not layout.column
+                or self._floating_joint is not None or self._fixed_hinge is not None
+                or self._floating_gbm_body is not None or self.coordinates
+                or self.ptos or self.rotational_ptos or self._morison_elements
+                or type(wave) is not RegularWave or wave.direction != 0
+                or radiation_memory is not None or initial_coordinate is not None
+                or initial_speed is not None):
+            raise ValueError("floating_owc currently needs zero-heading regular waves and no radiation memory or custom initial state")
+        if (layout.floater.hydro_body not in (None, 1)
+                or layout.column.hydro_body not in (None, 2)):
+            raise ValueError("floating_owc bodies need ordered HDF5 body numbers")
+        for body in (layout.floater, layout.column):
+            if (body.fixed or body.hydro_file is None or body.mean_drift != "none"
+                    or body.passive_yaw or body.geometry_file is not None
+                    or body.nonlinear_hydro is not None
+                    or body.variable_hydro is not None or body.drag_coefficient
+                    or body.drag_area or body.passive_yaw_threshold
+                    or body.yaw_heading_bank is not None):
+                raise ValueError("floating_owc bodies cannot add other force models")
+        if layout.floater.mass != "equilibrium":
+            if (isinstance(layout.floater.mass, bool)
+                    or not isinstance(layout.floater.mass, Real)
+                    or not np.isfinite(layout.floater.mass)
+                    or layout.floater.mass <= 0):
+                raise ValueError("floater mass needs equilibrium or a positive value")
+        if (isinstance(layout.column.mass, bool)
+                or not isinstance(layout.column.mass, Real)
+                or not np.isfinite(layout.column.mass)
+                or layout.column.mass <= 0):
+            raise ValueError("column mass must be positive")
+        floater_inertia = np.asarray(layout.floater.inertia, dtype=float)
+        column_inertia = np.asarray(layout.column.inertia, dtype=float)
+        if (floater_inertia.shape != (3,) or column_inertia.shape != (3,)
+                or not np.isfinite(floater_inertia).all()
+                or not np.isfinite(column_inertia).all()
+                or np.any(floater_inertia <= 0)
+                or (np.any(column_inertia != 0) and np.any(column_inertia <= 0))):
+            raise ValueError("floater inertia must be positive; column inertia is positive or automatic")
+        simulation.setdefault("ramp_time", 50.0)
+        return {
+            "name": self.name, "simulation": simulation,
+            "wave": wave.as_case(),
+            "bodies": [
+                {"name": layout.floater.name, "hydro_file": str(layout.floater.hydro_file),
+                 "hydro_body": 1, "mass": layout.floater.mass,
+                 "inertia": floater_inertia.tolist()},
+                {"name": layout.column.name, "hydro_file": str(layout.column.hydro_file),
+                 "hydro_body": 2, "mass": float(layout.column.mass),
+                 "inertia": column_inertia.tolist()},
+            ],
+            "constraint": {
+                "kind": "floating_owc", "column_height": layout.column_height,
+                "column_diameter": layout.column_diameter,
+                "initial_rotor_speed": layout.initial_rotor_speed,
+                "chamber": layout.chamber, "turbine": layout.turbine,
+            },
+            "pto": {"kind": "column_slider", "name": layout.pto_name,
+                    "stiffness": layout.pto_stiffness,
+                    "damping": layout.pto_damping},
+            "mooring": {"kind": "moor_dyn", "session": layout.moordyn,
+                        "point": (layout.moordyn_point.coordinates()
+                                  if layout.moordyn_point is not None else None)},
+        }
+
     def _fixed_hinge_case(self, wave, simulation,
                           initial_coordinate, initial_speed) -> dict:
         hinge = self._fixed_hinge
@@ -1061,6 +1203,18 @@ class WEC:
             return WECResult(
                 response.time, bodies, coordinates,
                 {self._floating_joint.pto_name: pto},
+                response.wave_elevation, case, response,
+            )
+        if self._floating_owc is not None:
+            pto = PTOHistory(
+                response.pto_stroke, response.pto_velocity,
+                response.pto_force, response.pto_absorbed_power,
+            )
+            return WECResult(
+                response.time, bodies,
+                {"column_stroke": MotionHistory(response.pto_stroke,
+                                                response.pto_velocity)},
+                {self._floating_owc.pto_name: pto},
                 response.wave_elevation, case, response,
             )
         if self._fixed_hinge is not None:
