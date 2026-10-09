@@ -15,9 +15,12 @@ input_file = fullfile(case_dir, 'wecSimInputFile.m');
 contents = fileread(input_file);
 old_end = 'simu.endTime = 1000;';
 old_explorer = 'simu.explorer=''on'';';
-assert(contains(contents, old_end) && contains(contents, old_explorer));
+old_output_step = 'simu.dtOut = 0.1;';
+assert(contains(contents, old_end) && contains(contents, old_explorer) ...
+    && contains(contents, old_output_step));
 contents = strrep(contents, old_end, 'simu.endTime = 10;');
 contents = strrep(contents, old_explorer, 'simu.explorer=''off'';');
+contents = strrep(contents, old_output_step, 'simu.dtOut = 0.01;');
 fid = fopen(input_file, 'w');
 assert(fid ~= -1);
 fprintf(fid, '%s', contents);
@@ -35,12 +38,20 @@ rotor_speed = output.windTurbine(1).rotorSpeed;
 blade_pitch = output.windTurbine(1).bladePitch;
 generator_torque = output.windTurbine(1).genTorque;
 wind_speed = output.windTurbine(1).windSpeed;
+azimuth = output.windTurbine(1).azimuth;
+blade_aero_load = cat(3, output.windTurbine(1).blade1AeroLoad, ...
+    output.windTurbine(1).blade2AeroLoad, ...
+    output.windTurbine(1).blade3AeroLoad);
+tower_base_load = output.windTurbine(1).towerBaseLoad;
 assert(all(isfinite(body_position), 'all'));
 assert(all(isfinite(body_velocity), 'all'));
 assert(all(isfinite(rotor_speed), 'all'));
 assert(all(isfinite(blade_pitch), 'all'));
 assert(all(isfinite(generator_torque), 'all'));
+assert(all(isfinite(azimuth), 'all'));
+assert(all(isfinite(blade_aero_load), 'all'));
 save(fullfile(root, 'matlab-most-short.mat'), ...
     'body_time', 'body_position', 'body_velocity', 'turbine_time', ...
-    'rotor_speed', 'blade_pitch', 'generator_torque', 'wind_speed', '-v7');
+    'rotor_speed', 'blade_pitch', 'generator_torque', 'wind_speed', ...
+    'azimuth', 'blade_aero_load', 'tower_base_load', '-v7');
 end
