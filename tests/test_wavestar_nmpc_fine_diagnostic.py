@@ -65,7 +65,28 @@ def test_fine_step_precontrol_plant_diagnostic():
         "pitch_rad": np.max(np.abs(response.angle - source_float[:, 5])),
         "pitch_speed_rad_s": np.max(np.abs(
             response.angular_speed - source_float[:, 11])),
+        "float_center_m": np.max(np.abs(
+            response.float_position[:, [0, 2]]
+            - source_float[:, [1, 3]])),
+        "float_center_speed_m_s": np.max(np.abs(
+            response.float_velocity[:, [0, 2]]
+            - source_float[:, [7, 9]])),
+        "pto_stroke_m": np.max(np.abs(
+            response.pto_stroke - source_pto[:, 3])),
+        "pto_speed_m_s": np.max(np.abs(
+            response.pto_speed - source_pto[:, 9])),
         "radiation_N_or_Nm": np.max(np.abs(
             response.radiation_force - source_forces[:, 1:7])),
     }
+    limits = {
+        "pitch_rad": 2e-5,
+        "pitch_speed_rad_s": 4e-4,
+        "float_center_m": 1e-5,
+        "float_center_speed_m_s": 2e-4,
+        "pto_stroke_m": 4e-6,
+        "pto_speed_m_s": 8e-5,
+        "radiation_N_or_Nm": 5e-4,
+    }
+    for name, limit in limits.items():
+        assert errors[name] < limit, f"{name}: {errors[name]} >= {limit}"
     print("fine-step WaveStar precontrol errors:", errors)
