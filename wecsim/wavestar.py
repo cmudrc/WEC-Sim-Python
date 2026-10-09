@@ -1,8 +1,13 @@
 """Planar linkage used by the published WECCCOMP WaveStar model."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
+import h5py
 import numpy as np
+from scipy.sparse import block_diag, csr_matrix
+
+from .irregularWave import IrregularComponents, synthesize_irregular_response
 
 
 @dataclass(frozen=True)
@@ -47,3 +52,180 @@ class WaveStarLinkage:
         arm = self.point_position(self.pto_arm, angle) - self.pto_base
         arm_speed = self.point_velocity(self.pto_arm, angle, angular_speed)
         return -np.sum(arm * arm_speed, axis=-1) / np.linalg.norm(arm, axis=-1)
+
+
+@dataclass(frozen=True)
+class WaveStarResponse:
+    time: np.ndarray
+    wave_elevation: np.ndarray
+    angle: np.ndarray
+    angular_speed: np.ndarray
+    float_position: np.ndarray
+    float_velocity: np.ndarray
+    arm_position: np.ndarray
+    arm_velocity: np.ndarray
+    pto_stroke: np.ndarray
+    pto_speed: np.ndarray
+    excitation_force: np.ndarray
+    radiation_force: np.ndarray
+
+
+def run_wavestar_published(
+    hydro_file: str | Path,
+    components: IrregularComponents,
+    *,
+    dt: float = .01,
+    end_time: float = 141.2,
+    ramp_time: float = 7.06,
+    rho: float = 1000.,
+    g: float = 9.81,
+) -> WaveStarResponse:
+    """Integrate the published unforced WECCCOMP WaveStar linkage.
+
+    The pinned case uses a fitted state-space radiation model. Its active
+    damping is positive, but the fit differs in magnitude from the BEM table.
+    This runner uses that fit, with zero direct feedthrough as in the pinned
+    WEC-Sim block, for comparison with the application. It does not change the
+    general WEC radiation default.
+    """
+    if (not np.isfinite([dt, end_time, ramp_time, rho, g]).all()
+            or dt <= 0 or end_time <= 0 or ramp_time < 0
+            or rho <= 0 or g <= 0):
+        raise ValueError("WaveStar simulation settings are invalid")
+    steps = round(end_time / dt)
+    if not np.isclose(steps * dt, end_time, rtol=0, atol=1e-10):
+        raise ValueError("WaveStar duration needs an integer number of steps")
+    incident = synthesize_irregular_response(
+        hydro_file, components, dt=dt / 2, end_time=end_time,
+        ramp_time=ramp_time, rho=rho, g=g,
+    )
+    with h5py.File(hydro_file) as h5:
+        center = np.asarray(h5["body1/properties/cg"]).ravel()
+        buoyancy_center = np.asarray(h5["body1/properties/cb"]).ravel()
+        volume = float(np.asarray(h5["body1/properties/disp_vol"]).item())
+        if (center.shape != (3,) or buoyancy_center.shape != (3,)
+                or not np.isfinite([*center, *buoyancy_center, volume]).all()
+                or volume <= 0):
+            raise ValueError("WaveStar hydrodynamic body properties are invalid")
+        hydro = h5["body1/hydro_coeffs"]
+        added_mass = np.asarray(hydro["added_mass/inf_freq"]) * rho
+        restoring = (np.asarray(hydro["linear_restoring_stiffness"])
+                     * rho * g)
+        fit = hydro["radiation_damping/state_space"]
+        order = np.asarray(fit["it"], dtype=int)
+        matrix_a = np.asarray(fit["A/all"])
+        matrix_b = np.asarray(fit["B/all"])
+        matrix_c = np.asarray(fit["C/all"]) * rho
+    if (added_mass.shape != (6, 6) or restoring.shape != (6, 6)
+            or order.shape != (6, 6) or np.any(order < 0)
+            or not np.isfinite(added_mass).all()
+            or not np.isfinite(restoring).all()):
+        raise ValueError("WaveStar HDF5 needs six-DOF hydrodynamics")
+
+    blocks = []
+    active = [(output, input_axis, int(order[output, input_axis]))
+              for output in range(6) for input_axis in (0, 2, 4)
+              if order[output, input_axis] > 0]
+    count = sum(item[2] for item in active)
+    input_matrix = np.zeros((count, 6))
+    output_matrix = np.zeros((6, count))
+    offset = 0
+    for output, input_axis, size in active:
+        blocks.append(csr_matrix(matrix_a[output, input_axis, :size, :size]))
+        input_matrix[offset:offset + size, input_axis] = (
+            matrix_b[output, input_axis, :size, 0]
+        )
+        output_matrix[output, offset:offset + size] = (
+            matrix_c[output, input_axis, 0, :size]
+        )
+        offset += size
+    state_matrix = block_diag(blocks, format="csr")
+
+    linkage = WaveStarLinkage()
+    float_center = center[[0, 2]]
+    arm_center = np.array([-.3301, .2551])
+    float_mass, arm_mass = 3.075, 1.157
+    float_inertia, arm_inertia = .001450, .0606
+    float_rigid = np.diag([float_mass] * 3 + [0., float_inertia, 0.])
+    arm_rigid = np.diag([arm_mass] * 3 + [0., arm_inertia, 0.])
+    float_effective = float_rigid + added_mass
+    pitch_damping = np.diag([0., 0., 0., 0., 1.8, 0.])
+    restoring_bias = np.zeros(6)
+    restoring_bias[2] = (float_mass - rho * volume) * g
+    restoring_bias[3] = rho * volume * g * (center[1] - buoyancy_center[1])
+    restoring_bias[4] = rho * volume * g * (buoyancy_center[0] - center[0])
+    arm_gravity = np.array([0., 0., -arm_mass * g, 0., 0., 0.])
+
+    def body_motion(neutral_center, angle, speed):
+        position = linkage.point_position(neutral_center, angle)
+        tangent = linkage.point_velocity(neutral_center, angle, 1.)
+        bias = -(position - linkage.pivot) * speed**2
+        jacobian = np.array([tangent[0], 0., tangent[1], 0., 1., 0.])
+        bias_acceleration = np.array([bias[0], 0., bias[1], 0., 0., 0.])
+        return position, jacobian, bias_acceleration
+
+    def derivative(state, excitation):
+        angle, speed = state[:2]
+        float_position, float_jacobian, float_bias = body_motion(
+            float_center, angle, speed,
+        )
+        _, arm_jacobian, arm_bias = body_motion(arm_center, angle, speed)
+        displacement = np.array([
+            float_position[0] - float_center[0], 0.,
+            float_position[1] - float_center[1], 0., angle, 0.,
+        ])
+        radiation = output_matrix @ state[2:]
+        force = (excitation - radiation - restoring_bias
+                 - restoring @ displacement
+                 - pitch_damping @ (float_jacobian * speed))
+        mass = (float_jacobian @ float_effective @ float_jacobian
+                + arm_jacobian @ arm_rigid @ arm_jacobian)
+        torque = (float_jacobian @ (force - float_effective @ float_bias)
+                  + arm_jacobian @ (arm_gravity - arm_rigid @ arm_bias))
+        radiation_state = (state_matrix @ state[2:]
+                           + input_matrix @ (float_jacobian * speed))
+        return np.r_[speed, torque / mass, radiation_state]
+
+    state = np.zeros(count + 2)
+    history = np.zeros((steps + 1, count + 2))
+    for index in range(steps):
+        first = derivative(state, incident.excitation_force[2 * index])
+        second = derivative(state + dt * first / 2,
+                            incident.excitation_force[2 * index + 1])
+        third = derivative(state + dt * second / 2,
+                           incident.excitation_force[2 * index + 1])
+        fourth = derivative(state + dt * third,
+                            incident.excitation_force[2 * index + 2])
+        state += dt * (first + 2 * second + 2 * third + fourth) / 6
+        history[index + 1] = state
+
+    angle = history[:, 0]
+    speed = history[:, 1]
+
+    def body_output(neutral_center):
+        positions = np.zeros((steps + 1, 6))
+        velocities = np.zeros_like(positions)
+        positions[:, [0, 2]] = linkage.point_position(neutral_center, angle)
+        positions[:, 4] = angle
+        velocities[:, [0, 2]] = linkage.point_velocity(
+            neutral_center, angle, speed,
+        )
+        velocities[:, 4] = speed
+        return positions, velocities
+
+    float_position, float_velocity = body_output(float_center)
+    arm_position, arm_velocity = body_output(arm_center)
+    return WaveStarResponse(
+        time=np.arange(steps + 1) * dt,
+        wave_elevation=incident.elevation[::2],
+        angle=angle,
+        angular_speed=speed,
+        float_position=float_position,
+        float_velocity=float_velocity,
+        arm_position=arm_position,
+        arm_velocity=arm_velocity,
+        pto_stroke=linkage.pto_stroke(angle),
+        pto_speed=linkage.pto_speed(angle, speed),
+        excitation_force=incident.excitation_force[::2],
+        radiation_force=history[:, 2:] @ output_matrix.T,
+    )
