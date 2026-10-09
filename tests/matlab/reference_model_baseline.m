@@ -1735,7 +1735,12 @@ for iCase = 1:numel(cases)
             assert(size(forceValues, 2) == 37 && ...
                 all(isfinite(forceValues), 'all'), ...
                 'WaveStar hydrodynamic force trace is incomplete');
-            writematrix(forceValues(1:10:end, :), fullfile(outDir, ...
+            if string(model) == "WECCCOMP_NMPC_SOURCE"
+                forceSample = 1:numel(response.time);
+            else
+                forceSample = 1:10:numel(response.time);
+            end
+            writematrix(forceValues(forceSample, :), fullfile(outDir, ...
                 sprintf('%s_body1_forces.csv', model)));
             writematrix([body(iBody).mass, body(iBody).inertia], ...
                 fullfile(outDir, sprintf('%s_body1_mass.csv', model)));
@@ -1924,8 +1929,7 @@ for iCase = 1:numel(cases)
         end
         assert(all(isfinite(values), 'all'), 'The MATLAB response contains nonfinite values');
         if ismember(string(model), ...
-                ["WECCCOMP_SOURCE", "WECCCOMP_FAULT_SOURCE", ...
-                 "WECCCOMP_NMPC_SOURCE"])
+                ["WECCCOMP_SOURCE", "WECCCOMP_FAULT_SOURCE"])
             values = values(1:10:end, :);
         elseif string(model) == "RM3_DD_PTO"
             values = values(1:20:end, :);
@@ -1971,8 +1975,7 @@ for iCase = 1:numel(cases)
             end
             assert(all(isfinite(values), 'all'), 'The MATLAB PTO response contains nonfinite values');
             if ismember(string(model), ...
-                    ["WECCCOMP_SOURCE", "WECCCOMP_FAULT_SOURCE", ...
-                     "WECCCOMP_NMPC_SOURCE"])
+                    ["WECCCOMP_SOURCE", "WECCCOMP_FAULT_SOURCE"])
                 values = values(1:10:end, :);
             elseif string(model) == "RM3_DD_PTO"
                 values = values(1:20:end, :);
