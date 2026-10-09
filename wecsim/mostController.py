@@ -1,8 +1,10 @@
 """Baseline generator-torque and blade-pitch control for published MOST."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+from scipy.io import loadmat
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,33 @@ class MostBaselineController:
                          -9353534.9672428276),
             initial_omega=0.57458778181839332,
             initial_pitch=0,
+        )
+
+    @classmethod
+    def from_matlab_files(cls, control_file: str | Path,
+                          steady_states_file: str | Path,
+                          wind_speed: float) -> "MostBaselineController":
+        """Use the controller tables generated for a particular MOST run."""
+        control = loadmat(control_file, simplify_cells=True)["Ctrl"]["Baseline"]
+        states = loadmat(steady_states_file, simplify_cells=True)[
+            "SteadyStates"]["ROSCO"]["SS"]
+        wind = np.asarray(states["WINDSPEED"], dtype=float)
+        if (not np.isfinite(wind_speed) or wind.ndim != 1
+                or not np.isfinite(wind).all()
+                or not np.all(np.diff(wind) > 0)
+                or not wind[0] <= wind_speed <= wind[-1]):
+            raise ValueError("initial wind speed must lie within the steady-state table")
+        return cls(
+            omega_gen=np.asarray(control["omega_gen"], dtype=float),
+            generator_torque=np.asarray(control["Cgen"], dtype=float),
+            omega_max=float(control["omegaMax"]),
+            torque_max_rate=float(control["torqueMaxRate"]),
+            pitch_max_rate=float(control["thetaMaxRate"]),
+            kp=float(control["KP"]), ki=float(control["KI"]),
+            sensitivity=(float(control["c1"]), float(control["c2"]),
+                         float(control["c3"])),
+            initial_omega=float(np.interp(wind_speed, wind, states["ROTSPD"])),
+            initial_pitch=float(np.interp(wind_speed, wind, states["BLADEPITCH"])),
         )
 
     def __post_init__(self):

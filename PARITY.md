@@ -394,27 +394,34 @@ rad/s pitch, and `2.67e-6` rad/s yaw. Rotor speed, azimuth, and generator
 torque differ by at most `0.000163` rpm, `1.09e-4` rad, and `502` N m. The
 yaw-velocity gate is `3e-6` rad/s across both seas; no dynamics coefficients
 were changed for this condition. Both cases cover only the first 10 s of a
-20 s wave ramp with the same below-rated wind. The 30 s developed-sea extension below now covers 10 s after the wave
-ramp. Longer trajectories and other wind/controller regimes remain unpaired.
+20 s wave ramp with the same below-rated wind. The 30 s developed-sea
+extension below covers 10 s after the ramp. Longer trajectories and other
+wind/controller regimes remain unpaired.
 
 A [pinned 30 s MOST developed-sea run](https://github.com/cmudrc/wec-sim-python/pull/140)
 extends the 6 m, seed-2 condition without changing its wind speed or
-controller. Its 1,500-frame TurbSim excerpt produces 749 advected wind frames;
+controller scripts. Its 1,500-frame TurbSim excerpt produces 749 advected wind frames;
 Python reproduces all three components on every saved 10×12×12 frame within
-`1e-12` m/s. Its first 1,001 samples are identical to the shorter MATLAB
-condition. Over all 3,001 samples, Python's independently synthesized wave
+`1e-12` m/s. Over all 3,001 samples, Python's independently synthesized wave
 elevation and six-component excitation differ from MATLAB by at most
-`1.8e-13` m and `2.5e-5` N or N m. The paired six-coordinate platform,
+`1.8e-13` m and `2.5e-5` N or N m. Repeating the pinned MATLAB controller
+generation changed its steady-state and torque tables: the two MATLAB runs
+started 0.0164 rpm and 62.8 kN m apart in rotor speed and generator torque,
+and their surge traces separated by 6.08 mm at 30 s despite identical
+wind, wave, hydro, and mass inputs. The paired Python run now reads each
+run's generated controller tables as static case configuration; no saved
+MATLAB motion or turbine history enters its solve. The six-coordinate platform,
 rotor, and controller solve converges in 14 whole-trajectory passes with
 position and velocity iteration residuals below `3e-7` in their respective
-units. Maximum position differences are 0.372 mm surge, 0.282 mm sway,
-0.078 mm heave, `3.40e-5` rad roll, `2.35e-6` rad pitch, and `1.97e-5`
-rad yaw. Maximum velocity differences are 0.0231 mm/s surge, 0.0690 mm/s
-sway, 0.0442 mm/s heave, `8.24e-6` rad/s roll, `9.25e-7` rad/s pitch, and
-`7.34e-6` rad/s yaw. Rotor speed, azimuth, and generator torque differ by
-at most `0.000180` rpm, `0.000256` rad, and 570 N m. Only the surge-position
-and yaw-velocity gates are wider than in the 10 s paired test: `0.5` mm
-and `1e-5` rad/s, respectively. The other gates are unchanged. The longer
+units. Against the regenerated source, maximum position differences are
+0.477 mm surge, 0.284 mm sway, 0.079 mm heave, `3.41e-5` rad roll,
+`2.89e-6` rad pitch, and `1.79e-5` rad yaw. Maximum velocity differences
+are 0.0255 mm/s surge, 0.0685 mm/s sway, 0.0443 mm/s heave,
+`8.26e-6` rad/s roll, `8.12e-7` rad/s pitch, and `7.29e-6` rad/s yaw.
+Rotor speed, azimuth, and generator torque differ by at most `0.000219`
+rpm, `0.000299` rad, and 686 N m. The 30 s gates use 0.6 mm surge,
+`1e-5` rad/s yaw speed, and `4e-4` rad azimuth; other trajectory gates
+remain as in the 10 s test. The longer
 source trace exposed a frame error: its angular velocity is expressed in
 world coordinates, while Euler angle rates are different at nonzero pitch
 and yaw. The Python platform now maps those rates to world angular velocity

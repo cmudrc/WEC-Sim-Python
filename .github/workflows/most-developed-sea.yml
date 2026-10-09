@@ -90,6 +90,8 @@ jobs:
           WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
           WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
           WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
+          WEC_SIM_MOST_CONTROL: applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
+          WEC_SIM_MOST_STEADY_STATES: applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
           WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
           WEC_SIM_MOST_WAVE_HEIGHT: '6'
           WEC_SIM_MOST_PHASE_SEED: '2'

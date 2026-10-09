@@ -110,6 +110,19 @@ rotor = MostRotor.from_iea15mw(blade_data_directory)
 result = rotor.simulate(time, platform_position, platform_velocity, wind_field)
 ```
 
+To reproduce a particular MATLAB MOST run, pass its generated control tables
+as case configuration. The source steady-state optimization can produce
+slightly different tables on separate runs:
+
+```python
+from wecsim import MostBaselineController
+
+controller = MostBaselineController.from_matlab_files(
+    control_mat, steady_states_mat, wind_speed=8.0,
+)
+rotor = MostRotor.from_iea15mw(blade_data_directory, controller=controller)
+```
+
 Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
 runner takes platform motion as input; turbine mass and aerodynamic loads do
 not yet feed back into independently advanced platform motion.
@@ -156,8 +169,9 @@ The runner advances its own rotor, BEM loads, controller, tower reaction, and
 all six platform coordinates until the two trajectories agree within the
 reported `position_residual` and `velocity_residual`. Pass
 `full_six_dof=False` for the earlier surge/heave/pitch reduction. The paired
-six-coordinate gate covers the pinned 10 s MOST case; longer and different
-operating conditions remain to be validated.
+six-coordinate gates cover two pinned 10 s MOST seas and one 30 s condition
+that extends 10 s beyond the wave ramp. Longer and different operating
+conditions remain to be validated.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
