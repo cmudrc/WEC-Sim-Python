@@ -30,6 +30,7 @@ on:
       - 'tests/test_rm3_moordyn_coupled_parity.py'
       - 'tests/test_floating_owc_source.py'
       - 'tests/test_floating_owc_joint.py'
+      - 'tests/test_floating_owc_vertical_motion.py'
       - 'tests/test_floating_owc_chamber.py'
       - 'tests/test_floating_owc_turbine.py'
       - 'tests/test_rm3_mooring_parity.py'
@@ -493,7 +494,7 @@ jobs:
         if: matrix.model == 'RM3_MOORDYN'
         env:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
-      - run: python -m pytest -q tests/test_floating_owc_source.py tests/test_floating_owc_joint.py tests/test_floating_owc_chamber.py tests/test_floating_owc_turbine.py
+      - run: python -m pytest -q tests/test_floating_owc_source.py tests/test_floating_owc_joint.py tests/test_floating_owc_chamber.py tests/test_floating_owc_turbine.py tests/test_floating_owc_vertical_motion.py
         if: matrix.model == 'FLOATING_OWC_SOURCE'
         env:
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
