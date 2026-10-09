@@ -170,6 +170,7 @@ class WaveStarNmpcPredictor:
                 or not np.isclose(start_sample * dt, start_time,
                                   rtol=0, atol=1e-12)):
             raise ValueError("WaveStar NMPC predictor needs aligned samples")
+        self.dt = float(dt)
         self.order = order
         self.horizon = horizon
         self._samples_per_second = samples_per_second
@@ -242,6 +243,7 @@ class WaveStarNmpcController:
                 or generator_efficiency <= 0 or motoring_efficiency <= 0
                 or smoothness <= 0 or start_time < 0):
             raise ValueError("WaveStar NMPC controller settings are invalid")
+        self.dt = float(dt)
         self.horizon = horizon
         self.gain = gain
         self.torque_limit = torque_limit
@@ -315,3 +317,73 @@ class WaveStarNmpcController:
         self._nominal = nominal + solution.x
         return float(np.clip(self._nominal[0],
                              -self.torque_limit, self.torque_limit))
+
+
+class WaveStarNmpcPTO:
+    """Sampled WaveStar NMPC PTO for ``run_wavestar_published``.
+
+    The plant advances at ``plant_dt`` while the observer, predictor,
+    controller, and actuator update every ``control_dt``. The resulting
+    axial force is held between controller samples. Defaults reproduce the
+    published Sea State 6 control settings with a fine plant step.
+    """
+
+    def __init__(
+        self, *, plant_dt: float = .001, control_dt: float = .05,
+        observer: WaveStarNmpcObserver | None = None,
+        predictor: WaveStarNmpcPredictor | None = None,
+        controller: WaveStarNmpcController | None = None,
+        actuator: WaveStarNmpcActuator | None = None,
+    ):
+        if (not np.isfinite([plant_dt, control_dt]).all()
+                or plant_dt <= 0 or control_dt <= 0):
+            raise ValueError("WaveStar NMPC sample steps must be positive")
+        ratio = round(control_dt / plant_dt)
+        if (ratio < 1 or not np.isclose(ratio * plant_dt, control_dt,
+                                       rtol=0, atol=1e-12)):
+            raise ValueError("WaveStar NMPC control step must align with plant")
+        for component in (observer, predictor, controller):
+            if (component is not None and not np.isclose(
+                    component.dt, control_dt, rtol=0, atol=1e-12)):
+                raise ValueError("WaveStar NMPC component step must match control")
+        self.plant_dt = float(plant_dt)
+        self.control_dt = float(control_dt)
+        self.observer = observer or WaveStarNmpcObserver(dt=control_dt)
+        self.predictor = predictor or WaveStarNmpcPredictor(dt=control_dt)
+        self.controller = controller or WaveStarNmpcController(dt=control_dt)
+        self.actuator = actuator or WaveStarNmpcActuator()
+        if self.predictor.horizon != self.controller.horizon:
+            raise ValueError("WaveStar NMPC forecast and control horizons differ")
+        self._ratio = ratio
+        self._step = 0
+        self._force = 0.
+        self._previous_command = 0.
+        self._command_time = []
+        self._command_torque = []
+
+    @property
+    def command_time(self) -> np.ndarray:
+        """Times at which the PTO command was updated, in seconds."""
+        return np.asarray(self._command_time)
+
+    @property
+    def command_torque(self) -> np.ndarray:
+        """Requested PTO torque at each controller sample, in N m."""
+        return np.asarray(self._command_torque)
+
+    def step(self, stroke: float, *, noise: float = 0.,
+             dropout: bool = False) -> float:
+        """Advance one plant sample and return the held axial PTO force."""
+        if noise != 0 or dropout:
+            raise ValueError("WaveStar NMPC sensor faults are unsupported")
+        if self._step % self._ratio == 0:
+            instant = self._step * self.plant_dt
+            state = self.observer.step(stroke, self._previous_command)
+            forecast = self.predictor.step(state[-1])
+            command = self.controller.step(state, forecast, instant)
+            self._force = self.actuator.step(command, stroke)
+            self._previous_command = command
+            self._command_time.append(instant)
+            self._command_torque.append(command)
+        self._step += 1
+        return self._force
