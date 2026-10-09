@@ -10,7 +10,7 @@ from scipy.io import loadmat
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
-from wecsim.wavestar import WaveStarLinkage
+from wecsim.wavestar import WaveStarLinkage, run_wavestar_published
 from wecsim.wavestarNmpc import WaveStarNmpcActuator
 
 
@@ -139,3 +139,43 @@ def test_nmpc_actuator_on_source_command_and_stroke():
                                rtol=0, atol=1e-12)
     np.testing.assert_allclose(force[indices], pto[:, 33],
                                rtol=0, atol=1e-7)
+
+
+def test_nmpc_unforced_plant_motion_diagnostic():
+    """Bound the pre-control solver difference without claiming NMPC parity."""
+    source_float = _source("WECCCOMP_Nonlinear_Model_Predictive_body1")
+    source_pto = _source("WECCCOMP_Nonlinear_Model_Predictive_pto1")
+    source_forces = _source("body1_forces")
+    assert source_float.shape == (4501, 25)
+    assert source_pto.shape == (4501, 43)
+    assert source_forces.shape == (4501, 37)
+    components = _source("components")
+    sea = jonswap_equal_energy_components(
+        HYDRO, significant_height=.1042, peak_period=1.836,
+        directions=np.array([0.]), spreading=np.array([1.]),
+        gamma=3.3, phase=components[:, 3, None],
+    )
+    # The published source uses ode8 at 0.05 s. A finer Python step keeps
+    # the fitted radiation system stable; the numerical paths still differ.
+    response = run_wavestar_published(
+        HYDRO, sea, dt=.001, end_time=9.95, ramp_time=25,
+        g=9.80665, output_stride=50,
+    )
+    count = len(response.time)
+    np.testing.assert_allclose(response.time, source_float[:count, 0],
+                               rtol=0, atol=1e-9)
+    assert np.max(np.abs(source_pto[:count, 31:37])) < 1e-12
+    assert np.max(np.abs(response.angle - source_float[:count, 5])) < .004
+    assert np.max(np.abs(
+        response.angular_speed - source_float[:count, 11]
+    )) < .04
+    assert np.max(np.abs(
+        response.float_position[:, [0, 2]]
+        - source_float[:count][:, [1, 3]]
+    )) < .002
+    assert np.max(np.abs(
+        response.pto_stroke - source_pto[:count, 3]
+    )) < .001
+    assert np.max(np.abs(
+        response.radiation_force - source_forces[:count, 1:7]
+    )) < .2
