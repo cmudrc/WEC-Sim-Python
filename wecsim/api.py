@@ -319,7 +319,7 @@ class PMWave:
     frequency_range: tuple[float, float] | None = None
     water_depth: float | None = None
     current: Current | None = None
-    phase_generator: str = "numpy"
+    phase_generator: str = field(default="numpy", kw_only=True)
 
     def as_case(self) -> dict:
         if self.seed is not None and self.phase_file is not None:
