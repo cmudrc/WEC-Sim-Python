@@ -38,4 +38,4 @@ def test_published_fitted_radiation_force(case, body_to_body):
     )
     error = np.max(np.abs(calculated - expected), axis=0)
     peak = np.max(np.abs(expected), axis=0)
-    assert np.all(error < 1e-3 * np.maximum(peak, 3)), (error, peak)
+    assert np.all(error < 7e-4 * np.maximum(peak, 3)), (error, peak)
