@@ -1,7 +1,7 @@
-"""Wave-surface calculations and VTP output for ParaView.
+"""Wave-surface and body-mesh VTP output for ParaView.
 
 The upstream file contained unfinished MATLAB syntax and could not be imported.
-Body visualization still needs a separate implementation.
+Mooring visualization still needs a separate implementation.
 """
 
 from pathlib import Path
@@ -160,5 +160,112 @@ class ParaviewClass:
             paths.append(path)
         return tuple(paths)
 
-    def write_paraview_vtp(self, *args, **kwargs):
-        raise NotImplementedError("body ParaView output is not implemented")
+    def write_paraview_vtp(
+        self, times, directory, *, body_name, vertices, faces, poses,
+        body_index=1, cell_areas=None, hydrostatic_pressure=None,
+        nonlinear_wave_pressure=None, linear_wave_pressure=None,
+    ) -> tuple[Path, ...]:
+        """Write numbered body VTP meshes using WEC-Sim's XYZ pose order.
+
+        ``faces`` use zero-based triangular vertex indices. Each row of
+        ``poses`` holds surge, sway, heave, roll, pitch, and yaw in SI units.
+        Optional pressure arrays have one row per time and one column per face.
+        """
+        times = np.asarray(times, dtype=float)
+        vertices = np.asarray(vertices, dtype=float)
+        faces = np.asarray(faces)
+        poses = np.asarray(poses, dtype=float)
+        if (times.ndim != 1 or not len(times)
+                or not np.isfinite(times).all()
+                or np.any(np.diff(times) <= 0)
+                or vertices.ndim != 2 or vertices.shape[1] != 3
+                or not len(vertices) or not np.isfinite(vertices).all()
+                or faces.ndim != 2 or faces.shape[1] != 3
+                or not len(faces) or not np.issubdtype(faces.dtype, np.integer)
+                or np.any(faces < 0) or np.any(faces >= len(vertices))
+                or poses.shape != (len(times), 6)
+                or not np.isfinite(poses).all()):
+            raise ValueError("body VTP needs finite time, vertices, triangles, and six-DOF poses")
+        if (not isinstance(body_name, str) or not body_name
+                or body_name in (".", "..") or "/" in body_name
+                or "\\" in body_name or isinstance(body_index, bool)
+                or not isinstance(body_index, (int, np.integer))
+                or body_index < 1):
+            raise ValueError("body VTP needs a name and positive body index")
+        if cell_areas is None:
+            edges = vertices[faces[:, 1]] - vertices[faces[:, 0]]
+            sides = vertices[faces[:, 2]] - vertices[faces[:, 0]]
+            areas = np.linalg.norm(np.cross(edges, sides), axis=1) / 2
+        else:
+            areas = np.asarray(cell_areas, dtype=float)
+        if (areas.shape != (len(faces),) or not np.isfinite(areas).all()
+                or np.any(areas < 0)):
+            raise ValueError("body VTP cell areas must be finite and nonnegative")
+        pressure_fields = {}
+        for name, values in (
+            ("HydrostaticPressure", hydrostatic_pressure),
+            ("WavePressureNonLinear", nonlinear_wave_pressure),
+            ("WavePressureLinear", linear_wave_pressure),
+        ):
+            if values is not None:
+                field = np.asarray(values, dtype=float)
+                if (field.shape != (len(times), len(faces))
+                        or not np.isfinite(field).all()):
+                    raise ValueError(f"body VTP {name} must match time and faces")
+                pressure_fields[name] = field
+
+        body_dir = Path(directory) / f"body{body_index}_{body_name}"
+        body_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for index, pose in enumerate(poses, start=1):
+            roll, pitch, yaw = pose[3:]
+            cx, sx = np.cos(roll), np.sin(roll)
+            cy, sy = np.cos(pitch), np.sin(pitch)
+            cz, sz = np.cos(yaw), np.sin(yaw)
+            rx = np.array([[1, 0, 0], [0, cx, -sx], [0, sx, cx]])
+            ry = np.array([[cy, 0, sy], [0, 1, 0], [-sy, 0, cy]])
+            rz = np.array([[cz, -sz, 0], [sz, cz, 0], [0, 0, 1]])
+            moved = vertices @ (rz @ ry @ rx).T + pose[:3]
+            root = ElementTree.Element("VTKFile", type="PolyData", version="0.1")
+            polydata = ElementTree.SubElement(root, "PolyData")
+            piece = ElementTree.SubElement(
+                polydata, "Piece", NumberOfPoints=str(len(vertices)),
+                NumberOfPolys=str(len(faces)),
+            )
+            points = ElementTree.SubElement(piece, "Points")
+            point_values = ElementTree.SubElement(
+                points, "DataArray", type="Float32",
+                NumberOfComponents="3", format="ascii",
+            )
+            point_values.text = "\n" + "\n".join(
+                f"{x:.5f} {y:.5f} {z:.5f}" for x, y, z in moved
+            ) + "\n"
+            polys = ElementTree.SubElement(piece, "Polys")
+            cells = ElementTree.SubElement(
+                polys, "DataArray", type="Int32", Name="connectivity",
+                format="ascii",
+            )
+            cells.text = "\n" + "\n".join(
+                " ".join(map(str, face)) for face in faces
+            ) + "\n"
+            offsets = ElementTree.SubElement(
+                polys, "DataArray", type="Int32", Name="offsets",
+                format="ascii",
+            )
+            offsets.text = " " + " ".join(
+                str(3 * cell) for cell in range(1, len(faces) + 1)
+            ) + " "
+            cell_data = ElementTree.SubElement(piece, "CellData")
+            for name, values in (("CellArea", areas), *pressure_fields.items()):
+                field = values if name == "CellArea" else values[index - 1]
+                data = ElementTree.SubElement(
+                    cell_data, "DataArray", type="Float32", Name=name,
+                    NumberOfComponents="1", format="ascii",
+                )
+                data.text = " " + " ".join(f"{value:.8g}" for value in field) + " "
+            path = body_dir / f"{body_name}_{index}.vtp"
+            ElementTree.ElementTree(root).write(
+                path, encoding="utf-8", xml_declaration=True,
+            )
+            paths.append(path)
+        return tuple(paths)
