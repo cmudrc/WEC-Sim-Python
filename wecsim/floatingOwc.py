@@ -4,14 +4,82 @@ from dataclasses import dataclass
 from numbers import Real
 
 import numpy as np
+from scipy.spatial.transform import Rotation
+
+
+def _six_component_history(value, label):
+    values = np.asarray(value, dtype=float)
+    single = values.ndim == 1
+    if single:
+        values = values[None, :]
+    if values.ndim != 2 or values.shape[1] != 6 or not np.isfinite(values).all():
+        raise ValueError(f"{label} must contain finite six-component body states")
+    return values, single
+
+
+def _joint_history(value, count, label):
+    values = np.asarray(value, dtype=float)
+    if values.ndim == 0 and count == 1:
+        values = values[None]
+    if values.shape != (count,) or not np.isfinite(values).all():
+        raise ValueError(f"{label} must have one finite value per body state")
+    return values
+
+
+@dataclass(frozen=True)
+class FloatingOwcColumnJoint:
+    """Rigid floater and coaxial water column joined by one axial slider.
+
+    ``center_separation`` is the equilibrium column-center height minus the
+    floater-center height. Poses contain world-center xyz and xyz Euler angles;
+    velocities contain world-center velocity and world angular velocity.
+    The slider's position and speed are measured in the floater's local z axis.
+    """
+
+    center_separation: float
+
+    def __post_init__(self):
+        if (isinstance(self.center_separation, bool)
+                or not isinstance(self.center_separation, Real)
+                or not np.isfinite(self.center_separation)
+                or self.center_separation <= 0):
+            raise ValueError("column center separation must be finite and positive")
+
+    def column_pose(self, floater_pose, stroke):
+        """Return the column's world-center pose from floater pose and stroke."""
+        pose, single = _six_component_history(floater_pose, "floater_pose")
+        slide = _joint_history(stroke, len(pose), "stroke")
+        axis = Rotation.from_euler("xyz", pose[:, 3:6]).apply([0, 0, 1])
+        result = pose.copy()
+        result[:, :3] += (self.center_separation + slide)[:, None] * axis
+        return result[0] if single else result
+
+    def column_velocity(self, floater_pose, floater_velocity,
+                        stroke, stroke_speed):
+        """Return center velocity and world angular speed for the column."""
+        pose, single = _six_component_history(floater_pose, "floater_pose")
+        velocity, velocity_single = _six_component_history(
+            floater_velocity, "floater_velocity")
+        if velocity.shape != pose.shape or velocity_single != single:
+            raise ValueError("floater pose and velocity histories must align")
+        slide = _joint_history(stroke, len(pose), "stroke")
+        slide_speed = _joint_history(stroke_speed, len(pose), "stroke_speed")
+        axis = Rotation.from_euler("xyz", pose[:, 3:6]).apply([0, 0, 1])
+        result = velocity.copy()
+        result[:, :3] += (slide_speed[:, None] * axis
+                          + (self.center_separation + slide)[:, None]
+                          * np.cross(velocity[:, 3:6], axis))
+        return result[0] if single else result
 
 
 @dataclass(frozen=True)
 class FloatingOwcChamber:
-    """Compressible chamber driven by relative water-column motion.
+    """Compressible chamber driven by the published column heave signal.
 
-    Displacement and speed are positive when the water column rises into the
-    chamber. ``pressure`` is gauge pressure in Pa, and ``turbine_speed`` is in
+    The published application supplies column-center world heave relative to
+    its equilibrium height, and column-center world heave speed. Positive
+    heave moves the water column into the chamber. ``pressure`` is gauge pressure
+    in Pa, and ``turbine_speed`` is in
     rad/s. The returned force acts on the water column in the opposite direction
     from positive displacement. This is the chamber law in the published
     ``OWC/FloatingOWC`` Simulink application; body and turbine dynamics are
