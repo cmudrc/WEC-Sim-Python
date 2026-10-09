@@ -267,6 +267,19 @@ switch string(model)
         assert(fid ~= -1, 'Could not correct WaveStar NMPC geometry case');
         fprintf(fid, '%s', contents);
         fclose(fid);
+        if string(model) == "WECCCOMP_NMPC_FINE_DIAG"
+            % The published plot script assumes the run lasts beyond 25 s.
+            % It has no effect on simulation or core WEC-Sim postprocessing.
+            plotFile = fullfile(caseDirs, 'userDefinedFunctions.m');
+            plotContents = fileread(plotFile);
+            assert(contains(plotContents, ...
+                'ii = find(Output_power.time==25);'), ...
+                'The WaveStar NMPC plotting script changed');
+            fid = fopen(plotFile, 'w');
+            assert(fid ~= -1, 'Could not disable the WaveStar plot script');
+            fprintf(fid, '%% Fine pre-control diagnostic: no plots.\n');
+            fclose(fid);
+        end
     case {"ELLIPSOID_NLH_REG", "ELLIPSOID_NLH_CIC", ...
             "ELLIPSOID_NLH_ODE45"}
         hydroDir = fullfile(repoRoot, 'applications', 'Nonlinear_Hydro', ...
