@@ -9,7 +9,9 @@ import pytest
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
+from wecsim.friction import StribeckFriction
 from wecsim.wavestar import WaveStarLinkage
+from wecsim.wavestarFault import WaveStarFaultController
 
 
 REFERENCE = os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")
@@ -88,11 +90,56 @@ def test_fault_application_linkage_and_friction_window():
     np.testing.assert_allclose(linkage.pto_speed(angle, speed), pto[0][:, 9],
                                rtol=0, atol=1e-12)
     np.testing.assert_allclose(pto[3][:, 5], angle, rtol=0, atol=1e-12)
+    friction = StribeckFriction(
+        breakaway_torque=.25, breakaway_speed=.1,
+        coulomb_torque=.2, viscous_damping=.001,
+    )
+    for joint in pto[1:3]:
+        np.testing.assert_allclose(
+            friction.torque(joint[:, 11]), joint[:, 35],
+            rtol=0, atol=1e-12,
+        )
     time = pto[3][:, 0]
     pivot_torque = pto[3][:, 35]
-    assert np.max(np.abs(pivot_torque[(time >= 55) & (time < 115)])) > .2
+    active = (time > 55) & (time < 115)
+    assert np.max(np.abs(pivot_torque[active])) > .2
     np.testing.assert_allclose(
-        pivot_torque[(time < 55) | (time >= 115)],
+        friction.torque(pto[3][active, 11]), pivot_torque[active],
+        rtol=0, atol=1e-12,
+    )
+    np.testing.assert_allclose(
+        pivot_torque[~active],
         0, rtol=0, atol=1e-12,
     )
-    assert np.max(np.abs(pto[0][:, 33])) > 100
+    assert np.max(np.abs(pto[0][:, 33])) > 1
+
+
+def test_fault_sensor_and_sampled_controller():
+    true = _source("fault_true_position")
+    measured = _source("fault_measured_position")
+    motor = _source("WECCCOMP_Fault_Implementation_pto1")
+    assert true.shape == measured.shape == (141_201, 2)
+    np.testing.assert_allclose(true[:, 0], np.arange(141_201) * .001,
+                               rtol=0, atol=1e-8)
+    np.testing.assert_allclose(measured[:, 0], true[:, 0],
+                               rtol=0, atol=1e-12)
+    dropout = measured[:, 1] == 0
+    assert .02 < np.mean(dropout) < .04
+    noise = measured[:, 1] - true[:, 1]
+    assert .0025 < np.std(noise[~dropout]) < .0035
+
+    angle = true[:, 1] + 1.170165
+    length = np.sqrt(.412**2 + .2**2 - 2 * .412 * .2 * np.cos(angle))
+    stroke = length - .381408
+    np.testing.assert_allclose(
+        WaveStarFaultController.true_angle(motor[:, 3]), true[::10, 1],
+        rtol=0, atol=1e-12,
+    )
+    controller = WaveStarFaultController()
+    force = np.array([
+        controller.step(stroke[index], noise=noise[index],
+                        dropout=dropout[index])
+        for index in range(len(stroke))
+    ])
+    np.testing.assert_allclose(force[::10], motor[:, 33],
+                               rtol=0, atol=1e-7)

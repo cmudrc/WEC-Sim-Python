@@ -26,9 +26,11 @@ from .hydraulic import (
 )
 from .electricGenerator import DiscretePILoadController, EquivalentCircuitGenerator
 from .fixedHydroMonopile import FixedHydroMonopileResponse, run_fixed_hydro_monopile
+from .friction import StribeckFriction
 from .mbariCable import MBARICableResponse, run_mbari_cable
 from .wavebotImpedance import WaveBotImpedanceResponse, run_wavebot_impedance
 from .wavestar import WaveStarLinkage, WaveStarResponse, run_wavestar_published
+from .wavestarFault import WaveStarFaultController
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
 from .oswecHydraulic import OSWECHydraulicResponse, run_oswec_rectified_hydraulic
@@ -70,6 +72,8 @@ __all__ = [
     "OSWECDesalinationResponse", "run_oswec_desalination",
     "PlanarCableAttachment", "WecSimCableTension",
     "FixedHydroMonopileResponse", "run_fixed_hydro_monopile",
+    "StribeckFriction",
+    "WaveStarFaultController",
     "MBARICableResponse", "run_mbari_cable",
     "WaveBotImpedanceResponse", "run_wavebot_impedance",
     "WaveStarLinkage", "WaveStarResponse", "run_wavestar_published",

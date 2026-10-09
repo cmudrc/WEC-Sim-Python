@@ -110,6 +110,8 @@ on:
       - 'wecsim/wavebotImpedance.py'
       - 'wecsim/wavebotControl.py'
       - 'wecsim/wavestar.py'
+      - 'wecsim/wavestarFault.py'
+      - 'wecsim/friction.py'
       - 'wecsim/fixedHydroMonopile.py'
       - 'wecsim/rm3Hydraulic.py'
       - 'wecsim/electricGenerator.py'
