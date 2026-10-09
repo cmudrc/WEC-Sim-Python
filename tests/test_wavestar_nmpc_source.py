@@ -12,7 +12,8 @@ from wecsim.irregularWave import (
 )
 from wecsim.wavestar import WaveStarLinkage, run_wavestar_published
 from wecsim import (
-    WaveStarNmpcActuator, WaveStarNmpcObserver, WaveStarNmpcPredictor,
+    WaveStarNmpcActuator, WaveStarNmpcController,
+    WaveStarNmpcObserver, WaveStarNmpcPredictor,
 )
 
 
@@ -211,6 +212,47 @@ def test_nmpc_ar_forecast_from_estimated_excitation():
                                rtol=0, atol=1e-9)
     assert np.max(np.abs(composed[:, 200:220]
                          - source_forecast[:, 200:220])) < 25
+
+
+def test_nmpc_controller_command_from_source_and_composed_inputs():
+    controller = loadmat(
+        Path(REFERENCE) / "WECCCOMP_NMPC_SOURCE_controller.mat",
+        simplify_cells=True,
+    )
+    time = np.asarray(controller["cmd_ptoM"]["time"])
+    source_command = np.asarray(
+        controller["cmd_ptoM"]["signals"]["values"]
+    )
+    source_state = np.asarray(
+        controller["estimated_states"]["signals"]["values"]
+    )
+    source_forecast = np.asarray(
+        controller["AR_excM_pred"]["signals"]["values"]
+    )
+    stroke = np.asarray(
+        controller["motor_displacement"]["signals"]["values"]
+    )
+    assert time.shape == source_command.shape == stroke.shape == (4501,)
+    assert source_state.shape == (4501, 5)
+    assert source_forecast.shape == (40, 4501)
+
+    control = WaveStarNmpcController()
+    replay = np.array([
+        control.step(source_state[index], source_forecast[:, index], instant)
+        for index, instant in enumerate(time)
+    ])
+    np.testing.assert_allclose(replay, source_command, rtol=0, atol=1e-4)
+
+    observer = WaveStarNmpcObserver()
+    predictor = WaveStarNmpcPredictor()
+    control = WaveStarNmpcController()
+    composed = []
+    for index, (instant, position) in enumerate(zip(time, stroke)):
+        state = observer.step(position, source_command[index - 1]
+                              if index else 0.)
+        forecast = predictor.step(state[-1])
+        composed.append(control.step(state, forecast, instant))
+    np.testing.assert_allclose(composed, source_command, rtol=0, atol=1e-4)
 
 
 def test_nmpc_unforced_plant_motion_diagnostic():

@@ -32,7 +32,8 @@ from .wavebotImpedance import WaveBotImpedanceResponse, run_wavebot_impedance
 from .wavestar import WaveStarLinkage, WaveStarResponse, run_wavestar_published
 from .wavestarFault import WaveStarFaultController, run_wavestar_fault_published
 from .wavestarNmpc import (
-    WaveStarNmpcActuator, WaveStarNmpcObserver, WaveStarNmpcPredictor,
+    WaveStarNmpcActuator, WaveStarNmpcController,
+    WaveStarNmpcObserver, WaveStarNmpcPredictor,
 )
 from .morison import MorisonElement
 from .orifice import OrificePTO, OrificeResponse
@@ -78,6 +79,7 @@ __all__ = [
     "StribeckFriction",
     "WaveStarFaultController",
     "WaveStarNmpcActuator",
+    "WaveStarNmpcController",
     "WaveStarNmpcObserver",
     "WaveStarNmpcPredictor",
     "run_wavestar_fault_published",

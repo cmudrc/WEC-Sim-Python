@@ -1199,7 +1199,8 @@ rod stroke every 0.05 s:
 
 ```python
 from wecsim import (
-    WaveStarNmpcActuator, WaveStarNmpcObserver, WaveStarNmpcPredictor,
+    WaveStarNmpcActuator, WaveStarNmpcController,
+    WaveStarNmpcObserver, WaveStarNmpcPredictor,
 )
 
 actuator = WaveStarNmpcActuator()
@@ -1207,9 +1208,13 @@ axial_force = actuator.step(command_torque, stroke)
 
 observer = WaveStarNmpcObserver(dt=0.05)
 predictor = WaveStarNmpcPredictor()
-for stroke, previous_command_torque in sampled_inputs:
+controller = WaveStarNmpcController()
+for time, stroke, previous_command_torque in sampled_inputs:
     estimated_state = observer.step(stroke, previous_command_torque)
     future_excitation_moment = predictor.step(estimated_state[-1])
+    command_torque = controller.step(
+        estimated_state, future_excitation_moment, time,
+    )
 ```
 
 The controller converts torque to force with its own idealized neutral rod
@@ -1221,8 +1226,12 @@ all five published estimator states from saved stroke and the previous torque
 request. The autoregressive forecast is paired from saved estimated moments;
 the composed observer and predictor are also paired after 11 s from stroke
 and the preceding torque request. Its 10–11 s startup fit is numerically
-unstable in the source. The optimizer and independent closed-loop NMPC
-trajectory remain unpaired.
+unstable in the source. Given saved estimator states and forecasts, the Python
+controller replays every published torque command within `1e-4` N m over the
+full 225 s case. Composing the Python observer, predictor, and controller from
+saved stroke and preceding torque request meets the same gate. This command
+replay uses the saved MATLAB motion as input; independent closed-loop NMPC
+motion remains unpaired.
 
 The WaveStar fault application has separately paired PTO components:
 
