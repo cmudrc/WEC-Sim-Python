@@ -305,7 +305,7 @@ def test_owc_coupled_motion_before_source_air_flag(tmp_path):
 @pytest.mark.skipif(not APPLICATIONS,
                     reason="BEMIO-generated OWC HDF5 absent")
 def test_owc_published_force_path_motion(tmp_path):
-    """Source-compatible force routing is opt-in and paired through 130 s."""
+    """Pair opt-in source force routing, body motion, and PTO over 130 s."""
     hydro = (Path(APPLICATIONS)
              / "OWC/OrificeModel/hydroData/test17a_clean.h5")
     source = _load("OrificeModel_body1")
@@ -340,10 +340,29 @@ def test_owc_published_force_path_motion(tmp_path):
                source[:, 3], 0.038, "source-path rigid heave")
     _max_error(result.flexible_modes["OWC"].position[:, 0],
                flexible[:, 0], 0.006, "source-path flexible displacement")
+    _max_error(result.bodies["OWC"].velocity[:, 0],
+               source[:, 7], 0.008, "source-path rigid surge speed")
     _max_error(result.bodies["OWC"].velocity[:, 2],
                source[:, 9], 0.080, "source-path rigid heave speed")
+    _max_error(result.bodies["OWC"].velocity[:, 4],
+               source[:, 11], 0.0045, "source-path rigid pitch speed")
     _max_error(result.flexible_modes["OWC"].velocity[:, 0],
                flexible[:, 1], 0.051, "source-path flexible speed")
+    source_orifice = _load("orifice")
+    source_force = np.interp(result.time, source_orifice[:, 0],
+                             source_orifice[:, 1])
+    source_power = 1000 * np.interp(result.time, source_orifice[:, 0],
+                                    source_orifice[:, 5])
+    pto = result.ptos["orifice"]
+    _max_error(pto.force, source_force,
+               0.06 * np.max(np.abs(source_force)),
+               "source-path PTO reaction")
+    _max_error(pto.absorbed_power, source_power,
+               0.08 * np.max(np.abs(source_power)),
+               "source-path PTO absorbed power")
+    source_work = np.trapezoid(source_power, result.time)
+    model_work = np.trapezoid(pto.absorbed_power, result.time)
+    assert source_work > 0 and abs(model_work - source_work) < 0.06 * source_work
     first_ten = result.time <= 10
     _max_error(result.bodies["OWC"].position[first_ten, 2],
                source[first_ten, 3], 0.002, "source-path first-ten heave")
