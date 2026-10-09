@@ -278,6 +278,16 @@ that WEC-Sim ran; it does not establish Python parity.
 | Other/dynamic: `MOST` | A focused pinned MATLAB reader gate compares Python's decoding of the checked-in 20,750-step TurbSim `.bts` file at selected grid points and with spatial checks at every time. A second source gate executes the published `RunTurbsim.m` on a 1,000-frame excerpt and compares all 249 output times, three velocity components, ten X planes, and 12×12 YZ grid points with Python's lazy advection view; the maximum difference is exactly zero. A third gate compares the six-component force and all three horizontal/vertical fairlead tensions from the pinned direct `nonLinearStaticMooring.m` at ten translated and rotated poses. Observed maximum differences are below `1e-5` N force, `1.5e-4` N m moment, and `5e-6` N tension; the paired gates are `1e-3` N, `1e-2` N m, and `1e-3` N respectively. A [fourth pinned MATLAB gate](https://github.com/cmudrc/wec-sim-python/actions/runs/37957379862) extracts the active BEM rotor function from `MOST_Lib.slx`, generates its IEA 15 MW blade inputs, and compares Python's three-blade root forces and moments at five hub/wind states, including moving and rotated hubs and spatially varying wind. The maximum observed component difference is `1.5e-8` N or N m, below the absolute `1e-4` gate. The published input sets `nonlinearStaticData.flag=1`, leaves `lookupTableFlag=0`, and sets `aeroLoadsType=1` for BEM; its active mooring block is `MooringNLStatic`. The generated mooring and aerodynamic lookup tables are not used by this case. These gates establish wind input, frozen-turbulence time shift, direct static catenary force, and isolated BEM blade loads. Turbine control and coupled body motion still have no paired Python output gate. The WaveStar base and fault applications and both WaveBot applications are paired separately above. |
 | Other/dynamic: both `Nonlinear_Hydro/ode45` cases and `OWC/OrificeModel` | The nonlinear-hydro ode45 cases retain source force-timing gaps. The OrificeModel physical coupled path diverges late, while an explicit source-convention force route passes 130 s body/PTO gates; this does not validate the source air model beyond its Mach threshold. |
 
+The MOST [wind-to-BEM source gate](https://github.com/cmudrc/wec-sim-python/actions/runs/37958579712)
+feeds three actual time-shifted frames from the pinned TurbSim excerpt into
+the active MATLAB rotor function and the Python `MostWindField.sampler` plus
+`MostBEM.loads` path. At interior probe points, the largest interpolated wind
+component difference is `8.9e-16` m/s (gate `1e-12` m/s). Across all three
+blades and six root-load components at each frame, the largest difference is
+`7.5e-9` N or N m (gate `1e-4`). This pairs the wind-to-rotor load path for
+sampled hub states; the turbine controller and time-evolving platform remain
+unpaired.
+
 The WaveStar NMPC solver-step audit in
 `tools/wavestar_nmpc_step_audit.py` compares the first 30 s of the pinned
 published `ode8`/0.05 s source run with independent Python closed loops at
