@@ -114,6 +114,20 @@ Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
 runner takes platform motion as input; turbine mass and aerodynamic loads do
 not yet feed back into independently advanced platform motion.
 
+`MostPlatformHydrodynamics.from_volturnus(h5_file, mass_properties_file)`
+reads the published VolturnUS BEMIO coefficients and platform mass properties.
+Its `restoring_force(position)`, `drag_force(velocity)`, and
+`radiation_force(velocity, dt)` evaluate the six-component forces on a
+platform trajectory, using WEC-Sim's logged resisting-force signs. Position
+and velocity are arrays with six columns in surge/sway/heave/roll/pitch/yaw
+order. `platform.simulate(time, wave_excitation, tower_base_load)` advances the
+published dominant surge, heave, and pitch coordinates from these Python
+forces and the live nonlinear-static mooring. `wave_excitation` is the
+six-component output of Python's JONSWAP/HDF5 synthesis;
+`tower_base_load` is a six-component history in the platform frame. This
+one-way solve takes tower reaction as input and does not yet feed Python
+turbine loads back to the platform.
+
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
 ```python

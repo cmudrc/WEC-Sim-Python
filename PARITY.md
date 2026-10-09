@@ -325,14 +325,34 @@ most `2.8e-14` m and six-component excitation by at most `2.3e-6` N or N m
 mooring pose differs by at most `2.5e-5` N and `4.9e-4` N m (gates `1e-3` N
 and `1e-2` N m). The source body force channels add exactly as excitation
 minus radiation, added mass, restoring, viscous drag, and linear damping.
+The public `MostPlatformHydrodynamics` evaluates the remaining three
+state-dependent hydrodynamic terms on the source trajectory from pinned
+VolturnUS HDF5, platform mass properties, and the published drag matrix.
+Across all 1,001 samples, hydrostatic restoring differs by at most
+`3.0e-8` N or N m, quadratic drag by `5.9e-11` N or N m, and the 60 s
+radiation convolution by `2.1e-8` N or N m (paired gates `1e-5`, `1e-8`, and
+`1e-6`, respectively). These are prescribed-state force checks.
 Using the pinned platform mass and infinite-frequency added mass, then
 rotating the logged tower-base force from platform to world coordinates,
 closes the source's three translational force balances within `1.4e-8` N
 (gate `1e-4` N) at every sample. This fixes the force signs, frame, and
 Simscape added-mass shift needed for an independent platform solve; the
 tower reaction and platform trajectory are still source inputs to this
-diagnostic. Rotational balance and bidirectional turbine feedback remain
-unpaired.
+diagnostic. The full six-axis moment accounting and bidirectional turbine
+feedback remain unpaired.
+
+The public `MostPlatformHydrodynamics.simulate` separately advances platform
+surge, heave, and pitch from the Python JONSWAP excitation, live catenary,
+VolturnUS radiation and added mass, hydrostatic restoring, and quadratic drag.
+Only the six-component MATLAB tower-base reaction is prescribed, in the
+platform frame; the platform trajectory is independently advanced. Against
+the 1,001-sample, 10 s source run, maximum position errors are `0.1435` mm
+surge, `0.0716` mm heave, and `6.38e-6` rad pitch; maximum speed errors are
+`2.84e-5` m/s surge, `4.42e-5` m/s heave, and `3.93e-6` rad/s pitch.
+The paired gates are `0.3` mm, `0.15` mm, `1e-5` rad, `7e-5` m/s, and
+`1e-5` rad/s. Sway, roll, and yaw are omitted in this reduced solve, and
+the tower reaction is supplied rather than computed from live Python turbine
+states. This establishes one-way platform dynamics, not full MOST coupling.
 
 The WaveStar NMPC solver-step audit in
 `tools/wavestar_nmpc_step_audit.py` compares the first 30 s of the pinned

@@ -2,12 +2,11 @@
 
 import os
 
-import h5py
 import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from wecsim import MostStaticMooring
+from wecsim import MostPlatformHydrodynamics, MostStaticMooring
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
@@ -62,6 +61,22 @@ def test_most_platform_wave_and_mooring_against_pinned_source():
                                source["mooring_force"][:, 3:],
                                rtol=0, atol=1e-2)
 
+    platform = MostPlatformHydrodynamics.from_volturnus(
+        h5_file, os.environ["WEC_SIM_MOST_MASS_PROPERTIES"],
+    )
+    np.testing.assert_allclose(
+        platform.restoring_force(source["body_position"]),
+        source["body_force_restoring"], rtol=0, atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        platform.drag_force(source["body_velocity"]),
+        source["body_force_viscous"], rtol=0, atol=1e-8,
+    )
+    np.testing.assert_allclose(
+        platform.radiation_force(source["body_velocity"], .01),
+        source["body_force_radiation"], rtol=0, atol=1e-6,
+    )
+
     # Logged WEC-Sim body-force channels use resisting-force signs.
     total = (source["body_force_excitation"]
              - source["body_force_radiation"]
@@ -76,11 +91,7 @@ def test_most_platform_wave_and_mooring_against_pinned_source():
     # The turbine tower-base load is logged in the rotating platform frame.
     # WEC-Sim moves twice the trace of translational infinite-frequency
     # added mass into the Simscape body's scalar mass in this case.
-    with h5py.File(os.environ["WEC_SIM_MOST_MASS_PROPERTIES"]) as properties:
-        platform_mass = float(properties["Platform/VolturnUS/mass"][0, 0])
-    with h5py.File(h5_file) as hydro:
-        added_mass = hydro["body1/hydro_coeffs/added_mass/inf_freq"][:]
-    adjusted_mass = platform_mass + 2*1025*np.trace(added_mass[:3, :3])
+    adjusted_mass = platform.mass + 2*np.trace(platform.added_mass[:3, :3])
     rotation = np.array([
         mooring._rotation(*pose[3:]) for pose in source["body_position"]
     ])
@@ -93,3 +104,24 @@ def test_most_platform_wave_and_mooring_against_pinned_source():
         net_force, adjusted_mass*source["body_acceleration"][:, :3],
         rtol=0, atol=1e-4,
     )
+
+    # Advance Python platform motion from Python wave/hydro/mooring. The
+    # source tower reaction is the sole prescribed dynamic load; only the
+    # published dominant surge, heave, and pitch coordinates are advanced.
+    response = platform.simulate(
+        time, wave.excitation_force, source["tower_base_load"],
+        mooring=mooring,
+    )
+    for column, position_gate, velocity_gate in (
+        (0, 3e-4, 7e-5),  # surge, m and m/s
+        (2, 1.5e-4, 7e-5),  # heave, m and m/s
+        (4, 1e-5, 1e-5),  # pitch, rad and rad/s
+    ):
+        np.testing.assert_allclose(
+            response.position[:, column], source["body_position"][:, column],
+            rtol=0, atol=position_gate,
+        )
+        np.testing.assert_allclose(
+            response.velocity[:, column], source["body_velocity"][:, column],
+            rtol=0, atol=velocity_gate,
+        )
