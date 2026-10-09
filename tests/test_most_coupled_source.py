@@ -45,12 +45,13 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         seed=int(os.environ.get("WEC_SIM_MOST_PHASE_SEED", "1")),
         phase_generator="matlab",
     )
+    end_time = float(os.environ.get("WEC_SIM_MOST_END_TIME", "10"))
     wave = synthesize_irregular_response(
-        h5_file, sea, dt=.01, end_time=10, ramp_time=20,
+        h5_file, sea, dt=.01, end_time=end_time, ramp_time=20,
         rho=1025, g=9.80665,
     )
     time = wave.time
-    assert time.shape == (1001,)
+    assert time.shape == (round(end_time/.01) + 1,)
 
     # The source trajectory is used only after the independent solve.
     result = MostCoupled(platform, rotor, tower).simulate(

@@ -1,5 +1,8 @@
-function most_short_source_baseline
-% Run the pinned MOST case through its first 10 s with active input paths.
+function most_short_source_baseline(end_time)
+% Run the pinned MOST case through a bounded interval with active input paths.
+if nargin == 0
+    end_time = 10;
+end
 root = pwd;
 case_dir = fullfile(root, 'applications', 'MOST');
 wind_grid = load(fullfile(root, 'matlab-most-advection.mat'));
@@ -18,7 +21,7 @@ old_explorer = 'simu.explorer=''on'';';
 old_output_step = 'simu.dtOut = 0.1;';
 assert(contains(contents, old_end) && contains(contents, old_explorer) ...
     && contains(contents, old_output_step));
-contents = strrep(contents, old_end, 'simu.endTime = 10;');
+contents = strrep(contents, old_end, sprintf('simu.endTime = %.15g;', end_time));
 contents = strrep(contents, old_explorer, 'simu.explorer=''off'';');
 contents = strrep(contents, old_output_step, 'simu.dtOut = 0.01;');
 fid = fopen(input_file, 'w');
