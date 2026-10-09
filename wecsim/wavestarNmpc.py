@@ -1,7 +1,26 @@
 """Actuator used by the published WaveStar nonlinear predictive controller."""
 
 import numpy as np
+from scipy.optimize import minimize
 from scipy.signal import cont2discrete
+
+
+def _discrete_plant(dt):
+    """Return the published controller's four-state model and moment input."""
+    inertia = 1.04 + .4805
+    continuous = np.array([
+        [0., 1., 0., 0.],
+        [-92.33 / inertia, -(-.1586 + 1.8) / inertia,
+         -4.739 / inertia, -.5 / inertia],
+        [0., 8., -13.59, -13.35],
+        [0., 0., 8., 0.],
+    ])
+    input_matrix = np.array([[0.], [1 / inertia], [0.], [0.]])
+    transition, input_discrete, _, _, _ = cont2discrete(
+        (continuous, input_matrix, np.eye(4), np.zeros((4, 1))),
+        dt, method="zoh",
+    )
+    return transition, input_discrete[:, 0]
 
 
 class WaveStarNmpcActuator:
@@ -58,23 +77,11 @@ class WaveStarNmpcObserver:
         if not np.isfinite(dt) or dt <= 0:
             raise ValueError("WaveStar NMPC observer step must be positive")
         self.dt = float(dt)
-        inertia = 1.04 + .4805
-        continuous = np.array([
-            [0., 1., 0., 0.],
-            [-92.33 / inertia, -(-.1586 + 1.8) / inertia,
-             -4.739 / inertia, -.5 / inertia],
-            [0., 8., -13.59, -13.35],
-            [0., 0., 8., 0.],
-        ])
-        input_matrix = np.array([[0.], [1 / inertia], [0.], [0.]])
-        transition, input_discrete, _, _, _ = cont2discrete(
-            (continuous, input_matrix, np.eye(4), np.zeros((4, 1))),
-            self.dt, method="zoh",
-        )
+        transition, input_discrete = _discrete_plant(self.dt)
         self._transition = np.eye(5)
         self._transition[:4, :4] = transition
-        self._transition[:4, 4] = input_discrete[:, 0]
-        self._input = np.r_[input_discrete[:, 0], 0.]
+        self._transition[:4, 4] = input_discrete
+        self._input = np.r_[input_discrete, 0.]
         self._measurement = np.eye(5)[:2]
         self._process_covariance = np.diag([5e-6] * 4 + [.35])
         self._measurement_covariance = np.diag([6e-6] * 2)
@@ -208,3 +215,103 @@ class WaveStarNmpcPredictor:
             forecast[index] = prediction
             history.append(prediction)
         return forecast
+
+
+class WaveStarNmpcController:
+    """Replay the published Sea State 6 resistive startup and RTI NMPC.
+
+    ``step`` takes the five observer states and an excitation forecast for
+    the current sample. It returns the requested PTO torque in N m. The
+    controller shifts its prior horizon solution before each QP, matching
+    the source's persistent nominal input. It does not integrate the WEC.
+    """
+
+    def __init__(
+        self, *, dt: float = .05, horizon: int = 40,
+        gain: float = 19.4, torque_limit: float = 12.,
+        input_penalty: float = .9, generator_efficiency: float = .7,
+        motoring_efficiency: float = 1 / .7, smoothness: float = 1000.,
+        start_time: float = 15.,
+    ):
+        parameters = [dt, gain, torque_limit, input_penalty,
+                      generator_efficiency, motoring_efficiency,
+                      smoothness, start_time]
+        if (not np.isfinite(parameters).all() or dt <= 0
+                or not isinstance(horizon, int) or horizon < 1
+                or gain < 0 or torque_limit <= 0 or input_penalty <= 0
+                or generator_efficiency <= 0 or motoring_efficiency <= 0
+                or smoothness <= 0 or start_time < 0):
+            raise ValueError("WaveStar NMPC controller settings are invalid")
+        self.horizon = horizon
+        self.gain = gain
+        self.torque_limit = torque_limit
+        self.start_time = start_time
+        self._alpha = (motoring_efficiency + generator_efficiency) / 2
+        self._beta = (motoring_efficiency - generator_efficiency) / 2
+        self._smoothness = smoothness
+        self._weight = np.kron(np.eye(horizon), [[0., 1.], [1., 0.]])
+        self._penalty = input_penalty * np.eye(horizon)
+        transition, input_discrete = _discrete_plant(dt)
+        self._transition = np.zeros((5, 5))
+        self._transition[:4, :4] = transition
+        self._input = np.r_[input_discrete, 1.]
+        self._wave_input = np.r_[input_discrete, 0.]
+        self._nominal = np.zeros(horizon)
+
+    def step(self, estimated_state, excitation_forecast, time: float) -> float:
+        """Return one sampled command; ``time`` is seconds from simulation start."""
+        state = np.asarray(estimated_state, dtype=float)
+        forecast = np.asarray(excitation_forecast, dtype=float)
+        if (state.shape != (5,) or forecast.shape != (self.horizon,)
+                or not np.isfinite(state).all()
+                or not np.isfinite(forecast).all()
+                or not np.isfinite(time) or time < 0):
+            raise ValueError("WaveStar NMPC controller needs finite sampled inputs")
+        if 10 <= time < self.start_time:
+            return float(np.clip(-self.gain * state[1],
+                                 -self.torque_limit, self.torque_limit))
+        if time < self.start_time:
+            return 0.
+
+        nominal = np.r_[self._nominal[1:], self._nominal[-1]]
+        state = state.copy()
+        sensitivity = np.zeros((5, self.horizon))
+        output_sensitivity = np.zeros((2 * self.horizon, self.horizon))
+        output = np.zeros(2 * self.horizon)
+        for index in range(self.horizon):
+            state = (self._transition @ state + self._input * nominal[index]
+                     + self._wave_input * forecast[index])
+            speed, command = state[1], state[4]
+            product = np.tanh(self._smoothness * command * speed)
+            efficiency = self._alpha + self._beta * product
+            gradient = np.zeros((2, 5))
+            gradient[0, 1] = 1.
+            gradient[1, 1] = (self._smoothness * self._beta * command**2
+                              * (1 - product**2))
+            gradient[1, 4] = (efficiency + self._smoothness * self._beta
+                              * command * speed * (1 - product**2))
+            sensitivity = self._transition @ sensitivity
+            sensitivity[:, index] += self._input
+            row = slice(2 * index, 2 * index + 2)
+            output_sensitivity[row] = gradient @ sensitivity
+            output[row] = [speed, command * efficiency]
+
+        hessian = (self._penalty
+                   + output_sensitivity.T @ self._weight @ output_sensitivity)
+        hessian = (hessian + hessian.T) / 2
+        linear = output_sensitivity.T @ self._weight @ output
+        bounds = list(zip(-self.torque_limit - nominal,
+                          self.torque_limit - nominal))
+        solution = minimize(
+            lambda delta: .5 * delta @ hessian @ delta + linear @ delta,
+            np.zeros(self.horizon),
+            jac=lambda delta: hessian @ delta + linear,
+            bounds=bounds, method="L-BFGS-B",
+            options={"ftol": 1e-13, "gtol": 1e-11, "maxiter": 1000,
+                     "maxls": 50},
+        )
+        if not solution.success:
+            raise RuntimeError(f"WaveStar NMPC QP failed: {solution.message}")
+        self._nominal = nominal + solution.x
+        return float(np.clip(self._nominal[0],
+                             -self.torque_limit, self.torque_limit))
