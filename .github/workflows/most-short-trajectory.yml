@@ -9,9 +9,11 @@ on:
       - 'tests/matlab/most_wind_advection_baseline.m'
       - 'tests/test_most_rotor_source.py'
       - 'tests/test_most_platform_forces_source.py'
+      - 'tests/test_most_coupled_source.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
       - 'wecsim/mostTower.py'
+      - 'wecsim/mostCoupled.py'
       - 'wecsim/mostController.py'
       - 'wecsim/mostBEM.py'
       - 'wecsim/turbSim.py'
@@ -23,9 +25,11 @@ on:
       - 'tests/matlab/most_wind_advection_baseline.m'
       - 'tests/test_most_rotor_source.py'
       - 'tests/test_most_platform_forces_source.py'
+      - 'tests/test_most_coupled_source.py'
       - 'wecsim/mostRotor.py'
       - 'wecsim/mostPlatform.py'
       - 'wecsim/mostTower.py'
+      - 'wecsim/mostCoupled.py'
       - 'wecsim/mostController.py'
       - 'wecsim/mostBEM.py'
       - 'wecsim/turbSim.py'
@@ -81,6 +85,14 @@ jobs:
           WEC_SIM_MOST_H5: applications/MOST/hydroData/VolturnUS.h5
           WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
           WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
+      - run: python -m pytest -q tests/test_most_coupled_source.py
+        env:
+          WEC_SIM_MOST_SHORT_BASELINE: matlab-most-short.mat
+          WEC_SIM_MOST_H5: applications/MOST/hydroData/VolturnUS.h5
+          WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
+          WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
+          WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
+          WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
       - uses: actions/upload-artifact@v4
         if: always()
         with:

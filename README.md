@@ -113,6 +113,8 @@ result = rotor.simulate(time, platform_position, platform_velocity, wind_field)
 Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
 runner takes platform motion as input; turbine mass and aerodynamic loads do
 not yet feed back into independently advanced platform motion.
+Its `blade_root_load` array contains the BEM loads at the advanced rotor
+states, in the preconed blade frames.
 
 `MostTowerReaction.from_iea15mw(properties_file).evaluate(position, velocity,
 acceleration, rotor_speed, azimuth, generator_torque, blade_root_load)`
@@ -136,6 +138,26 @@ six-component output of Python's JONSWAP/HDF5 synthesis;
 `tower_base_load` is a six-component history in the platform frame. This
 one-way solve takes tower reaction as input and does not yet feed Python
 turbine loads back to the platform.
+
+For a coupled trajectory, use `MostCoupled(platform, rotor, tower)`
+with a Python-generated six-component wave-excitation history and the MOST
+wind field:
+
+```python
+from wecsim import MostCoupled
+
+coupled = MostCoupled(platform, rotor, tower)
+result = coupled.simulate(time, wave.excitation_force, wind_field)
+platform_motion = result.platform
+rotor_motion = result.rotor
+```
+
+The runner advances its own rotor, BEM loads, controller, tower reaction, and
+all six platform coordinates until the two trajectories agree within the
+reported `position_residual` and `velocity_residual`. Pass
+`full_six_dof=False` for the earlier surge/heave/pitch reduction. The paired
+six-coordinate gate covers the pinned 10 s MOST case; longer and different
+operating conditions remain to be validated.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
