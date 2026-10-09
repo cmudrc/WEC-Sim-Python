@@ -37,6 +37,8 @@ import numpy.matlib
 import warnings
 import scipy.io as sio
 
+from .irregularWave import _random_phases
+
 class WaveClass:
     def inputProperties(self):
         """
@@ -81,6 +83,10 @@ class WaveClass:
         #if equal to 1,2,3,...,etc, the waves phase is seeded.
         #(Default = 0)
         self.phaseSeed = 0
+
+        # Keep the original NumPy stream by default. The explicit MATLAB
+        # option uses pinned WEC-Sim's Threefry phaseSeed substream.
+        self.phaseGenerator = 'numpy'
 
         # Optional source phase matrix, with one frequency per row and one
         # direction per column. Use this to replay a MATLAB realization.
@@ -431,11 +437,13 @@ class WaveClass:
     def setWavePhase(self):
         """
         Set a reproducible irregular-wave phase or replay supplied values.
-        MATLAB uses Threefry substreams, so equal integer seeds do not
-        produce identical phases. ``phaseData`` uses MATLAB's frequency-by-
-        direction orientation; the internal array is transposed for Python.
+        ``phaseGenerator='matlab'`` uses the pinned WEC-Sim Threefry stream.
+        ``phaseData`` uses MATLAB's frequency-by-direction orientation; the
+        internal array is transposed for Python.
 
         """
+        if self.phaseGenerator not in ('numpy', 'matlab'):
+            raise ValueError("phaseGenerator must be 'numpy' or 'matlab'")
         if self.phaseData is not None:
             phase = np.asarray(self.phaseData, dtype=float)
             if phase.ndim == 1 and np.size(self.waveDir) == 1:
@@ -445,9 +453,15 @@ class WaveClass:
                 raise ValueError("phaseData must be finite with shape (frequency, direction)")
             self.phase = phase.T.copy()
             return
-        rng = np.random.default_rng(None if self.phaseSeed == 0 else self.phaseSeed)
+        rng = (np.random.default_rng(None if self.phaseSeed == 0 else self.phaseSeed)
+               if self.phaseGenerator == 'numpy' else None)
         if (self.freqDisc == 'EqualEnergy') or (self.freqDisc == 'Traditional'): 
-            self.phase = 2*np.pi*rng.random((np.size(self.waveDir), self.numFreq))
+            if self.phaseGenerator == 'matlab':
+                self.phase = _random_phases(
+                    (self.numFreq, np.size(self.waveDir)),
+                    self.phaseSeed, 'matlab').T
+            else:
+                self.phase = 2*np.pi*rng.random((np.size(self.waveDir), self.numFreq))
         elif (self.freqDisc == 'Imported'):
             data = self.readData(self.spectrumDataFile)
             if len(data) == 3: # if imported spectrum data file is correct it should have 3 rows of data
@@ -455,7 +469,11 @@ class WaveClass:
                 self.phase = np.array([[x for x,i in zip(data[2],freq_data) 
                                        if i>=min(self.bemFreq)/2/np.pi and i<=max(self.bemFreq)/2/np.pi]])
             else:
-                self.phase = 2*np.pi*rng.random((1,self.numFreq))
+                if self.phaseGenerator == 'matlab':
+                    self.phase = _random_phases(
+                        (self.numFreq, 1), self.phaseSeed, 'matlab').T
+                else:
+                    self.phase = 2*np.pi*rng.random((1,self.numFreq))
             
     def waveElevNowave(self,maxIt,dt):
         """

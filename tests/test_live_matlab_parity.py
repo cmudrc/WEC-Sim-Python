@@ -71,6 +71,7 @@ def test_current_irregular_spectrum_against_executed_matlab(
                      else discretization)
     wave.numFreq = 64
     wave.phaseSeed = 1
+    wave.phaseGenerator = "matlab"
     if spectrum == "PM":
         wave.waveDir = [0, 30, 90]
         wave.waveSpread = [0.1, 0.2, 0.7]
@@ -83,9 +84,10 @@ def test_current_irregular_spectrum_against_executed_matlab(
     label = spectrum.lower() + suffix
     if discretization == "NarrowEqualEnergy":
         wave.freqRange = [0.5, 1.5]
-    wave.phaseData = np.loadtxt(reference / f"{label}_phase.csv",
-                                delimiter=",")
     wave.waveSetup([0.4, 2.0], "infinite", 1, 0.1, 20, 9.81, 1000, 2)
+    source_phase = np.loadtxt(reference / f"{label}_phase.csv",
+                              delimiter=",", ndmin=2)
+    np.testing.assert_allclose(wave.phase.T, source_phase, rtol=0, atol=1e-13)
 
     if discretization != "Traditional":
         expected = np.loadtxt(reference / f"{label}_bins.csv", delimiter=",")
