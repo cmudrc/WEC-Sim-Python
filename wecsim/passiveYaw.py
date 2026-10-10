@@ -28,7 +28,8 @@ class PassiveYawExcitation:
 
     @classmethod
     def from_hydro_data(cls, hydro_data, *, omega, incident_direction,
-                        amplitude, ramp_time, rho, g):
+                        amplitude, ramp_time, rho, g,
+                        spline_frequency=False):
         parameters = hydro_data["simulation_parameters"]
         headings = np.asarray(parameters["wave_dir"], dtype=float).ravel()
         frequency = np.asarray(parameters["w"], dtype=float).ravel()
@@ -49,14 +50,20 @@ class PassiveYawExcitation:
                 or imaginary.shape != real.shape
                 or not np.isfinite(real).all() or not np.isfinite(imaginary).all()):
             raise ValueError("passive-yaw excitation coefficients are incomplete")
-        real = np.array([
-            [np.interp(omega, frequency, row) for row in dof]
-            for dof in real
-        ]) * rho * g
-        imaginary = np.array([
-            [np.interp(omega, frequency, row) for row in dof]
-            for dof in imaginary
-        ]) * rho * g
+        if spline_frequency:
+            # MATLAB's single-direction bank calls interp1(..., 'spline');
+            # its full-direction path uses linear interp2 instead.
+            real = CubicSpline(frequency, real, axis=2)(omega) * rho * g
+            imaginary = CubicSpline(frequency, imaginary, axis=2)(omega) * rho * g
+        else:
+            real = np.array([
+                [np.interp(omega, frequency, row) for row in dof]
+                for dof in real
+            ]) * rho * g
+            imaginary = np.array([
+                [np.interp(omega, frequency, row) for row in dof]
+                for dof in imaginary
+            ]) * rho * g
         return cls(headings, real, imaginary, incident_direction,
                    omega, amplitude, ramp_time)
 
@@ -94,8 +101,9 @@ class NearestHeadingExcitation:
     """Select the nearest BEM heading as in the variable-hydro yaw example.
 
     The published direction-bank files share mass, restoring, and radiation
-    coefficients; their excitation coefficients differ by heading. This
-    selector uses the full-direction HDF5 input for those coefficients.
+    coefficients; their excitation coefficients differ by heading. Unlike
+    passive yaw, the variable-hydro source does not rotate that selected
+    excitation by body yaw. This selector uses the full-direction HDF5 input.
     """
 
     model: PassiveYawExcitation
@@ -116,7 +124,7 @@ class NearestHeadingExcitation:
 
     def force(self, time: float, yaw: float) -> np.ndarray:
         return self.model.force(
-            time, yaw, coefficient_heading=self.heading(yaw),
+            time, 0.0, coefficient_heading=self.heading(yaw),
         )
 
 

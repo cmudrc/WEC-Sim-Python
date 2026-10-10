@@ -1853,6 +1853,7 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     body.hydroData, omega=frequency,
                     incident_direction=direction, amplitude=height / 2,
                     ramp_time=ramp_time, rho=rho, g=g,
+                    spline_frequency=yaw_banks[index - 1] is not None,
                 )
                 if yaw_banks[index - 1] is not None:
                     passive_model = NearestHeadingExcitation(
