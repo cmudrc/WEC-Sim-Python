@@ -54,10 +54,10 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         phase_generator="matlab",
     )
     end_time = float(os.environ.get("WEC_SIM_MOST_END_TIME", "10"))
-    assert end_time in (10, 30)
-    developed_sea = end_time == 30
+    assert end_time in (10, 30, 60)
+    developed_sea = end_time >= 30
     if developed_sea:
-        assert controller is not None, "30 s case needs its generated MATLAB controller"
+        assert controller is not None, "developed-sea case needs its generated MATLAB controller"
     wave = synthesize_irregular_response(
         h5_file, sea, dt=.01, end_time=end_time, ramp_time=20,
         rho=1025, g=9.80665,

@@ -1,5 +1,8 @@
-function most_developed_sea_source_baseline
-% Extend the pinned 6 m, seed-2 MOST sea through 10 s after wave ramp.
+function most_developed_sea_source_baseline(end_time)
+% Run the pinned 6 m, seed-2 MOST sea beyond the wave ramp.
+if nargin == 0
+    end_time = 30;
+end
 root = pwd;
 input_file = fullfile(root, 'applications', 'MOST', 'wecSimInputFile.m');
 contents = fileread(input_file);
@@ -13,7 +16,7 @@ assert(fid ~= -1);
 fprintf(fid, '%s', contents);
 fclose(fid);
 
-most_short_source_baseline(30);
+most_short_source_baseline(end_time);
 movefile(fullfile(root, 'matlab-most-short.mat'), ...
     fullfile(root, 'matlab-most-developed-sea.mat'));
 end
