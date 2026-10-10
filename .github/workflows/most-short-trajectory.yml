@@ -81,6 +81,8 @@ jobs:
           WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
           WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
           WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
+          WEC_SIM_MOST_CONTROL: applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
+          WEC_SIM_MOST_STEADY_STATES: applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
       - run: python -m pytest -q tests/test_most_platform_forces_source.py
         env:
           WEC_SIM_MOST_SHORT_BASELINE: matlab-most-short.mat
@@ -95,6 +97,8 @@ jobs:
           WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
           WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
           WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
+          WEC_SIM_MOST_CONTROL: applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
+          WEC_SIM_MOST_STEADY_STATES: applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
       - uses: actions/upload-artifact@v4
         if: always()
         with:

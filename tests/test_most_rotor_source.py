@@ -7,7 +7,9 @@ import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from wecsim import MostRotor, MostWindField, read_turbsim_bts
+from wecsim import (
+    MostBaselineController, MostRotor, MostWindField, read_turbsim_bts,
+)
 
 
 @pytest.mark.skipif(
@@ -25,7 +27,15 @@ def test_most_rotor_against_pinned_coupled_source():
     wind = MostWindField(read_turbsim_bts(
         Path(os.environ["WEC_SIM_MOST_ADVECTION_DIR"]) / "WIND_8mps.bts",
     ))
-    rotor = MostRotor.from_iea15mw(os.environ["WEC_SIM_MOST_BLADE_DIR"])
+    controller = None
+    if os.environ.get("WEC_SIM_MOST_CONTROL"):
+        controller = MostBaselineController.from_matlab_files(
+            os.environ["WEC_SIM_MOST_CONTROL"],
+            os.environ["WEC_SIM_MOST_STEADY_STATES"], wind_speed=8,
+        )
+    rotor = MostRotor.from_iea15mw(
+        os.environ["WEC_SIM_MOST_BLADE_DIR"], controller=controller,
+    )
     properties = loadmat(os.environ["WEC_SIM_MOST_PROPERTIES"],
                          simplify_cells=True)["WTcomponents"]
     np.testing.assert_allclose(rotor.inertia,

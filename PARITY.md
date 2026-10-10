@@ -424,6 +424,12 @@ extensions below cover motion after the ramp. A separate 12 m/s constant-wind
 case below tests the controller with nonzero steady-state initial pitch.
 The published 1,000 s trajectory and other wind/controller regimes remain unpaired.
 
+The 10 s gates use each MATLAB run's generated controller and steady-state
+tables. Two fresh 6 m source runs started 0.0164 rpm and 62.8 kN m apart in
+rotor speed and generator torque, and their surge traces separated by
+0.787 mm at 10 s. Pairing those generated inputs restores the existing
+trajectory gates without changing rotor or platform dynamics.
+
 A [pinned 30 s MOST developed-sea run](https://github.com/cmudrc/wec-sim-python/pull/140)
 extends the 6 m, seed-2 condition without changing its wind speed or
 controller scripts. Its 1,500-frame TurbSim excerpt produces 749 advected wind frames;
