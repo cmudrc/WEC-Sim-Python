@@ -472,6 +472,26 @@ step refinement as the remedy for the published coarse-step trajectory gap.
 It does not isolate every difference in the active closed loop or establish
 full NMPC parity. The physical Python plant and PTO laws remain unchanged.
 
+A [derived fine-step WaveStar NMPC activation run](https://github.com/cmudrc/wec-sim-python/pull/143)
+extends the 0.001 s `ode4` source through 15.2 s with the published sea,
+geometry, 10 s AR-predictor start, and 15 s NMPC start. The source's
+controller sample follows `simu.dt`, so this experiment changes both the
+plant and controller steps from the published 0.05 s setting. Direct MATLAB
+`ar` and `forecast` calls on the saved 180-sample excitation-estimate window
+reproduce the logged 40-step forecasts at six selected active times. The
+fit's regression matrix has condition number `6.74e13` at 15 s; the logged
+forecast reaches `60.1` kN m within its 40 ms horizon while the estimated
+moment stays below `5.35` N m. On saved source inputs, Python reconstructs
+the five observer states within `2.8e-12` and the NMPC command within
+`4.5e-6` N m. Python's current AR least-squares cutoff discards three
+numerically weak directions in that ill-conditioned window; retaining them
+improves this derived forecast replay but fails the existing published
+composed-controller gate, so the production predictor remains unchanged.
+The independent Python run differs over the first 0.2 s of active control by
+at most `0.000190` rad pitch, `0.0155` rad/s pitch speed, `5.68` N m torque
+request, and `27.8` N PTO force. These are diagnostics, not NMPC parity gates.
+The published 0.05 s controller and full closed-loop trajectory remain open.
+
 For the floating OWC, the nine-line MoorDyn replay reconstructs the published
 coupling pose and velocity from the floater's center state and its body-local
 attachment. It then advances the pinned native MoorDyn library for all 50,001
