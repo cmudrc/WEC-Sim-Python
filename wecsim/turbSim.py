@@ -26,6 +26,47 @@ class TurbSimWind:
     description: str
 
 
+@dataclass(frozen=True)
+class MostConstantWind:
+    """Uniform wind over MOST's published constant-wind domain."""
+
+    speed: float
+    end_time: float
+    direction: tuple[float, float, float] = (1.0, 0.0, 0.0)
+    domain_sizes: tuple[float, float, float] = (1e4, 1e4, 1e4)
+
+    def __post_init__(self):
+        direction = np.asarray(self.direction, dtype=float)
+        domain = np.asarray(self.domain_sizes, dtype=float)
+        if (not np.isfinite([self.speed, self.end_time]).all()
+                or self.speed < 0 or self.end_time <= 0
+                or direction.shape != (3,) or not np.isfinite(direction).all()
+                or np.linalg.norm(direction) == 0
+                or domain.shape != (3,) or not np.isfinite(domain).all()
+                or np.any(domain <= 0)):
+            raise ValueError("MOST constant wind needs finite speed, time, direction, and domain")
+
+    def sampler_at(self, time: float):
+        """Return the spatially uniform vector at a valid simulation time."""
+        if not np.isfinite(time) or not 0 <= time <= self.end_time:
+            raise ValueError("MOST wind time is outside the available record")
+        direction = np.asarray(self.direction, dtype=float)
+        vector = self.speed * direction / np.linalg.norm(direction)
+        domain = np.asarray(self.domain_sizes, dtype=float)
+
+        def sample(position):
+            point = np.asarray(position, dtype=float)
+            if point.shape != (3,) or not np.isfinite(point).all():
+                raise ValueError("MOST wind position must be a finite 3-vector")
+            if (abs(point[0]) > domain[0] / 2
+                    or abs(point[1]) > domain[1] / 2
+                    or not 0 <= point[2] <= domain[2]):
+                return np.full(3, np.nan)
+            return vector.copy()
+
+        return sample
+
+
 class MostWindField:
     """MOST's frozen-turbulence X planes, evaluated without a large 5-D copy.
 

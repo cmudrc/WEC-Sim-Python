@@ -1,0 +1,89 @@
+name: MATLAB MOST above-rated constant wind
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/most-constant-wind.yml'
+      - 'tests/matlab/most_constant_wind_source_baseline.m'
+      - 'tests/matlab/most_short_source_baseline.m'
+      - 'tests/test_most_constant_wind_source.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/mostRotor.py'
+      - 'wecsim/mostPlatform.py'
+      - 'wecsim/mostCoupled.py'
+      - 'wecsim/mostTower.py'
+      - 'wecsim/turbSim.py'
+      - 'wecsim/__init__.py'
+  pull_request:
+    paths:
+      - '.github/workflows/most-constant-wind.yml'
+      - 'tests/matlab/most_constant_wind_source_baseline.m'
+      - 'tests/matlab/most_short_source_baseline.m'
+      - 'tests/test_most_constant_wind_source.py'
+      - 'wecsim/mostController.py'
+      - 'wecsim/mostRotor.py'
+      - 'wecsim/mostPlatform.py'
+      - 'wecsim/mostCoupled.py'
+      - 'wecsim/mostTower.py'
+      - 'wecsim/turbSim.py'
+      - 'wecsim/__init__.py'
+  workflow_dispatch:
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim
+          ref: 0753b2e47f2457c078751dcfe5d251d1767b80ab
+          path: matlab-ref
+          filter: blob:none
+          sparse-checkout: source
+      - uses: actions/checkout@v7
+        with:
+          repository: WEC-Sim/WEC-Sim_Applications
+          ref: d53d4d4c9eda2581f04204f5d394a6ef84bb099e
+          path: applications
+          filter: blob:none
+          sparse-checkout: MOST
+      - uses: matlab-actions/setup-matlab@v3
+        with:
+          release: R2025b
+          products: Simulink Simscape Simscape_Multibody Stateflow Optimization_Toolbox
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(fullfile(pwd,'matlab-ref','source'))); cd('applications/MOST/hydroData'); bemio; cd('../../..'); assert(isfile('applications/MOST/hydroData/VolturnUS.h5'))
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../control'); Steady_States_IEA15MW; Controller_IEA15MW; cd('../../../../..')
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath(genpath(fullfile(pwd,'matlab-ref','source'))); addpath(fullfile(pwd,'tests','matlab')); most_wind_advection_baseline; most_constant_wind_source_baseline
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -e . pytest
+      - run: python -m pytest -q tests/test_most_constant_wind_source.py
+        env:
+          WEC_SIM_MOST_CONSTANT_BASELINE: matlab-most-constant-wind.mat
+          WEC_SIM_MOST_H5: applications/MOST/hydroData/VolturnUS.h5
+          WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
+          WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
+          WEC_SIM_MOST_BLADE_DIR: applications/MOST/mostData/windTurbine/turbine_properties/BladeData/IEA-15MW
+          WEC_SIM_MOST_CONTROL: applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
+          WEC_SIM_MOST_STEADY_STATES: applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: matlab-most-constant-wind
+          path: |
+            matlab-most-constant-wind.mat
+            applications/MOST/hydroData/VolturnUS.h5
+            applications/MOST/hydroData/Mass_Inertia_Properties.mat
+            applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
+            applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
+            applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat

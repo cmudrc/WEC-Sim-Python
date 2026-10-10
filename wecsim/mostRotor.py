@@ -8,7 +8,7 @@ import numpy as np
 from .mostBEM import MostBEM
 from .mostController import MostBaselineController
 from .mostMooring import MostStaticMooring
-from .turbSim import MostWindField
+from .turbSim import MostConstantWind, MostWindField
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ class MostRotor:
         )
 
     def simulate(self, time, platform_position, platform_velocity,
-                 wind: MostWindField) -> MostRotorResponse:
+                 wind: MostWindField | MostConstantWind) -> MostRotorResponse:
         """Advance rotor speed, azimuth, torque, and pitch from platform motion.
 
         ``platform_position`` and ``platform_velocity`` are N×6 world-frame
@@ -83,7 +83,7 @@ class MostRotor:
                 or not np.isfinite(velocity).all()
                 or not np.all(np.diff(time) > 0)):
             raise ValueError("MOST rotor needs aligned finite time and six-DOF platform records")
-        if (not isinstance(wind, MostWindField)
+        if (not isinstance(wind, (MostWindField, MostConstantWind))
                 or not np.isfinite(self.inertia) or self.inertia <= 0
                 or np.shape(self.hub_offset) != (3,)
                 or np.shape(self.shaft_axis) != (3,)):
