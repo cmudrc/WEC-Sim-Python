@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from scipy.io import loadmat
 
-from wecsim import MostWindField, read_turbsim_bts
+from wecsim import MostBaselineController, MostWindField, read_turbsim_bts
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
@@ -15,6 +15,7 @@ from wecsim.irregularWave import (
 @pytest.mark.skipif(
     not all(os.environ.get(name) for name in (
         "WEC_SIM_MOST_FULL_SOURCE", "WEC_SIM_MOST_H5", "WEC_SIM_MOST_BTS",
+        "WEC_SIM_MOST_CONTROL", "WEC_SIM_MOST_STEADY_STATES",
     )),
     reason="pinned 1,000 s MATLAB MOST source inputs not provided",
 )
@@ -40,15 +41,32 @@ def test_most_published_full_duration_inputs_against_source():
     )
     assert wave.time.size == 100001
     np.testing.assert_allclose(
-        wave.time[::10], source["wave_time"].ravel(), rtol=0, atol=1e-10,
+        wave.time, source["wave_time"].ravel(), rtol=0, atol=1e-10,
     )
     np.testing.assert_allclose(
-        wave.elevation[::10], source["wave_elevation"].ravel(),
+        wave.time[::10], source["body_time"].ravel(), rtol=0, atol=1e-10,
+    )
+    np.testing.assert_allclose(
+        wave.elevation, source["wave_elevation"].ravel(),
         rtol=0, atol=1e-12,
     )
     np.testing.assert_allclose(
         wave.excitation_force[::10], source["body_force_excitation"],
         rtol=0, atol=1e-4,
+    )
+
+    controller = MostBaselineController.from_matlab_files(
+        os.environ["WEC_SIM_MOST_CONTROL"],
+        os.environ["WEC_SIM_MOST_STEADY_STATES"], wind_speed=8,
+    )
+    np.testing.assert_allclose(
+        controller.initial_omega * 60 / (2 * np.pi),
+        source["rotor_speed"][0, 0], rtol=0, atol=1e-12,
+    )
+    initial_state = np.array([0., controller.initial_omega / 5, 0.])
+    np.testing.assert_allclose(
+        controller._command(initial_state, controller.initial_pitch)[0],
+        source["generator_torque"][0, 0], rtol=0, atol=1e-6,
     )
 
     wind = MostWindField(read_turbsim_bts(os.environ["WEC_SIM_MOST_BTS"]))
