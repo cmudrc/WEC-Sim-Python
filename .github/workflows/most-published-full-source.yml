@@ -45,6 +45,8 @@ jobs:
           WEC_SIM_MOST_FULL_SOURCE: matlab-most-short.mat
           WEC_SIM_MOST_H5: applications/MOST/hydroData/VolturnUS.h5
           WEC_SIM_MOST_BTS: applications/MOST/mostData/turbSim/WIND_8mps.bts
+          WEC_SIM_MOST_MASS_PROPERTIES: applications/MOST/hydroData/Mass_Inertia_Properties.mat
+          WEC_SIM_MOST_PROPERTIES: applications/MOST/mostData/windTurbine/turbine_properties/Properties_IEA15MW.mat
           WEC_SIM_MOST_CONTROL: applications/MOST/mostData/windTurbine/control/Control_IEA15MW.mat
           WEC_SIM_MOST_STEADY_STATES: applications/MOST/mostData/windTurbine/control/SteadyStates_IEA15MW.mat
       - run: sha256sum applications/MOST/mostData/turbSim/WIND_8mps.bts > most-published-input-sha256.txt
