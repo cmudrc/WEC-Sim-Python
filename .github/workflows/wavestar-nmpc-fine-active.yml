@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/wavestar-nmpc-fine-active.yml'
       - 'tests/matlab/reference_model_baseline.m'
+      - 'tests/matlab/wavestar_nmpc_forecast_probe.m'
       - 'tests/test_wavestar_nmpc_fine_active.py'
       - 'wecsim/wavestarNmpc.py'
       - 'wecsim/wavestar.py'
@@ -41,6 +42,9 @@ jobs:
       - uses: matlab-actions/run-command@v3
         with:
           command: addpath('tests/matlab'); reference_model_baseline('WECCCOMP_NMPC_FINE_ACTIVE_DIAG')
+      - uses: matlab-actions/run-command@v3
+        with:
+          command: addpath('tests/matlab'); wavestar_nmpc_forecast_probe
       - uses: actions/upload-artifact@v4
         if: always()
         with:
