@@ -175,9 +175,15 @@ The runner advances its own rotor, BEM loads, controller, tower reaction, and
 all six platform coordinates until the two trajectories agree within the
 reported `position_residual` and `velocity_residual`. Pass
 `full_six_dof=False` for the earlier surge/heave/pitch reduction. The paired
-six-coordinate gates cover two pinned 10 s MOST seas, one 30 s condition
-that extends 10 s beyond the wave ramp, and a derived 10 s constant-wind
-case at 12 m/s. Longer and other operating conditions remain to be validated.
+six-coordinate gates cover two pinned 10 s MOST seas, 30 and 60 s developed
+seas, and a derived 10 s constant-wind case at 12 m/s.
+
+For longer histories, `coupled.simulate_causal(time, wave.excitation_force,
+wind_field)` advances the turbine and platform once per 0.01 s step using a
+predicted platform pose. Its reported residuals are the maximum correction
+between that prediction and the solved platform state. A paired 100 s prefix
+of the published MOST case is covered by a separate source gate; the full
+1,000 s coupled trajectory remains under validation.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 

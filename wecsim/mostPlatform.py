@@ -147,14 +147,17 @@ class MostPlatformHydrodynamics:
             blade_root_load: np.ndarray, *,
             mooring: MostStaticMooring | None = None,
             radiation_memory: float = 60.0,
-            full_six_dof: bool = True) -> MostPlatformResponse:
+            full_six_dof: bool = True,
+            turbine_step=None) -> MostPlatformResponse:
         """Advance platform motion with the turbine's live inertia and force.
 
         Rotor state, generator torque, and blade-root loads are prescribed
         histories; the tower reaction is recomputed at each platform state.
         This does not independently advance the rotor. All six platform
         coordinates are active by default; the reduced three-coordinate
-        comparison remains available with ``full_six_dof=False``.
+        comparison remains available with ``full_six_dof=False``. A
+        ``turbine_step`` callback advances mutable rotor histories once from
+        the committed previous state and predicted next platform state.
         """
         if not isinstance(tower, MostTowerReaction):
             raise TypeError("tower must be MostTowerReaction")
@@ -177,17 +180,20 @@ class MostPlatformHydrodynamics:
                            (rotor_speed, azimuth, generator_torque,
                             blade_root_load))):
             raise ValueError("MOST turbine needs aligned finite rotor and blade histories")
+        if turbine_step is not None and not callable(turbine_step):
+            raise TypeError("turbine_step must be callable")
         return self._simulate(
             time, wave_excitation, None, mooring=mooring,
             radiation_memory=radiation_memory,
             turbine=(tower, rotor_speed, azimuth, generator_torque,
                      blade_root_load),
             coordinate_axes=tuple(range(6)) if full_six_dof else (0, 2, 4),
+            turbine_step=turbine_step,
         )
 
     def _simulate(self, time, wave_excitation, tower_base_load, *, mooring,
                   radiation_memory, turbine=None,
-                  coordinate_axes=(0, 2, 4)) -> MostPlatformResponse:
+                  coordinate_axes=(0, 2, 4), turbine_step=None) -> MostPlatformResponse:
         time = np.asarray(time, dtype=float)
         wave_excitation = np.asarray(wave_excitation, dtype=float)
         if turbine is None:
@@ -219,7 +225,11 @@ class MostPlatformHydrodynamics:
         tower_offset = mooring_offset + np.array([0, 0, self.tower_base_height])
         if turbine is not None:
             tower, rotor_speed, azimuth, generator_torque, blade_root_load = turbine
-            local_mass = tower.acceleration_matrix(azimuth)
+            if turbine_step is None:
+                local_mass = tower.acceleration_matrix(azimuth)
+            else:
+                local_mass = np.zeros((len(time), 6, 6))
+                local_mass[0] = tower.acceleration_matrix(azimuth[:1])[0]
             zero_acceleration = np.zeros((1, 6))
 
         def motion(coordinate, speed):
@@ -278,6 +288,41 @@ class MostPlatformHydrodynamics:
                 ]
             return force
 
+        step_force = None
+        if turbine_step is not None:
+            previous_coordinate = np.zeros(len(coordinate_axes))
+            previous_speed = np.zeros(len(coordinate_axes))
+
+            def commit_state(_at_time, coordinate, speed):
+                previous_coordinate[:] = coordinate
+                previous_speed[:] = speed
+
+            live_force.commit_state = commit_state
+
+            def body_state(coordinate, speed):
+                body_motion = motion(coordinate, speed)
+                return (self.equilibrium_pose + body_motion.displacement,
+                        body_motion.jacobian @ speed)
+
+            def step_force(at_time, interval, predicted_coordinate,
+                           predicted_speed):
+                index = int(round((at_time + interval) / dt))
+                previous_pose, previous_velocity = body_state(
+                    previous_coordinate, previous_speed,
+                )
+                predicted_pose, predicted_velocity = body_state(
+                    predicted_coordinate, predicted_speed,
+                )
+                turbine_step(
+                    index, at_time, interval,
+                    previous_pose, previous_velocity,
+                    predicted_pose, predicted_velocity,
+                )
+                local_mass[index] = tower.acceleration_matrix(
+                    azimuth[index:index + 1],
+                )[0]
+                return np.zeros(len(coordinate_axes))
+
         def tower_inertia(at_time, coordinate, speed):
             index, pose, velocity, rotation, _, arm_tower = state(
                 at_time, coordinate, speed,
@@ -325,7 +370,7 @@ class MostPlatformHydrodynamics:
         )
         response = GeneralizedDynamics(
             (body,), len(coordinate_axes), added_mass_delay=1e-7,
-        ).integrate(dt=dt, end_time=float(time[-1]))
+        ).integrate(dt=dt, end_time=float(time[-1]), step_force=step_force)
         return MostPlatformResponse(
             response.time, response.body_position[:, 0],
             response.body_velocity[:, 0], response.acceleration,
