@@ -1,11 +1,4 @@
-"""Run a supported WEC-Sim-Python dynamics case from a JSON input file.
-
-This replaces the original unfinished script's commented-out simulation
-stage. The case schema is documented in README.md and deliberately rejects
-layouts or physics that have not been implemented and compared with MATLAB.
-
-The project originated with Sungjun Won's WEC-Sim-Python port (2020).
-"""
+"""Run a supported WEC case from JSON and export its numeric results."""
 
 import argparse
 import hashlib
@@ -46,7 +39,10 @@ def _git_state():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="wecsim", description=__doc__,
+        epilog="For Python configuration, import WEC from wecsim.",
+    )
     parser.add_argument("case", type=Path, help="JSON dynamics input file")
     parser.add_argument("--output", type=Path, required=True, help="numeric CSV output")
     args = parser.parse_args(argv)
