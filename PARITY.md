@@ -90,10 +90,12 @@ Python. With the published sea and bank but `dt=0.005` s, the 120 s run stops at
 86.08 s because the implicit radiation-memory step alternates between the
 adjacent −8.75° and −8.50° excitation headings across their −8.625° boundary.
 Thirty successive trial accelerations repeat this two-cycle rather than
-converging. The passing 120 s pair at the published `dt=0.01` s therefore does
-not establish a step-converged physical trajectory. Resolving this discrete
-event requires a defined within-step heading rule; no force coefficient was
-changed to suppress the failure.
+converging. The pinned application's `calcIndex.m` selects the nearest heading
+on every evaluation; its previous-index hold rule is commented out. The
+passing 120 s pair at the published `dt=0.01` s therefore does not establish a
+step-converged physical trajectory. Resolving this discrete event requires a
+defined within-step heading rule; no force coefficient was changed to suppress
+the failure.
 
 The published one-degree irregular passive-yaw hold has a [three-seed R2025b
 audit](https://github.com/cmudrc/wec-sim-python/actions/runs/37915267886).
