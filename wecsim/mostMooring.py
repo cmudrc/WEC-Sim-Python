@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 import numpy as np
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, root
 
 
 @dataclass(frozen=True)
@@ -82,11 +82,21 @@ class MostStaticMooring:
             separation = anchor - fairlead - pose[:3]
             height = abs(separation[2])
             distance = np.linalg.norm(separation[:2])
-            solution = least_squares(
+            solution = root(
                 self._line_geometry, [1e6, 2e6],
-                args=(height, distance), bounds=(1e-9, np.inf),
-                xtol=1e-12, ftol=1e-12, gtol=1e-12, max_nfev=300,
+                args=(height, distance), method="hybr",
+                options={"xtol": 1e-12},
             )
+            # Fall back when the fast solve misses a positive, accurate root.
+            if (not np.isfinite(solution.x).all()
+                    or not (solution.x > 1e-9).all()
+                    or not np.isfinite(solution.fun).all()
+                    or np.linalg.norm(solution.fun) > 1e-6):
+                solution = least_squares(
+                    self._line_geometry, [1e6, 2e6],
+                    args=(height, distance), bounds=(1e-9, np.inf),
+                    xtol=1e-12, ftol=1e-12, gtol=1e-12, max_nfev=300,
+                )
             if np.linalg.norm(solution.fun) > 1e-6:
                 raise RuntimeError("static mooring geometry did not converge")
             horizontal, vertical = solution.x
