@@ -181,9 +181,14 @@ seas, and a derived 10 s constant-wind case at 12 m/s.
 For longer histories, `coupled.simulate_causal(time, wave.excitation_force,
 wind_field)` advances the turbine and platform once per 0.01 s step using a
 predicted platform pose. Its reported residuals are the maximum correction
-between that prediction and the solved platform state. A paired 100 s prefix
-of the published MOST case is covered by a separate source gate; the full
-1,000 s coupled trajectory remains under validation.
+between that prediction and the solved platform state. The 100 s prefix of
+the published MOST case passes a fresh MATLAB source gate. An independent
+Python run over the full 1,000 s differs by at most 9.13 mm in body position,
+0.00101 rpm in rotor speed, and 1.77% of each blade-load component's source
+peak. The [fresh 1,000 s source gate](https://github.com/cmudrc/wec-sim-python/actions/runs/38071234135)
+passes all saved body samples with its own generated controller tables; see
+`PARITY.md` for the per-axis limits, controller-run variability, and remaining
+case coverage.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
