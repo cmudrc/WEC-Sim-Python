@@ -584,7 +584,7 @@ switch string(model)
         cases = ["PassiveYawOFF", "PassiveYawON"];
         caseDirs = fullfile(repoRoot, 'applications', 'Passive_Yaw', cases);
     case {"OSWEC_VARIABLE_YAW_2DEG", "OSWEC_VARIABLE_YAW_PUBLISHED", ...
-            "OSWEC_VARIABLE_YAW_IRREGULAR"}
+            "OSWEC_VARIABLE_YAW_IRREGULAR_120S"}
         commonHydro = fullfile(repoRoot, 'applications', ...
             '_Common_Input_Files', 'OSWEC', 'hydroData');
         cd(commonHydro);
@@ -599,9 +599,9 @@ switch string(model)
             generatedGrid = 'newDirs = -40:2:40;';
             cases = "regular_2deg";
         else
-            if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
-                caseName = 'paired_Passive_Yaw_irregular';
-                cases = "irregular";
+            if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+                caseName = 'paired_Passive_Yaw_irregular_120s';
+                cases = "irregular_120s";
             else
                 caseName = 'paired_Passive_Yaw_published';
                 cases = "regular";
@@ -614,6 +614,21 @@ switch string(model)
         end
         [copied, copyMessage] = copyfile(sourceDir, caseDir);
         assert(copied, copyMessage);
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+            % Preserve the published sea, hydro bank, and PTO, while
+            % bounding a source simulation that exceeds the CI hour limit.
+            inputFile = fullfile(caseDir, 'wecSimInputFile.m');
+            contents = fileread(inputFile);
+            oldEndTime = 'simu.endTime = 600;';
+            assert(contains(contents, oldEndTime), ...
+                'The pinned variable-yaw run length changed');
+            contents = strrep(contents, oldEndTime, ...
+                'simu.endTime = 120;');
+            fid = fopen(inputFile, 'w');
+            assert(fid ~= -1, 'Could not shorten the copied case input');
+            fprintf(fid, '%s', contents);
+            fclose(fid);
+        end
         bankScript = fullfile(caseDir, 'hydroData', 'bemio.m');
         contents = fileread(bankScript);
         oldGrid = 'newDirs = -40:0.05:40;';
@@ -884,8 +899,8 @@ for iCase = 1:numel(cases)
             isfile('hydroData/oswec_10.h5'), ...
             'The two-degree hydrodynamic bank is incomplete');
     elseif any(string(model) == ["OSWEC_VARIABLE_YAW_PUBLISHED", ...
-                                 "OSWEC_VARIABLE_YAW_IRREGULAR"])
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_120S"])
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
             waveFlag = 'irregular';
         end
         assert(isfile('hydroData/oswec_10.h5'), ...
@@ -1955,12 +1970,14 @@ for iCase = 1:numel(cases)
     end
     if any(string(model) == ["OSWEC_VARIABLE_YAW_2DEG", ...
                               "OSWEC_VARIABLE_YAW_PUBLISHED", ...
-                              "OSWEC_VARIABLE_YAW_IRREGULAR"])
+                              "OSWEC_VARIABLE_YAW_IRREGULAR_120S"])
         expectedWave = 'regular';
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+        expectedEndTime = 600;
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
             expectedWave = 'irregular';
+            expectedEndTime = 120;
         end
-        assert(simu.dt == 0.01 && simu.endTime == 600 && ...
+        assert(simu.dt == 0.01 && simu.endTime == expectedEndTime && ...
             simu.rampTime == 100 && simu.cicEndTime == 40 && ...
             strcmp(waves.type, expectedWave) && waves.height == 2.5 && ...
             waves.period == 8 && waves.direction == 10 && ...
@@ -1987,7 +2004,7 @@ for iCase = 1:numel(cases)
             char(string(model) + "_selected_heading.csv")));
         writematrix(waves.waveAmpTime, fullfile(outDir, ...
             char(string(model) + "_wave.csv")));
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
             assert(waves.phaseSeed == 1 && ...
                 strcmp(waves.spectrumType, 'PM'), ...
                 'The published variable-yaw irregular sea changed');
