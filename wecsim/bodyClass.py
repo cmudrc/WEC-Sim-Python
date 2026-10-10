@@ -14,7 +14,6 @@ Note: trimesh is used to obtain bodyGeometry properties
 """
 import h5py
 import numpy as np
-import numpy.matlib 
 import warnings
 import trimesh
 
