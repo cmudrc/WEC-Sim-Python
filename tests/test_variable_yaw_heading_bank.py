@@ -6,7 +6,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from wecsim import RegularWave, WEC, WorldPoint
+from wecsim import PMWave, RegularWave, WEC, WorldPoint
+from wecsim.irregularWave import pm_equal_energy_components
 from wecsim.passiveYaw import (
     NearestHeadingExcitation, NearestSampledHeadingExcitation,
     PassiveYawExcitation, SampledPassiveYawExcitation,
@@ -86,6 +87,84 @@ def test_published_bank_against_pinned_matlab():
         "OSWEC_VARIABLE_YAW_PUBLISHED", "regular",
         np.arange(-30, 30.25, .25),
     )
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+         and os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")),
+    reason="fresh variable-yaw MATLAB output not provided",
+)
+def test_irregular_120s_bank_against_pinned_matlab():
+    """Pair the source force path and independent 120 s PM trajectory."""
+    applications = Path(os.environ["WEC_SIM_APPLICATIONS_DIR"])
+    source = Path(os.environ["WEC_SIM_MATLAB_MODEL_OUTPUT_DIR"])
+    hydro = applications / "_Common_Input_Files/OSWEC/hydroData/oswec.h5"
+    prefix = "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+    flap = np.loadtxt(source / f"{prefix}_irregular_120s_body1.csv", delimiter=",")
+    base = np.loadtxt(source / f"{prefix}_irregular_120s_body2.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{prefix}_irregular_120s_pto1.csv", delimiter=",")
+    wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
+    selected = np.loadtxt(source / f"{prefix}_selected_heading.csv", delimiter=",")
+    realization = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
+    assert flap.shape == base.shape == pto.shape == (12001, 25)
+    assert wave.shape == (12001, 2)
+    assert selected.shape == (12001, 3)
+    assert realization.shape == (500, 4)
+
+    components = pm_equal_energy_components(
+        hydro, significant_height=2.5, peak_period=8,
+        directions=[10], spreading=[1], seed=1, phase_generator="matlab",
+    )
+    for actual, expected in (
+        (components.omega, realization[:, 0]),
+        (components.spectral_amplitude, realization[:, 1]),
+        (components.d_omega, realization[:, 2]),
+        (components.phase[:, 0], realization[:, 3]),
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-12)
+
+    sampled = SampledPassiveYawExcitation.from_hydro_data(
+        _hydro_data(hydro), components, dt=.01, end_time=120,
+        ramp_time=100, rho=1000, g=9.81,
+    )
+    headings = np.arange(-30, 30.25, .25)
+    bank = NearestSampledHeadingExcitation(sampled, headings)
+    np.testing.assert_allclose(sampled.elevation, wave[:, 1], rtol=0, atol=1e-12)
+    source_heading = np.array([bank.heading(angle) for angle in flap[:, 6]])
+    np.testing.assert_array_equal(source_heading, selected[:, 2])
+    source_path_force = np.stack([
+        bank.force(t, angle) for t, angle in zip(flap[:, 0], flap[:, 6])
+    ])
+    assert np.max(np.abs(source_path_force - flap[:, 19:25])) < 1e-6
+
+    wec = WEC("OSWEC irregular variable yaw")
+    moving = wec.body(
+        "flap", hydro, mass=12700, inertia=(1.85e6,) * 3,
+        passive_yaw=True, yaw_heading_bank=headings,
+    )
+    wec.body("base", hydro, mass=999, inertia=(999,) * 3)
+    yaw = wec.coordinate("yaw", moving.move("yaw", pivot=WorldPoint(0, 0, -8.9)))
+    wec.rotational_pto("hinge", yaw, damping=120000)
+    result = wec.run(
+        PMWave(2.5, 8, direction=10, seed=1, phase_generator="matlab"),
+        dt=.01, end_time=120, ramp_time=100, radiation_memory=40,
+    )
+    np.testing.assert_allclose(result.time, flap[:, 0], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(result.wave_elevation, wave[:, 1],
+                               rtol=0, atol=1e-12)
+    np.testing.assert_allclose(result.bodies["base"].position,
+                               base[:, 1:7], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(result.bodies["base"].velocity,
+                               base[:, 7:13], rtol=0, atol=1e-10)
+    assert np.max(np.abs(result.bodies["flap"].position[:, 5] - flap[:, 6])) < .002
+    assert np.max(np.abs(result.bodies["flap"].velocity[:, 5] - flap[:, 12])) < .0003
+    assert np.max(np.abs(result.ptos["hinge"].force - pto[:, 17])) < 35
+    np.testing.assert_allclose(pto[:, 17], -120000 * pto[:, 11],
+                               rtol=0, atol=1e-5)
+    source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
+    python_work = np.trapezoid(result.ptos["hinge"].absorbed_power, result.time)
+    assert source_work > 0
+    assert abs(python_work - source_work) / source_work < .005
 
 
 def _check_bank_against_pinned_matlab(prefix, case, headings):
