@@ -487,8 +487,9 @@ own motion. Native long-trajectory parity for the one-degree hold remains open.
 For the published `Variable_Hydro/Passive_Yaw` regular-wave case, pass
 `yaw_heading_bank=range(-40, 41, 2)` alongside `passive_yaw=True` on the
 flap. This chooses the nearest 2° BEM heading from the wave direction relative
-to yaw. The source-path force and heading selection are paired to MATLAB;
-the long trajectory remains sensitive to one-sample heading changes (see
+to yaw. This 2° bank is a bounded resampling of the published 0.05° bank.
+Python matches all six source excitation components and the full 600 s yaw and
+PTO trajectory for the resampled case. The original 0.05° bank remains unpaired (see
 [`PARITY.md`](PARITY.md)).
 
 The published `Morison_Element/morisonElement` application has a fixed

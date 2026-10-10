@@ -13,6 +13,8 @@ from wecsim.passiveYaw import NearestHeadingExcitation, PassiveYawExcitation
 def _model():
     headings = np.arange(0.0, 360.0, 10.0)
     real = np.zeros((6, len(headings)))
+    real[0] = 10
+    real[1] = 20
     real[5] = headings
     return PassiveYawExcitation(
         headings, real, np.zeros_like(real),
@@ -30,7 +32,7 @@ def test_nearest_bank_uses_source_relative_angle_and_first_tie():
 
     yaw = np.deg2rad(9.2)
     actual = bank.force(0, yaw)
-    expected = _model().force(0, yaw, coefficient_heading=0)
+    expected = _model().force(0, 0, coefficient_heading=0)
     np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-13)
     assert actual[5] == 0
 
@@ -82,37 +84,25 @@ def test_two_degree_bank_against_pinned_matlab():
     model = PassiveYawExcitation.from_hydro_data(
         _hydro_data(hydro), omega=2 * np.pi / 8,
         incident_direction=10, amplitude=1.25, ramp_time=100,
-        rho=1000, g=9.81,
+        rho=1000, g=9.81, spline_frequency=True,
     )
     bank = NearestHeadingExcitation(model, np.arange(-40, 41, 2))
     source_heading = np.array([bank.heading(angle) for angle in flap[:, 6]])
-    heading_error = np.max(np.abs(source_heading - selected[:, 2]))
-    print(f"source heading selection max error: {heading_error:.6g} deg")
-    assert heading_error == 0
+    np.testing.assert_array_equal(source_heading, selected[:, 2])
 
     source_path_force = np.stack([
         bank.force(t, angle) for t, angle in zip(result.time, flap[:, 6])
     ])
-    force_error = np.max(np.abs(source_path_force[:, 5] - flap[:, 24]))
-    yaw_error = np.max(np.abs(result.bodies["flap"].position[:, 5] - flap[:, 6]))
-    speed_error = np.max(np.abs(result.bodies["flap"].velocity[:, 5] - flap[:, 12]))
-    torque_error = np.max(np.abs(result.ptos["hinge"].force - pto[:, 17]))
-    print(f"source-path yaw excitation max error: {force_error:.6g} N m")
-    print(f"trajectory max errors: {yaw_error:.6g} rad, "
-          f"{speed_error:.6g} rad/s, {torque_error:.6g} N m")
-    assert np.isfinite([force_error, yaw_error, speed_error, torque_error]).all()
-    assert force_error < 1000
-
-    # Before the first heading event separates the two paths, the motion
-    # remains paired. The source's discontinuous selector magnifies the
-    # subsequent one-sample event offset; full-run trajectory parity is open.
-    before_split = result.time < 64.57
-    assert np.max(np.abs(result.bodies["flap"].position[before_split, 5]
-                         - flap[before_split, 6])) < 5e-5
-    assert np.max(np.abs(result.bodies["flap"].velocity[before_split, 5]
-                         - flap[before_split, 12])) < 5e-5
-    assert np.max(np.abs(result.ptos["hinge"].force[before_split]
-                         - pto[before_split, 17])) < 5
+    assert np.max(np.abs(source_path_force - flap[:, 19:25])) < 1e-6
+    assert np.max(np.abs(result.bodies["flap"].position[:, 5]
+                         - flap[:, 6])) < 1e-6
+    assert np.max(np.abs(result.bodies["flap"].velocity[:, 5]
+                         - flap[:, 12])) < 1e-6
+    assert np.max(np.abs(result.ptos["hinge"].force
+                         - pto[:, 17])) < .01
+    source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
+    python_work = np.trapezoid(result.ptos["hinge"].absorbed_power, result.time)
+    assert abs(python_work - source_work) / abs(source_work) < 1e-6
 
 
 def _hydro_data(path):
