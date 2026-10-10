@@ -484,11 +484,15 @@ A three-seed paired diagnostic that prescribes only MATLAB's heading-update
 schedule recovers tight yaw and PTO-work agreement while Python advances its
 own motion. Native long-trajectory parity for the one-degree hold remains open.
 
-For the published `Variable_Hydro/Passive_Yaw` regular-wave case, set
+For the published `Variable_Hydro/Passive_Yaw` case, set
 `passive_yaw=True` and `yaw_heading_bank=np.arange(-30, 30.25, 0.25)` on the
 flap. This selects the nearest BEM heading from wave direction relative to
-yaw, matching the input's 241 selected headings. The full 600 s yaw, six
-excitation channels, and PTO work pair with MATLAB. The source generates a
+yaw, matching the input's 241 selected headings. The full 600 s regular-wave
+yaw, six excitation channels, and PTO work pair with MATLAB. The same bank
+works with a single-direction `PMWave`; a derived 120 s irregular case pairs
+the source excitation within `1e-6` N or N m and the independent yaw within
+`0.002` rad. The unchanged 600 s MATLAB irregular run exceeded the CI hour
+limit, so full-length irregular trajectory parity remains open. The source generates a
 finer 0.05° set of HDF5 files, but its input reads only the selected 0.25°
 headings. The paired baseline generates those same selected files with the
 pinned interpolation rule; see [`PARITY.md`](PARITY.md).

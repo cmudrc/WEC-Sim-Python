@@ -45,6 +45,7 @@ from .nonlinearHydro import HeaveMeshHydro
 from .orifice import OrificePTO
 from .passiveYaw import (
     HeldPassiveYawExcitation, NearestHeadingExcitation,
+    NearestSampledHeadingExcitation,
     PassiveYawExcitation, SampledPassiveYawExcitation,
 )
 from .ptoConnections import build_linear_ptos
@@ -1603,9 +1604,9 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     yaw_banks = [spec.get("yaw_heading_bank") for spec in bodies]
     if any(bank is not None and (not bodies[index].get("passive_yaw", False)
                                  or yaw_thresholds[index]
-                                 or wave["type"] != "regular")
+                                 or wave["type"] not in ("regular", "pm"))
            for index, bank in enumerate(yaw_banks)):
-        raise ValueError("yaw_heading_bank needs regular-wave passive yaw without a threshold")
+        raise ValueError("yaw_heading_bank needs regular or PM passive yaw without a threshold")
     if passive_indices:
         yaw_map = np.zeros((6, 1))
         yaw_map[5, 0] = 1
@@ -1844,6 +1845,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     ramp_time=ramp_time, rho=rho, g=g,
                 )
                 pm_elevation = passive_model.elevation
+                if yaw_banks[index - 1] is not None:
+                    passive_model = NearestSampledHeadingExcitation(
+                        passive_model, yaw_banks[index - 1],
+                    )
                 if yaw_thresholds[index - 1]:
                     passive_model = HeldPassiveYawExcitation(
                         passive_model, yaw_thresholds[index - 1],

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from wecsim import RegularWave, WEC
+from wecsim import PMWave, RegularWave, WEC
 
 
 HYDRO = (Path(__file__).parent / "test_objects/test_bodyclass/testData"
@@ -50,3 +50,16 @@ def test_heading_threshold_requires_passive_yaw_and_pm_wave():
     with pytest.raises(ValueError, match="positive passive_yaw_threshold needs PM"):
         wec.run(RegularWave(2.5, 8, 10), dt=0.1,
                 end_time=0.1, ramp_time=100)
+
+
+def test_heading_bank_accepts_pm_wave_before_hydro_validation():
+    wec = WEC("PM heading bank")
+    flap = wec.body("flap", HYDRO, mass=12700,
+                    inertia=(1.85e6,) * 3, passive_yaw=True,
+                    yaw_heading_bank=[-10, 0, 10])
+    wec.coordinate("yaw", flap.move("yaw"))
+    # This small historical fixture is intentionally missing full-circle
+    # headings. The PM bank must get past configuration validation first.
+    with pytest.raises(ValueError, match="full-circle BEM headings"):
+        wec.run(PMWave(2.5, 8, direction=10), dt=0.1,
+                end_time=0.1, ramp_time=0)

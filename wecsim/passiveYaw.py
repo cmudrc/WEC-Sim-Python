@@ -247,6 +247,33 @@ class SampledPassiveYawExcitation:
         return world
 
 
+@dataclass(frozen=True)
+class NearestSampledHeadingExcitation:
+    """Select an irregular-wave force bank without passive-yaw rotation."""
+
+    model: SampledPassiveYawExcitation
+    headings: np.ndarray
+
+    def __post_init__(self):
+        headings = np.asarray(self.headings, dtype=float)
+        if (len(self.model.incident_directions) != 1
+                or headings.ndim != 1 or headings.size < 2
+                or not np.isfinite(headings).all()
+                or not np.all(np.diff(headings) > 0)
+                or headings[0] < -180 or headings[-1] > 180):
+            raise ValueError("sampled heading bank needs one sea and ordered directions in [-180, 180]")
+        object.__setattr__(self, "headings", headings)
+
+    def heading(self, yaw: float) -> float:
+        relative = self.model.incident_directions[0] - np.degrees(yaw)
+        return float(self.headings[np.argmin(np.abs(self.headings - relative))])
+
+    def force(self, time: float, yaw: float) -> np.ndarray:
+        incident = self.model.incident_directions[0]
+        coefficient_yaw = np.deg2rad(incident - self.heading(yaw))
+        return self.model.force(time, 0.0, coefficient_yaw=coefficient_yaw)
+
+
 class HeldPassiveYawExcitation:
     """Apply the source's sampled heading-coefficient update threshold.
 
