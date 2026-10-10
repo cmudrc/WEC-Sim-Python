@@ -247,7 +247,8 @@ switch string(model)
         caseDirs = string(fullfile(repoRoot, 'applications', ...
             'WECCCOMP', cases));
     case {"WECCCOMP_NMPC_SOURCE", "WECCCOMP_NMPC_FINE_DIAG", ...
-            "WECCCOMP_NMPC_FINE_CTRL_DIAG"}
+            "WECCCOMP_NMPC_FINE_CTRL_DIAG", ...
+            "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"}
         hydroDir = fullfile(repoRoot, 'applications', 'WECCCOMP', 'hydroData');
         cd(hydroDir);
         if ~isfile('wavestar.h5')
@@ -268,9 +269,10 @@ switch string(model)
             contents = strrep(contents, char(oldName), char(newName));
         end
         if any(string(model) == ["WECCCOMP_NMPC_FINE_DIAG", ...
-                "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
+                "WECCCOMP_NMPC_FINE_CTRL_DIAG", ...
+                "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"])
             % Derived fine-step runs preserve the sea and geometry. The
-            % control diagnostic ends before NMPC activates at 15 s.
+            % active diagnostic includes the first NMPC commands after 15 s.
             oldStep = 'simu.dt             = 50/1000;';
             oldSolver = "simu.solver         = 'ode8';";
             oldCic = 'simu.cicEndTime     = 2;';
@@ -284,6 +286,8 @@ switch string(model)
                 "simu.solver         = 'ode4';");
             if string(model) == "WECCCOMP_NMPC_FINE_DIAG"
                 endTime = 9.95;
+            elseif string(model) == "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"
+                endTime = 15.2;
             else
                 endTime = 14.95;
             end
@@ -295,7 +299,8 @@ switch string(model)
         fprintf(fid, '%s', contents);
         fclose(fid);
         if any(string(model) == ["WECCCOMP_NMPC_FINE_DIAG", ...
-                "WECCCOMP_NMPC_FINE_CTRL_DIAG"])
+                "WECCCOMP_NMPC_FINE_CTRL_DIAG", ...
+                "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"])
             % The published plot script assumes the run lasts beyond 25 s.
             % It has no effect on simulation or core WEC-Sim postprocessing.
             plotFile = fullfile(caseDirs, 'userDefinedFunctions.m');
@@ -308,10 +313,10 @@ switch string(model)
             fprintf(fid, '%% Fine-step diagnostic: no plots.\n');
             fclose(fid);
         end
-        if string(model) == "WECCCOMP_NMPC_FINE_CTRL_DIAG"
-            % The AR forecast is not used before the 15 s NMPC start.
-            % Leave the 10-14.95 s resistive controller active while
-            % avoiding an AR fit on the derived 0.001 s sample grid.
+        if any(string(model) == ["WECCCOMP_NMPC_FINE_CTRL_DIAG", ...
+                "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"])
+            % The fine control cases defer the first AR fit to 15 s;
+            % the active case then includes the first NMPC commands.
             controllerFile = fullfile(caseDirs, 'controller_init.m');
             controllerContents = fileread(controllerFile);
             assert(contains(controllerContents, 'startPredictor  = 10;'), ...
@@ -1286,6 +1291,27 @@ for iCase = 1:numel(cases)
                 'The fine-step WaveStar signal %s is missing', required{iSignal});
         end
         save(fullfile(outDir, 'WECCCOMP_NMPC_FINE_CTRL_DIAG_controller.mat'), ...
+            required{:}, '-v7');
+    end
+    if string(model) == "WECCCOMP_NMPC_FINE_ACTIVE_DIAG"
+        assert(strcmp(simu.solver, 'ode4') && simu.dt == 0.001 && ...
+            simu.endTime == 15.2 && simu.rampTime == 25 && ...
+            simu.stateSpace == 1 && waves.phaseSeed == 1 && ...
+            waves.height == 0.1042 && waves.period == 1.836 && ...
+            waves.gamma == 3.3 && controllerType == 2 && ...
+            startController == 15 && startPredictor == 15 && ...
+            numel(output.bodies) == 5 && numel(output.ptos) == 1, ...
+            'The derived fine-step active NMPC settings changed');
+        writematrix([waves.omega(:), waves.amplitude(:), ...
+            waves.dOmega(:), waves.phase(:)], ...
+            fullfile(outDir, 'WECCCOMP_NMPC_FINE_ACTIVE_DIAG_components.csv'));
+        required = {'cmd_ptoM', 'estimated_states', ...
+            'AR_excM_pred', 'motor_displacement'};
+        for iSignal = 1:numel(required)
+            assert(exist(required{iSignal}, 'var') == 1, ...
+                'The fine-step active NMPC signal %s is missing', required{iSignal});
+        end
+        save(fullfile(outDir, 'WECCCOMP_NMPC_FINE_ACTIVE_DIAG_controller.mat'), ...
             required{:}, '-v7');
     end
     if string(model) == "MONOPILE_HYDRO"
