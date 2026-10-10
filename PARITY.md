@@ -512,10 +512,16 @@ their paired force/moment gates. The BTS SHA-256 is
 two fresh runs saved identical body position, velocity, rotor speed, torque,
 wave, and excitation histories. These
 checks establish the full-duration inputs and instantaneous force laws, not
-the coupled Python motion. An independent 100 s global-coupling diagnostic
+the coupled Python motion. A full-history fixed-point diagnostic over 100 s
 was stopped after five passes because its position and velocity residuals
-were still `5.24` m and `1.28` m/s; the published 1,000 s coupled trajectory
-remains unpaired.
+were still `5.24` m and `1.28` m/s. A causal turbine/platform stepper avoids
+those repeated full-history passes. Against the first 100 s of the same
+published source, its independent 10,001-step trajectory differs by at most
+0.698 mm body position, 0.123 mm/s body velocity, `0.000270` rpm rotor speed,
+`0.000318` rad azimuth, and 699 N m generator torque; each blade-root load
+component differs by at most 2.51% of its source peak. Explicit paired gates
+cover all six positions and velocities, rotor speed, azimuth, torque, and
+blade loads. The published 1,000 s coupled trajectory remains unpaired.
 
 A [pinned 12 m/s MOST constant-wind run](https://github.com/cmudrc/wec-sim-python/pull/142)
 changes the published wind-class option and initial steady-state wind speed
