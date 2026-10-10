@@ -50,20 +50,37 @@ def test_nearest_bank_rejects_invalid_grid():
     reason="fresh variable-yaw MATLAB output not provided",
 )
 def test_two_degree_bank_against_pinned_matlab():
+    _check_bank_against_pinned_matlab(
+        "OSWEC_VARIABLE_YAW_2DEG", "regular_2deg", np.arange(-40, 41, 2),
+    )
+
+
+@pytest.mark.skipif(
+    not (os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+         and os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")),
+    reason="fresh variable-yaw MATLAB output not provided",
+)
+def test_published_bank_against_pinned_matlab():
+    _check_bank_against_pinned_matlab(
+        "OSWEC_VARIABLE_YAW_PUBLISHED", "regular",
+        np.arange(-30, 30.25, .25),
+    )
+
+
+def _check_bank_against_pinned_matlab(prefix, case, headings):
     applications = Path(os.environ["WEC_SIM_APPLICATIONS_DIR"])
     source = Path(os.environ["WEC_SIM_MATLAB_MODEL_OUTPUT_DIR"])
-    prefix = "OSWEC_VARIABLE_YAW_2DEG"
-    flap = np.loadtxt(source / f"{prefix}_regular_2deg_body1.csv", delimiter=",")
-    base = np.loadtxt(source / f"{prefix}_regular_2deg_body2.csv", delimiter=",")
-    pto = np.loadtxt(source / f"{prefix}_regular_2deg_pto1.csv", delimiter=",")
+    flap = np.loadtxt(source / f"{prefix}_{case}_body1.csv", delimiter=",")
+    base = np.loadtxt(source / f"{prefix}_{case}_body2.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{prefix}_{case}_pto1.csv", delimiter=",")
     selected = np.loadtxt(source / f"{prefix}_selected_heading.csv", delimiter=",")
     wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
     hydro = applications / "_Common_Input_Files/OSWEC/hydroData/oswec.h5"
 
-    wec = WEC("OSWEC two-degree variable yaw")
+    wec = WEC("OSWEC variable yaw")
     moving = wec.body(
         "flap", hydro, mass=12700, inertia=(1.85e6,) * 3,
-        passive_yaw=True, yaw_heading_bank=np.arange(-40, 41, 2),
+        passive_yaw=True, yaw_heading_bank=headings,
     )
     wec.body("base", hydro, mass=999, inertia=(999,) * 3)
     yaw = wec.coordinate("yaw", moving.move("yaw", pivot=WorldPoint(0, 0, -8.9)))
@@ -86,7 +103,7 @@ def test_two_degree_bank_against_pinned_matlab():
         incident_direction=10, amplitude=1.25, ramp_time=100,
         rho=1000, g=9.81, spline_frequency=True,
     )
-    bank = NearestHeadingExcitation(model, np.arange(-40, 41, 2))
+    bank = NearestHeadingExcitation(model, headings)
     source_heading = np.array([bank.heading(angle) for angle in flap[:, 6]])
     np.testing.assert_array_equal(source_heading, selected[:, 2])
 

@@ -583,7 +583,7 @@ switch string(model)
         end
         cases = ["PassiveYawOFF", "PassiveYawON"];
         caseDirs = fullfile(repoRoot, 'applications', 'Passive_Yaw', cases);
-    case "OSWEC_VARIABLE_YAW_2DEG"
+    case {"OSWEC_VARIABLE_YAW_2DEG", "OSWEC_VARIABLE_YAW_PUBLISHED"}
         commonHydro = fullfile(repoRoot, 'applications', ...
             '_Common_Input_Files', 'OSWEC', 'hydroData');
         cd(commonHydro);
@@ -592,8 +592,19 @@ switch string(model)
         end
         sourceDir = fullfile(repoRoot, 'applications', ...
             'Variable_Hydro', 'Passive_Yaw');
-        caseDir = fullfile(repoRoot, 'applications', ...
-            'Variable_Hydro', 'paired_Passive_Yaw_2deg');
+        if string(model) == "OSWEC_VARIABLE_YAW_2DEG"
+            caseDir = fullfile(repoRoot, 'applications', ...
+                'Variable_Hydro', 'paired_Passive_Yaw_2deg');
+            generatedGrid = 'newDirs = -40:2:40;';
+            cases = "regular_2deg";
+        else
+            caseDir = fullfile(repoRoot, 'applications', ...
+                'Variable_Hydro', 'paired_Passive_Yaw_published');
+            % The untouched input selects -30:0.25:30. Generate those files
+            % with the pinned interpolation law and skip unused 0.05° files.
+            generatedGrid = 'newDirs = -40:0.25:40;';
+            cases = "regular";
+        end
         [copied, copyMessage] = copyfile(sourceDir, caseDir);
         assert(copied, copyMessage);
         bankScript = fullfile(caseDir, 'hydroData', 'bemio.m');
@@ -601,14 +612,13 @@ switch string(model)
         oldGrid = 'newDirs = -40:0.05:40;';
         assert(contains(contents, oldGrid), ...
             'The pinned variable-yaw bank generation changed');
-        contents = strrep(contents, oldGrid, 'newDirs = -40:2:40;');
+        contents = strrep(contents, oldGrid, generatedGrid);
         fid = fopen(bankScript, 'w');
-        assert(fid ~= -1, 'Could not write the two-degree bank script');
+        assert(fid ~= -1, 'Could not write the selected bank script');
         fprintf(fid, '%s', contents);
         fclose(fid);
         cd(fullfile(caseDir, 'hydroData'));
         bemio;
-        cases = "regular_2deg";
         caseDirs = string(caseDir);
     case {"OSWEC_PASSIVE_YAW_IRR", "OSWEC_PASSIVE_YAW_IRR_CONT"}
         hydroDir = fullfile(repoRoot, 'applications', '_Common_Input_Files', ...
@@ -866,6 +876,9 @@ for iCase = 1:numel(cases)
         assert(numel(bemDirections) == 41 && ...
             isfile('hydroData/oswec_10.h5'), ...
             'The two-degree hydrodynamic bank is incomplete');
+    elseif string(model) == "OSWEC_VARIABLE_YAW_PUBLISHED"
+        assert(isfile('hydroData/oswec_10.h5'), ...
+            'The published selected hydrodynamic bank is incomplete');
     end
     if string(model) == "SPHERE_MPC"
         instrument_sphere_mpc();
@@ -1929,7 +1942,8 @@ for iCase = 1:numel(cases)
         writematrix(waves.waveAmpTime, fullfile(outDir, sprintf( ...
             'OSWEC_PASSIVE_YAW_%s_wave.csv', cases(iCase))));
     end
-    if string(model) == "OSWEC_VARIABLE_YAW_2DEG"
+    if any(string(model) == ["OSWEC_VARIABLE_YAW_2DEG", ...
+                              "OSWEC_VARIABLE_YAW_PUBLISHED"])
         assert(simu.dt == 0.01 && simu.endTime == 600 && ...
             simu.rampTime == 100 && simu.cicEndTime == 40 && ...
             strcmp(waves.type, 'regular') && waves.height == 2.5 && ...
@@ -1940,6 +1954,13 @@ for iCase = 1:numel(cases)
             isequal(pto(1).location, [0 0 -8.9]) && ...
             isequal(constraint(1).location, [0 0 -10]), ...
             'The pinned variable-yaw settings changed');
+        if string(model) == "OSWEC_VARIABLE_YAW_PUBLISHED"
+            assert(isequal(bemDirections, -30:0.25:30), ...
+                'The published variable-yaw selected directions changed');
+        else
+            assert(isequal(bemDirections, -40:2:40), ...
+                'The derived variable-yaw selected directions changed');
+        end
         index = output.bodies(1).hydroForceIndex(:);
         assert(all(index >= 1 & index <= numel(bemDirections)) && ...
             all(index == round(index)), ...
@@ -1947,9 +1968,9 @@ for iCase = 1:numel(cases)
         selectedDirection = bemDirections(index(:));
         writematrix([output.bodies(1).time(:), index, ...
             selectedDirection(:)], fullfile(outDir, ...
-            'OSWEC_VARIABLE_YAW_2DEG_selected_heading.csv'));
+            char(string(model) + "_selected_heading.csv")));
         writematrix(waves.waveAmpTime, fullfile(outDir, ...
-            'OSWEC_VARIABLE_YAW_2DEG_wave.csv'));
+            char(string(model) + "_wave.csv")));
     end
     if any(string(model) == ["OSWEC_PASSIVE_YAW_IRR", ...
                              "OSWEC_PASSIVE_YAW_IRR_CONT"])
