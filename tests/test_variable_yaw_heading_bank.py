@@ -7,7 +7,10 @@ import numpy as np
 import pytest
 
 from wecsim import RegularWave, WEC, WorldPoint
-from wecsim.passiveYaw import NearestHeadingExcitation, PassiveYawExcitation
+from wecsim.passiveYaw import (
+    NearestHeadingExcitation, NearestSampledHeadingExcitation,
+    PassiveYawExcitation, SampledPassiveYawExcitation,
+)
 
 
 def _model():
@@ -42,6 +45,24 @@ def test_nearest_bank_rejects_invalid_grid():
     for headings in ([0], [0, 0], [2, 1], [-181, 0], [0, np.nan]):
         with pytest.raises(ValueError, match="heading bank"):
             NearestHeadingExcitation(model, headings)
+
+
+def test_nearest_sampled_bank_selects_heading_without_yaw_rotation():
+    directions = np.arange(0, 360, 10)
+    force_grid = np.zeros((2, 1, len(directions), 6))
+    force_grid[:, 0, 0, 0] = 10
+    force_grid[:, 0, 0, 1] = 20
+    force_grid[:, 0, 0, 5] = 30
+    sampled = SampledPassiveYawExcitation(
+        np.array([0, .01]), directions, np.array([10]),
+        force_grid, np.zeros(2),
+    )
+    bank = NearestSampledHeadingExcitation(sampled, np.arange(-40, 41, 2))
+    yaw = np.deg2rad(9.2)
+    assert bank.heading(yaw) == 0
+    np.testing.assert_allclose(
+        bank.force(0, yaw), [10, 20, 0, 0, 0, 30], rtol=0, atol=1e-13,
+    )
 
 
 @pytest.mark.skipif(

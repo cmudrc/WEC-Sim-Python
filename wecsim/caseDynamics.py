@@ -45,6 +45,7 @@ from .nonlinearHydro import HeaveMeshHydro
 from .orifice import OrificePTO
 from .passiveYaw import (
     HeldPassiveYawExcitation, NearestHeadingExcitation,
+    NearestSampledHeadingExcitation,
     PassiveYawExcitation, SampledPassiveYawExcitation,
 )
 from .ptoConnections import build_linear_ptos
@@ -1844,6 +1845,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                     ramp_time=ramp_time, rho=rho, g=g,
                 )
                 pm_elevation = passive_model.elevation
+                if yaw_banks[index - 1] is not None:
+                    passive_model = NearestSampledHeadingExcitation(
+                        passive_model, yaw_banks[index - 1],
+                    )
                 if yaw_thresholds[index - 1]:
                     passive_model = HeldPassiveYawExcitation(
                         passive_model, yaw_thresholds[index - 1],

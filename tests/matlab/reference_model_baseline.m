@@ -583,7 +583,8 @@ switch string(model)
         end
         cases = ["PassiveYawOFF", "PassiveYawON"];
         caseDirs = fullfile(repoRoot, 'applications', 'Passive_Yaw', cases);
-    case {"OSWEC_VARIABLE_YAW_2DEG", "OSWEC_VARIABLE_YAW_PUBLISHED"}
+    case {"OSWEC_VARIABLE_YAW_2DEG", "OSWEC_VARIABLE_YAW_PUBLISHED", ...
+            "OSWEC_VARIABLE_YAW_IRREGULAR"}
         commonHydro = fullfile(repoRoot, 'applications', ...
             '_Common_Input_Files', 'OSWEC', 'hydroData');
         cd(commonHydro);
@@ -598,12 +599,18 @@ switch string(model)
             generatedGrid = 'newDirs = -40:2:40;';
             cases = "regular_2deg";
         else
+            if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+                caseName = 'paired_Passive_Yaw_irregular';
+                cases = "irregular";
+            else
+                caseName = 'paired_Passive_Yaw_published';
+                cases = "regular";
+            end
             caseDir = fullfile(repoRoot, 'applications', ...
-                'Variable_Hydro', 'paired_Passive_Yaw_published');
+                'Variable_Hydro', caseName);
             % The untouched input selects -30:0.25:30. Generate those files
             % with the pinned interpolation law and skip unused 0.05° files.
             generatedGrid = 'newDirs = -40:0.25:40;';
-            cases = "regular";
         end
         [copied, copyMessage] = copyfile(sourceDir, caseDir);
         assert(copied, copyMessage);
@@ -876,7 +883,11 @@ for iCase = 1:numel(cases)
         assert(numel(bemDirections) == 41 && ...
             isfile('hydroData/oswec_10.h5'), ...
             'The two-degree hydrodynamic bank is incomplete');
-    elseif string(model) == "OSWEC_VARIABLE_YAW_PUBLISHED"
+    elseif any(string(model) == ["OSWEC_VARIABLE_YAW_PUBLISHED", ...
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR"])
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+            waveFlag = 'irregular';
+        end
         assert(isfile('hydroData/oswec_10.h5'), ...
             'The published selected hydrodynamic bank is incomplete');
     end
@@ -1943,10 +1954,15 @@ for iCase = 1:numel(cases)
             'OSWEC_PASSIVE_YAW_%s_wave.csv', cases(iCase))));
     end
     if any(string(model) == ["OSWEC_VARIABLE_YAW_2DEG", ...
-                              "OSWEC_VARIABLE_YAW_PUBLISHED"])
+                              "OSWEC_VARIABLE_YAW_PUBLISHED", ...
+                              "OSWEC_VARIABLE_YAW_IRREGULAR"])
+        expectedWave = 'regular';
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+            expectedWave = 'irregular';
+        end
         assert(simu.dt == 0.01 && simu.endTime == 600 && ...
             simu.rampTime == 100 && simu.cicEndTime == 40 && ...
-            strcmp(waves.type, 'regular') && waves.height == 2.5 && ...
+            strcmp(waves.type, expectedWave) && waves.height == 2.5 && ...
             waves.period == 8 && waves.direction == 10 && ...
             body(1).mass == 12700 && body(2).mass == 999 && ...
             body(1).variableHydro.option == 1 && ...
@@ -1954,7 +1970,7 @@ for iCase = 1:numel(cases)
             isequal(pto(1).location, [0 0 -8.9]) && ...
             isequal(constraint(1).location, [0 0 -10]), ...
             'The pinned variable-yaw settings changed');
-        if string(model) == "OSWEC_VARIABLE_YAW_PUBLISHED"
+        if string(model) ~= "OSWEC_VARIABLE_YAW_2DEG"
             assert(isequal(bemDirections, -30:0.25:30), ...
                 'The published variable-yaw selected directions changed');
         else
@@ -1971,6 +1987,18 @@ for iCase = 1:numel(cases)
             char(string(model) + "_selected_heading.csv")));
         writematrix(waves.waveAmpTime, fullfile(outDir, ...
             char(string(model) + "_wave.csv")));
+        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR"
+            assert(waves.phaseSeed == 1 && ...
+                strcmp(waves.spectrumType, 'PM'), ...
+                'The published variable-yaw irregular sea changed');
+            components = [waves.omega(:), waves.amplitude(:), ...
+                waves.dOmega(:), waves.phase(:)];
+            assert(size(components, 2) == 4 && ...
+                all(isfinite(components), 'all'), ...
+                'The irregular variable-yaw components are invalid');
+            writematrix(components, fullfile(outDir, ...
+                char(string(model) + "_components.csv")));
+        end
     end
     if any(string(model) == ["OSWEC_PASSIVE_YAW_IRR", ...
                              "OSWEC_PASSIVE_YAW_IRR_CONT"])
