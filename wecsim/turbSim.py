@@ -159,10 +159,13 @@ class MostWindField:
         """Sample the spatial field at a simulation time in seconds.
 
         MOST's time-series wind input is linearly interpolated between the
-        TurbSim advection frames before the BEM spatial interpolation.
+        TurbSim advection frames before the BEM spatial interpolation. Its
+        Simulink input holds the final frame after the last recorded time.
         """
-        if not np.isfinite(time) or not 0 <= time <= (self.n_time - 1) * self.wind.dt:
+        if not np.isfinite(time) or time < 0:
             raise ValueError("MOST wind time is outside the available record")
+        if time >= (self.n_time - 1) * self.wind.dt:
+            return self.sampler(self.n_time - 1)
         fractional = time / self.wind.dt
         before = min(int(np.floor(fractional)), self.n_time - 1)
         after = min(before + 1, self.n_time - 1)

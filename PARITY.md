@@ -313,6 +313,14 @@ blades and six root-load components at each frame, the largest difference is
 sampled hub states; the coupled turbine controller and time-evolving platform remain
 unpaired.
 
+The pinned `MOST_Lib.slx` wind `From Workspace` blocks specify `Holding final
+value` after their last input sample. The checked-in TurbSim record yields
+19,999 advected frames, with its last input at approximately 999.90 s, while
+the published application ends at 1,000 s. `MostWindField.sampler_at` now
+holds that final spatial frame for later finite times, matching the source
+input convention at the endpoint. This removes an input-domain obstacle to
+the full-duration comparison; the 1,000 s coupled trajectory is still unpaired.
+
 The MOST [baseline-controller source gate](https://github.com/cmudrc/wec-sim-python/actions/runs/37960749134)
 regenerates the published IEA 15 MW steady-state table and control parameters,
 then runs the active Simulink Baseline block with a prescribed rotor-speed

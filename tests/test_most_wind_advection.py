@@ -34,6 +34,13 @@ def test_most_wind_advection_sample_order_and_bounds():
         field.sampler_at(.5)([-25, 0, .5]), sampler([-25, 0, .5]) + .5,
         rtol=0, atol=1e-14,
     )
+    final = field.sampler(field.n_time - 1)([-25, 0, .5])
+    for time in (field.time[-1], field.time[-1] + .1, 100.):
+        np.testing.assert_array_equal(field.sampler_at(time)([-25, 0, .5]),
+                                      final)
+    for time in (-.1, np.nan, np.inf):
+        with pytest.raises(ValueError, match="outside the available record"):
+            field.sampler_at(time)
     np.testing.assert_array_equal(
         sampler([field.x[-1], wind.y[-1], wind.z[-1]]),
         first[:, -1, -1, -1],
