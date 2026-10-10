@@ -487,12 +487,35 @@ own motion. Native long-trajectory parity for the one-degree hold remains open.
 For the published `Variable_Hydro/Passive_Yaw` case, set
 `passive_yaw=True` and `yaw_heading_bank=np.arange(-30, 30.25, 0.25)` on the
 flap. This selects the nearest BEM heading from wave direction relative to
-yaw, matching the input's 241 selected headings. The full 600 s regular-wave
-yaw, six excitation channels, and PTO work pair with MATLAB. The same bank
+yaw, matching the input's 241 selected headings. For example, the irregular
+PM configuration uses the same body, yaw coordinate, and rotational PTO:
+
+```python
+import numpy as np
+from wecsim import PMWave, WEC, WorldPoint
+
+wec = WEC("variable-yaw OSWEC")
+flap = wec.body("flap", "oswec.h5", mass=12_700,
+                inertia=(1.85e6,) * 3, passive_yaw=True,
+                yaw_heading_bank=np.arange(-30, 30.25, 0.25))
+wec.body("base", "oswec.h5", mass=999, inertia=(999,) * 3)
+yaw = wec.coordinate("yaw", flap.move("yaw", pivot=WorldPoint(0, 0, -8.9)))
+wec.rotational_pto("hinge", yaw, damping=120_000)
+result = wec.run(PMWave(2.5, 8, direction=10, seed=1,
+                        phase_generator="matlab"),
+                 dt=0.01, end_time=600, ramp_time=100,
+                 radiation_memory=40)
+```
+
+The full 600 s regular-wave yaw, six excitation channels, and PTO work pair
+with MATLAB. The same bank
 works with a single-direction `PMWave`; a derived 120 s irregular case pairs
 the source excitation within `1e-6` N or N m and the independent yaw within
-`0.002` rad. The unchanged 600 s MATLAB irregular run exceeded the CI hour
-limit, so full-length irregular trajectory parity remains open. The source generates a
+`0.002` rad. A longer MATLAB job completed the published 600 s irregular
+case: source-heading selection and excitation pair, while independent Python
+yaw differs by up to `0.1103` rad and PTO work by `9.05%`. Prescribing only
+MATLAB's heading choices cuts the work difference to `0.0081%`; native
+full-length trajectory parity remains open. The source generates a
 finer 0.05° set of HDF5 files, but its input reads only the selected 0.25°
 headings. The paired baseline generates those same selected files with the
 pinned interpolation rule; see [`PARITY.md`](PARITY.md).

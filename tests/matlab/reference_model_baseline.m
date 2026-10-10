@@ -584,7 +584,8 @@ switch string(model)
         cases = ["PassiveYawOFF", "PassiveYawON"];
         caseDirs = fullfile(repoRoot, 'applications', 'Passive_Yaw', cases);
     case {"OSWEC_VARIABLE_YAW_2DEG", "OSWEC_VARIABLE_YAW_PUBLISHED", ...
-            "OSWEC_VARIABLE_YAW_IRREGULAR_120S"}
+            "OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+            "OSWEC_VARIABLE_YAW_IRREGULAR_600S"}
         commonHydro = fullfile(repoRoot, 'applications', ...
             '_Common_Input_Files', 'OSWEC', 'hydroData');
         cd(commonHydro);
@@ -599,9 +600,15 @@ switch string(model)
             generatedGrid = 'newDirs = -40:2:40;';
             cases = "regular_2deg";
         else
-            if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
-                caseName = 'paired_Passive_Yaw_irregular_120s';
-                cases = "irregular_120s";
+            if any(string(model) == ["OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                                     "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
+                if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+                    caseName = 'paired_Passive_Yaw_irregular_120s';
+                    cases = "irregular_120s";
+                else
+                    caseName = 'paired_Passive_Yaw_irregular_600s';
+                    cases = "irregular_600s";
+                end
             else
                 caseName = 'paired_Passive_Yaw_published';
                 cases = "regular";
@@ -899,8 +906,10 @@ for iCase = 1:numel(cases)
             isfile('hydroData/oswec_10.h5'), ...
             'The two-degree hydrodynamic bank is incomplete');
     elseif any(string(model) == ["OSWEC_VARIABLE_YAW_PUBLISHED", ...
-                                 "OSWEC_VARIABLE_YAW_IRREGULAR_120S"])
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
+        if any(string(model) == ["OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
             waveFlag = 'irregular';
         end
         assert(isfile('hydroData/oswec_10.h5'), ...
@@ -1970,12 +1979,16 @@ for iCase = 1:numel(cases)
     end
     if any(string(model) == ["OSWEC_VARIABLE_YAW_2DEG", ...
                               "OSWEC_VARIABLE_YAW_PUBLISHED", ...
-                              "OSWEC_VARIABLE_YAW_IRREGULAR_120S"])
+                              "OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                              "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
         expectedWave = 'regular';
         expectedEndTime = 600;
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+        if any(string(model) == ["OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
             expectedWave = 'irregular';
-            expectedEndTime = 120;
+            if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+                expectedEndTime = 120;
+            end
         end
         assert(simu.dt == 0.01 && simu.endTime == expectedEndTime && ...
             simu.rampTime == 100 && simu.cicEndTime == 40 && ...
@@ -2004,7 +2017,8 @@ for iCase = 1:numel(cases)
             char(string(model) + "_selected_heading.csv")));
         writematrix(waves.waveAmpTime, fullfile(outDir, ...
             char(string(model) + "_wave.csv")));
-        if string(model) == "OSWEC_VARIABLE_YAW_IRREGULAR_120S"
+        if any(string(model) == ["OSWEC_VARIABLE_YAW_IRREGULAR_120S", ...
+                                 "OSWEC_VARIABLE_YAW_IRREGULAR_600S"])
             assert(waves.phaseSeed == 1 && ...
                 strcmp(waves.spectrumType, 'PM'), ...
                 'The published variable-yaw irregular sea changed');
