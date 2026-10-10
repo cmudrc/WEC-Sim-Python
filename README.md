@@ -484,14 +484,14 @@ A three-seed paired diagnostic that prescribes only MATLAB's heading-update
 schedule recovers tight yaw and PTO-work agreement while Python advances its
 own motion. Native long-trajectory parity for the one-degree hold remains open.
 
-For the published `Variable_Hydro/Passive_Yaw` regular-wave case, pass
-`yaw_heading_bank=range(-40, 41, 2)` alongside `passive_yaw=True` on the
-flap. This chooses the nearest 2° BEM heading from the wave direction relative
-to yaw. This 2° bank is a bounded resampling of the published generator's
-0.05° grid; the original input selects a 0.25° subset of that grid.
-Python matches all six source excitation components and the full 600 s yaw and
-PTO trajectory for the resampled case. The original 0.25° selection remains unpaired (see
-[`PARITY.md`](PARITY.md)).
+For the published `Variable_Hydro/Passive_Yaw` regular-wave case, set
+`passive_yaw=True` and `yaw_heading_bank=np.arange(-30, 30.25, 0.25)` on the
+flap. This selects the nearest BEM heading from wave direction relative to
+yaw, matching the input's 241 selected headings. The full 600 s yaw, six
+excitation channels, and PTO work pair with MATLAB. The source generates a
+finer 0.05° set of HDF5 files, but its input reads only the selected 0.25°
+headings. The paired baseline generates those same selected files with the
+pinned interpolation rule; see [`PARITY.md`](PARITY.md).
 
 The published `Morison_Element/morisonElement` application has a fixed
 monopile and tower without HDF5 hydrodynamic bodies. Its nonlinear drag and
