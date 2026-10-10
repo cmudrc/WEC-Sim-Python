@@ -592,7 +592,11 @@ The same surge/heave/pitch layout accepts a regular-wave current, for example
 `RegularWave(1, 8, current=Current(.8, 45, "power", 30))`. Current loads the
 moving element through relative velocity and drag; it adds no fluid
 acceleration. The direct source force law is paired for three current profiles.
-A coupled moving-current trajectory is not yet paired to MATLAB.
+A derived 40 s Sphere run with current shows a convention gap at nonzero
+pitch: the pinned MATLAB Cartesian option-1 function adds no heave force
+from horizontal current, while the Python axial element projects that current
+onto its rotated axis. The coupled moving-current trajectory is not paired;
+the measured differences are in [PARITY.md](PARITY.md).
 
 For pure heave, define only the heave coordinate. Still-water free decay
 uses `NoWave()` and `radiation_memory=15`. These moving-body layouts have
