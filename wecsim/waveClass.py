@@ -33,7 +33,6 @@ Note: "RuntimeWarning: overflow encountered in sinh"
 from scipy import integrate
 import matplotlib.pyplot as plt
 import numpy as np
-import numpy.matlib 
 import warnings
 import scipy.io as sio
 
@@ -669,8 +668,8 @@ class WaveClass:
         self.waveAmpTime = [t,initialZeros]
         maxRampIT=int(np.round(rampTime/dt))
         iiter = np.size(self.waveDir)
-        tmp = np.sqrt(np.matlib.repmat(self.A,iiter,1)*np.matlib.repmat(df,iiter,1)*np.transpose([self.waveSpread,]))
-        c1 = np.matlib.repmat(self.w,iiter,1) # matlib.repmat method that repeats arrays which results in matrix form of arrays
+        tmp = np.sqrt(np.tile(self.A, (iiter, 1))*np.tile(df, (iiter, 1))*np.transpose([self.waveSpread,]))
+        c1 = np.tile(self.w, (iiter, 1)) # repeat frequencies for each wave direction
         if rampTime == 0:
             for i in range(maxIt+1): # keeping for loop was faster than changing it to all matrix computation even when there were multiple wave direction
                 t       = (i)*dt
@@ -690,7 +689,7 @@ class WaveClass:
         self.waveAmpTime2 = self.waveAmpTime # if wave guage location is not set, wave elevation is same as waveAmpTime
         self.waveAmpTime3 = self.waveAmpTime # if wave guage location is not set, wave elevation is same as waveAmpTime   
         if self.wavegauge1loc[0] != 0 or self.wavegauge1loc[1] != 0 or self.wavegauge2loc[0] != 0 or self.wavegauge2loc[1] != 0 or self.wavegauge3loc[0] != 0 or self.wavegauge3loc[1] != 0:
-            c2 = np.matlib.repmat(self.k,iiter,1)
+            c2 = np.tile(self.k, (iiter, 1))
             c_cos = np.cos(np.transpose([self.waveDir,])*np.pi/180)
             c_sin = np.sin(np.transpose([self.waveDir,])*np.pi/180)
             t = np.arange(maxIt+1)*dt # array of time with dt time steps
