@@ -69,8 +69,8 @@ class MostRotor:
         """Advance rotor speed, azimuth, torque, and pitch from platform motion.
 
         ``platform_position`` and ``platform_velocity`` are N×6 world-frame
-        body records in WEC-Sim's surge/sway/heave/roll/pitch/yaw order. Time
-        must fall inside the supplied MOST wind record.
+        body records in WEC-Sim's surge/sway/heave/roll/pitch/yaw order. The
+        turbulent-wind input holds its final frame after the record ends.
         """
         time = np.asarray(time, dtype=float)
         position = np.asarray(platform_position, dtype=float)
