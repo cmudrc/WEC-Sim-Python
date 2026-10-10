@@ -1604,9 +1604,9 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     yaw_banks = [spec.get("yaw_heading_bank") for spec in bodies]
     if any(bank is not None and (not bodies[index].get("passive_yaw", False)
                                  or yaw_thresholds[index]
-                                 or wave["type"] != "regular")
+                                 or wave["type"] not in ("regular", "pm"))
            for index, bank in enumerate(yaw_banks)):
-        raise ValueError("yaw_heading_bank needs regular-wave passive yaw without a threshold")
+        raise ValueError("yaw_heading_bank needs regular or PM passive yaw without a threshold")
     if passive_indices:
         yaw_map = np.zeros((6, 1))
         yaw_map[5, 0] = 1
