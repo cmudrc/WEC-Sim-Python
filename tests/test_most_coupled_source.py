@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 from wecsim import (
     MostBaselineController, MostCoupled, MostPlatformHydrodynamics, MostRotor,
-    MostTowerReaction, MostWindField, read_turbsim_bts,
+    MostStaticMooring, MostTowerReaction, MostWindField, read_turbsim_bts,
 )
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
@@ -139,3 +139,62 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         assert np.all(component_error < 0.04 * component_peak), (
             component_error, component_peak,
         )
+
+
+@pytest.mark.skipif(
+    not all(os.environ.get(name) for name in (
+        "WEC_SIM_MOST_SHORT_BASELINE", "WEC_SIM_MOST_H5",
+        "WEC_SIM_MOST_MASS_PROPERTIES", "WEC_SIM_MOST_PROPERTIES",
+    )),
+    reason="pinned MATLAB MOST force history not provided",
+)
+def test_most_source_motion_force_laws_against_pinned_source():
+    """Replay 30/60 s force laws on saved source motion, independent of solve."""
+    source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
+    platform = MostPlatformHydrodynamics.from_volturnus(
+        os.environ["WEC_SIM_MOST_H5"],
+        os.environ["WEC_SIM_MOST_MASS_PROPERTIES"],
+    )
+    np.testing.assert_allclose(
+        platform.restoring_force(source["body_position"]),
+        source["body_force_restoring"], rtol=0, atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        platform.drag_force(source["body_velocity"]),
+        source["body_force_viscous"], rtol=0, atol=1e-7,
+    )
+    np.testing.assert_allclose(
+        platform.radiation_force(source["body_velocity"], .01),
+        source["body_force_radiation"], rtol=0, atol=1e-6,
+    )
+    mooring = MostStaticMooring()
+    mooring_force = np.array([
+        mooring.force(pose)[0] for pose in source["mooring_position"]
+    ])
+    np.testing.assert_allclose(
+        mooring_force[:, :3], source["mooring_force"][:, :3],
+        rtol=0, atol=1e-3,
+    )
+    np.testing.assert_allclose(
+        mooring_force[:, 3:], source["mooring_force"][:, 3:],
+        rtol=0, atol=1e-2,
+    )
+    tower = MostTowerReaction.from_iea15mw(
+        os.environ["WEC_SIM_MOST_PROPERTIES"],
+        platform_cg=platform.equilibrium_pose[:3],
+    )
+    tower_force = tower.evaluate(
+        source["body_position"], source["body_velocity"],
+        source["body_acceleration"],
+        source["rotor_speed"].ravel()*2*np.pi/60,
+        source["azimuth"].ravel(), source["generator_torque"].ravel(),
+        source["blade_aero_load"],
+    )
+    np.testing.assert_allclose(
+        tower_force[:, :3], source["tower_base_load"][:, :3],
+        rtol=0, atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        tower_force[:, 3:], source["tower_base_load"][:, 3:],
+        rtol=0, atol=0.1,
+    )
