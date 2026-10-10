@@ -15,6 +15,9 @@ from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
 )
 
+WIND_SPEED = float(os.environ.get("WEC_SIM_MOST_CONSTANT_WIND_SPEED", 12))
+END_TIME = float(os.environ.get("WEC_SIM_MOST_CONSTANT_END_TIME", 10))
+
 
 @pytest.mark.skipif(
     not all(os.environ.get(name) for name in (
@@ -36,7 +39,7 @@ def test_most_above_rated_constant_wind_against_pinned_source():
     )
     controller = MostBaselineController.from_matlab_files(
         os.environ["WEC_SIM_MOST_CONTROL"],
-        os.environ["WEC_SIM_MOST_STEADY_STATES"], wind_speed=12,
+        os.environ["WEC_SIM_MOST_STEADY_STATES"], wind_speed=WIND_SPEED,
     )
     rotor = MostRotor.from_iea15mw(
         os.environ["WEC_SIM_MOST_BLADE_DIR"], controller=controller,
@@ -47,22 +50,25 @@ def test_most_above_rated_constant_wind_against_pinned_source():
         seed=1, phase_generator="matlab",
     )
     wave = synthesize_irregular_response(
-        h5_file, sea, dt=.01, end_time=10, ramp_time=20,
+        h5_file, sea, dt=.01, end_time=END_TIME, ramp_time=20,
         rho=1025, g=9.80665,
     )
     time = wave.time
-    result = MostCoupled(platform, rotor, tower).simulate(
-        time, wave.excitation_force, MostConstantWind(12, end_time=10),
-    )
+    result = None
+    if END_TIME <= 10:
+        result = MostCoupled(platform, rotor, tower).simulate(
+            time, wave.excitation_force,
+            MostConstantWind(WIND_SPEED, end_time=END_TIME),
+        )
 
     source = loadmat(Path(os.environ["WEC_SIM_MOST_CONSTANT_BASELINE"]))
-    assert time.shape == (1001,)
+    assert time.shape == (round(END_TIME / .01) + 1,)
     np.testing.assert_allclose(time, source["body_time"].ravel(),
                                rtol=0, atol=1e-12)
     np.testing.assert_allclose(time, source["turbine_time"].ravel(),
                                rtol=0, atol=1e-12)
     np.testing.assert_allclose(source["wind_speed"],
-                               np.tile([12., 0., 0.], (len(time), 1)),
+                               np.tile([WIND_SPEED, 0., 0.], (len(time), 1)),
                                rtol=0, atol=1e-12)
     for actual, expected in (
         (sea.omega, source["wave_omega"].ravel()),
@@ -82,8 +88,13 @@ def test_most_above_rated_constant_wind_against_pinned_source():
     # the Python controller use radians before that reporting conversion.
     source_pitch = np.deg2rad(source["blade_pitch"].ravel())
     assert controller.initial_pitch > .1
-    assert source_pitch[0] == result.rotor.blade_pitch[0] == 0
+    assert source_pitch[0] == 0
+    if result is not None:
+        assert result.rotor.blade_pitch[0] == 0
     assert np.max(source_pitch) > .015
+    if END_TIME > 20:
+        # Exercise the developed sea while the controller keeps pitch active.
+        assert np.min(source_pitch[round(20 / .01):]) > .1
     np.testing.assert_allclose(
         controller.initial_omega*60/(2*np.pi), source["rotor_speed"][0, 0],
         rtol=0, atol=1e-12,
@@ -97,11 +108,13 @@ def test_most_above_rated_constant_wind_against_pinned_source():
     np.testing.assert_allclose(replay_pitch, source_pitch,
                                rtol=0, atol=1e-6)
 
-    assert result.iterations <= 12
-    assert result.position_residual <= 1e-6
-    assert result.velocity_residual <= 1e-6
+    if result is not None:
+        assert result.iterations <= 12
+        assert result.position_residual <= 1e-6
+        assert result.velocity_residual <= 1e-6
     causal = MostCoupled(platform, rotor, tower).simulate_causal(
-        time, wave.excitation_force, MostConstantWind(12, end_time=10),
+        time, wave.excitation_force,
+        MostConstantWind(WIND_SPEED, end_time=END_TIME),
     )
     assert causal.iterations == 1
     assert causal.position_residual <= 1e-6
@@ -109,7 +122,7 @@ def test_most_above_rated_constant_wind_against_pinned_source():
 
     # Both coupling methods must meet the same source trajectory gates. The
     # causal method exercises nonzero blade pitch without a full-history pass.
-    for coupled in (result, causal):
+    for coupled in ((result, causal) if result is not None else (causal,)):
         for axis, position_gate, velocity_gate in (
             (0, 2e-4, 5e-5),
             (1, 5e-4, 2e-4),
