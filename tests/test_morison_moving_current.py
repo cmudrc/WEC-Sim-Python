@@ -2,8 +2,9 @@
 
 import numpy as np
 import pytest
+from pathlib import Path
 
-from wecsim import Current, RegularWave
+from wecsim import Current, RegularWave, WEC
 from wecsim.morison import MorisonElement, regular_wave_axial_morison_terms
 
 
@@ -42,3 +43,23 @@ def test_depth_profiles_and_public_wave_configuration():
         "current"]["profile"] == "power"
     with pytest.raises(ValueError, match="current settings"):
         _force(10, "linear")
+
+
+def test_public_runner_accepts_current_with_finite_depth_hydro():
+    hydro = (Path(__file__).parent / "test_objects/test_bodyclass/testData"
+             / "hydroData/ellipsoid.h5")
+    wec = WEC("tilted ellipsoid")
+    body = wec.body("ellipsoid", hydro, inertia=(1e6, 1e6, 1e6))
+    for axis in ("surge", "heave", "pitch"):
+        wec.coordinate(axis, body.move(axis))
+    wec.morison_element(
+        body, point=body.at(0, 0, -2), drag_coefficient=(0, 0, 1),
+        added_mass_coefficient=(0, 0, 0), area=(0, 0, 2), volume=1,
+    )
+    run = dict(dt=.01, end_time=.02, ramp_time=0,
+               initial_coordinate={"pitch": .1})
+    still = wec.run(RegularWave(0, 8), **run)
+    flowing = wec.run(RegularWave(0, 8, current=Current(.8, 0)), **run)
+    assert np.max(np.abs(flowing.body_forces["ellipsoid"]
+                         - still.body_forces["ellipsoid"])) > 1
+    assert np.isfinite(flowing.bodies["ellipsoid"].position).all()

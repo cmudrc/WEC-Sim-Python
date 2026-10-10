@@ -1380,7 +1380,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     components = None
     auxiliary_files = []
     if wave["type"] in ("regular", "regularCIC"):
-        if set(wave) - {"type", "height", "period", "direction"}:
+        allowed = {"type", "height", "period", "direction"}
+        if wave["type"] == "regular":
+            allowed.add("current")
+        if set(wave) - allowed:
             raise ValueError("regular waves use height, period, and direction")
         height = _number(wave.get("height"), "wave.height", nonnegative=True)
         period = _number(wave.get("period"), "wave.period", positive=True)
@@ -1538,8 +1541,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         current_settings = _current_settings(wave)
         moving_elements = _morison_elements(bodies[0]["morison_elements"])
         if wave["type"] == "regular":
-            raw_depth = loaded_bodies[0].hydroData[
-                "simulation_parameters"]["water_depth"]
+            raw_depth = np.asarray(loaded_bodies[0].hydroData[
+                "simulation_parameters"]["water_depth"]).item()
             depth = (np.inf if str(raw_depth).lower() == "infinite"
                      else float(raw_depth))
 
