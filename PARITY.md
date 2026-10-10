@@ -536,6 +536,12 @@ velocity differences are 0.306 mm and 0.102 mm/s; rotor speed, azimuth,
 generator torque, and physical blade pitch differ by at most `0.000375` rpm,
 `0.000140` rad, 1.65 kN m, and `1.08e-5` rad. Each blade-root force/moment
 component differs by at most 0.084% of its source peak, against a 0.2% gate.
+The new causal one-pass solver is independently checked against the same
+source and identical per-channel gates. Its local maximum position and speed
+differences are 0.305 mm and 0.101 mm/s; rotor speed, azimuth, torque, and
+blade pitch differ by at most `0.000389` rpm, `0.000151` rad, 1.71 kN m, and
+`7.19e-6` rad. Its largest blade-root component error is 0.085% of the source
+peak. The fresh-source CI gate for this causal path is pending.
 The case starts with a nonzero steady-state pitch setting and exercises pitch
 control, but rotor speed subsequently falls and pitch returns to zero. It
 covers ten seconds of the 20 s wave ramp, not sustained above-rated operation

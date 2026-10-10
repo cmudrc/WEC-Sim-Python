@@ -100,45 +100,57 @@ def test_most_above_rated_constant_wind_against_pinned_source():
     assert result.iterations <= 12
     assert result.position_residual <= 1e-6
     assert result.velocity_residual <= 1e-6
-    for axis, position_gate, velocity_gate in (
-        (0, 2e-4, 5e-5),
-        (1, 5e-4, 2e-4),
-        (2, 1.5e-4, 7e-5),
-        (3, 5e-5, 2e-5),
-        (4, 5e-6, 2e-6),
-        (5, 1.5e-4, 3e-6),
-    ):
+    causal = MostCoupled(platform, rotor, tower).simulate_causal(
+        time, wave.excitation_force, MostConstantWind(12, end_time=10),
+    )
+    assert causal.iterations == 1
+    assert causal.position_residual <= 1e-6
+    assert causal.velocity_residual <= 1e-4
+
+    # Both coupling methods must meet the same source trajectory gates. The
+    # causal method exercises nonzero blade pitch without a full-history pass.
+    for coupled in (result, causal):
+        for axis, position_gate, velocity_gate in (
+            (0, 2e-4, 5e-5),
+            (1, 5e-4, 2e-4),
+            (2, 1.5e-4, 7e-5),
+            (3, 5e-5, 2e-5),
+            (4, 5e-6, 2e-6),
+            (5, 1.5e-4, 3e-6),
+        ):
+            np.testing.assert_allclose(
+                coupled.platform.position[:, axis],
+                source["body_position"][:, axis],
+                rtol=0, atol=position_gate,
+            )
+            np.testing.assert_allclose(
+                coupled.platform.velocity[:, axis],
+                source["body_velocity"][:, axis],
+                rtol=0, atol=velocity_gate,
+            )
         np.testing.assert_allclose(
-            result.platform.position[:, axis], source["body_position"][:, axis],
-            rtol=0, atol=position_gate,
+            coupled.rotor.rotor_speed*60/(2*np.pi),
+            source["rotor_speed"].ravel(), rtol=0, atol=.001,
         )
         np.testing.assert_allclose(
-            result.platform.velocity[:, axis], source["body_velocity"][:, axis],
-            rtol=0, atol=velocity_gate,
+            coupled.rotor.azimuth, source["azimuth"].ravel(),
+            rtol=0, atol=.0003,
         )
-    np.testing.assert_allclose(
-        result.rotor.rotor_speed*60/(2*np.pi), source["rotor_speed"].ravel(),
-        rtol=0, atol=.001,
-    )
-    np.testing.assert_allclose(
-        result.rotor.azimuth, source["azimuth"].ravel(),
-        rtol=0, atol=.0003,
-    )
-    np.testing.assert_allclose(
-        result.rotor.generator_torque, source["generator_torque"].ravel(),
-        rtol=0, atol=3000,
-    )
-    np.testing.assert_allclose(
-        result.rotor.blade_pitch, source_pitch, rtol=0, atol=2e-5,
-    )
-    expected_load = source["blade_aero_load"]
-    assert result.rotor.blade_root_load.shape == expected_load.shape == (
-        len(time), 6, 3,
-    )
-    component_peak = np.max(np.abs(expected_load), axis=(0, 2))
-    component_error = np.max(
-        np.abs(result.rotor.blade_root_load - expected_load), axis=(0, 2),
-    )
-    assert np.all(component_error < .002 * component_peak), (
-        component_error, component_peak,
-    )
+        np.testing.assert_allclose(
+            coupled.rotor.generator_torque,
+            source["generator_torque"].ravel(), rtol=0, atol=3000,
+        )
+        np.testing.assert_allclose(
+            coupled.rotor.blade_pitch, source_pitch, rtol=0, atol=2e-5,
+        )
+        expected_load = source["blade_aero_load"]
+        assert coupled.rotor.blade_root_load.shape == expected_load.shape == (
+            len(time), 6, 3,
+        )
+        component_peak = np.max(np.abs(expected_load), axis=(0, 2))
+        component_error = np.max(
+            np.abs(coupled.rotor.blade_root_load - expected_load), axis=(0, 2),
+        )
+        assert np.all(component_error < .002 * component_peak), (
+            component_error, component_peak,
+        )
