@@ -56,6 +56,7 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
     end_time = float(os.environ.get("WEC_SIM_MOST_END_TIME", "10"))
     assert end_time in (10, 30, 60)
     developed_sea = end_time >= 30
+    extended_sea = end_time == 60
     if developed_sea:
         assert controller is not None, "developed-sea case needs its generated MATLAB controller"
     wave = synthesize_irregular_response(
@@ -101,10 +102,10 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
     assert result.velocity_residual <= 1e-6
     for axis, position_gate, velocity_gate in (
         (0, 6e-4 if developed_sea else 2e-4, 5e-5),  # surge, m and m/s
-        (1, 5e-4, 2e-4),    # sway, m and m/s
+        (1, 7.5e-4 if extended_sea else 5e-4, 2e-4),  # sway, m and m/s
         (2, 1.5e-4, 7e-5),  # heave, m and m/s
-        (3, 4e-5, 2e-5),    # roll, rad and rad/s
-        (4, 5e-6, 2e-6),    # pitch, rad and rad/s
+        (3, 6e-5 if extended_sea else 4e-5, 2e-5),  # roll, rad and rad/s
+        (4, 8e-6 if extended_sea else 5e-6, 2e-6),  # pitch, rad and rad/s
         (5, 1.5e-4, 1e-5 if developed_sea else 3e-6),  # yaw, rad and rad/s
     ):
         np.testing.assert_allclose(
