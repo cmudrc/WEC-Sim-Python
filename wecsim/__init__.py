@@ -64,7 +64,7 @@ from .mostController import MostBaselineController
 from .mostRotor import MostRotor, MostRotorResponse
 from .mostTower import MostTowerReaction
 from .mostCoupled import MostCoupled, MostCoupledResponse
-from .turbSim import MostWindField, TurbSimWind, read_turbsim_bts
+from .turbSim import MostConstantWind, MostWindField, TurbSimWind, read_turbsim_bts
 
 __all__ = [
     "Body", "BodyPoint", "CaseResponse", "Coordinate", "Current", "DeclutchingControl", "DirectDriveHistory", "DirectLinearGenerator", "DirectLinearGeneratorSignals", "FullDirectionalComponents", "IrregularResponse", "LatchingControl", "LinearHardStops", "LinearPTO", "Motion",
@@ -104,5 +104,5 @@ __all__ = [
     "WaveBotImpedanceResponse", "run_wavebot_impedance",
     "WaveStarLinkage", "WaveStarResponse", "run_wavestar_published",
     "imported_full_directional_components", "synthesize_full_directional_response",
-    "MostBEM", "MostBaselineController", "MostCoupled", "MostCoupledResponse", "MostPlatformHydrodynamics", "MostPlatformResponse", "MostRotor", "MostRotorResponse", "MostStaticMooring", "MostTowerReaction", "MostWindField", "TurbSimWind", "read_turbsim_bts",
+    "MostBEM", "MostBaselineController", "MostCoupled", "MostCoupledResponse", "MostPlatformHydrodynamics", "MostPlatformResponse", "MostRotor", "MostRotorResponse", "MostStaticMooring", "MostTowerReaction", "MostConstantWind", "MostWindField", "TurbSimWind", "read_turbsim_bts",
 ]

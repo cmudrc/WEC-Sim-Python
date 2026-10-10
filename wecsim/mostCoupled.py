@@ -8,7 +8,7 @@ from .mostMooring import MostStaticMooring
 from .mostPlatform import MostPlatformHydrodynamics, MostPlatformResponse
 from .mostRotor import MostRotor, MostRotorResponse
 from .mostTower import MostTowerReaction
-from .turbSim import MostWindField
+from .turbSim import MostConstantWind, MostWindField
 
 
 @dataclass(frozen=True)
@@ -34,7 +34,8 @@ class MostCoupled:
     rotor: MostRotor
     tower: MostTowerReaction
 
-    def simulate(self, time, wave_excitation, wind: MostWindField, *,
+    def simulate(self, time, wave_excitation,
+                 wind: MostWindField | MostConstantWind, *,
                  position_tolerance: float = 1e-6,
                  velocity_tolerance: float = 1e-6,
                  max_iterations: int = 20,
