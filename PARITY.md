@@ -497,7 +497,25 @@ as the independently coupled run. A half-step platform diagnostic with
 interpolated turbine histories gives 0.674 mm; that interpolation prevents a
 strict time-step convergence claim. These comparisons motivate the explicit
 60 s gates without changing any hydrodynamic, mooring, or turbine coefficient.
-The published 1,000 s coupled trajectory remains unpaired.
+A [pinned published 1,000 s MOST source run](https://github.com/cmudrc/wec-sim-python/actions/runs/38066481378)
+uses the full 20,750-frame TurbSim input and the 4 m, seed-1 JONSWAP sea.
+MATLAB saves 100,001 wave samples at the 0.01 s solver step and 10,001 body
+samples at the published 0.1 s output step. Python's wave elevation differs
+by at most `4.84e-13` m, and all six excitation components sampled on the
+body grid by at most `2.13e-5` N or N m (gates `1e-12` m and `1e-4` N or N m).
+The same-run generated controller reproduces the initial rotor speed and
+generator torque to rounding. Its saved restoring, viscous, nonlinear static
+mooring, and tower-reaction laws agree across all 10,001 body states within
+`5.97e-8`, `9.32e-10`, `4.87e-4`, and `0.0421` N or N m respectively, below
+their paired force/moment gates. The BTS SHA-256 is
+`060bf3f6bfbebe1dd38f260765611d7d175c6822e9eb3e27e5360ea851df4095`;
+two fresh runs saved identical body position, velocity, rotor speed, torque,
+wave, and excitation histories. These
+checks establish the full-duration inputs and instantaneous force laws, not
+the coupled Python motion. An independent 100 s global-coupling diagnostic
+was stopped after five passes because its position and velocity residuals
+were still `5.24` m and `1.28` m/s; the published 1,000 s coupled trajectory
+remains unpaired.
 
 A [pinned 12 m/s MOST constant-wind run](https://github.com/cmudrc/wec-sim-python/pull/142)
 changes the published wind-class option and initial steady-state wind speed
