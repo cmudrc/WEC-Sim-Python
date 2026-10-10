@@ -310,16 +310,16 @@ the active MATLAB rotor function and the Python `MostWindField.sampler` plus
 component difference is `8.9e-16` m/s (gate `1e-12` m/s). Across all three
 blades and six root-load components at each frame, the largest difference is
 `7.5e-9` N or N m (gate `1e-4`). This pairs the wind-to-rotor load path for
-sampled hub states; the coupled turbine controller and time-evolving platform remain
-unpaired.
+sampled hub states. The coupled turbine controller and time-evolving platform
+are paired separately in the full-duration gate below.
 
 The pinned `MOST_Lib.slx` wind `From Workspace` blocks specify `Holding final
 value` after their last input sample. The checked-in TurbSim record yields
 19,999 advected frames, with its last input at approximately 999.90 s, while
 the published application ends at 1,000 s. `MostWindField.sampler_at` now
 holds that final spatial frame for later finite times, matching the source
-input convention at the endpoint. This removes an input-domain obstacle to
-the full-duration comparison; the 1,000 s coupled trajectory is still unpaired.
+input convention at the endpoint. The full-duration coupled comparison below
+includes that endpoint.
 
 The MOST [baseline-controller source gate](https://github.com/cmudrc/wec-sim-python/actions/runs/37960749134)
 regenerates the published IEA 15 MW steady-state table and control parameters,
@@ -430,7 +430,8 @@ were changed for this condition. Both cases cover only the first 10 s of a
 20 s wave ramp with the same below-rated wind. The 30 and 60 s developed-sea
 extensions below cover motion after the ramp. A separate 12 m/s constant-wind
 case below tests the controller with nonzero steady-state initial pitch.
-The published 1,000 s trajectory and other wind/controller regimes remain unpaired.
+The published 1,000 s trajectory is paired below; other wind/controller
+regimes remain unpaired.
 
 The 10 s gates use each MATLAB run's generated controller and steady-state
 tables. Two fresh 6 m source runs started 0.0164 rpm and 62.8 kN m apart in
