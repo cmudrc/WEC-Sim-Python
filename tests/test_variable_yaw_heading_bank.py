@@ -167,6 +167,56 @@ def test_irregular_120s_bank_against_pinned_matlab():
     assert abs(python_work - source_work) / source_work < .005
 
 
+@pytest.mark.skipif(
+    not (os.environ.get("WEC_SIM_APPLICATIONS_DIR")
+         and os.environ.get("WEC_SIM_MATLAB_MODEL_OUTPUT_DIR")),
+    reason="fresh variable-yaw MATLAB output not provided",
+)
+def test_irregular_600s_source_force_against_pinned_matlab():
+    """Check the published full-length sea and force path on source motion."""
+    applications = Path(os.environ["WEC_SIM_APPLICATIONS_DIR"])
+    source = Path(os.environ["WEC_SIM_MATLAB_MODEL_OUTPUT_DIR"])
+    hydro = applications / "_Common_Input_Files/OSWEC/hydroData/oswec.h5"
+    prefix = "OSWEC_VARIABLE_YAW_IRREGULAR_600S"
+    flap = np.loadtxt(source / f"{prefix}_irregular_600s_body1.csv", delimiter=",")
+    pto = np.loadtxt(source / f"{prefix}_irregular_600s_pto1.csv", delimiter=",")
+    wave = np.loadtxt(source / f"{prefix}_wave.csv", delimiter=",")
+    selected = np.loadtxt(source / f"{prefix}_selected_heading.csv", delimiter=",")
+    realization = np.loadtxt(source / f"{prefix}_components.csv", delimiter=",")
+    assert flap.shape == pto.shape == (60001, 25)
+    assert wave.shape == (60001, 2)
+    assert selected.shape == (60001, 3)
+    assert realization.shape == (500, 4)
+
+    components = pm_equal_energy_components(
+        hydro, significant_height=2.5, peak_period=8,
+        directions=[10], spreading=[1], seed=1, phase_generator="matlab",
+    )
+    for actual, expected in (
+        (components.omega, realization[:, 0]),
+        (components.spectral_amplitude, realization[:, 1]),
+        (components.d_omega, realization[:, 2]),
+        (components.phase[:, 0], realization[:, 3]),
+    ):
+        np.testing.assert_allclose(actual, expected, rtol=0, atol=1e-12)
+
+    sampled = SampledPassiveYawExcitation.from_hydro_data(
+        _hydro_data(hydro), components, dt=.01, end_time=600,
+        ramp_time=100, rho=1000, g=9.81,
+    )
+    bank = NearestSampledHeadingExcitation(sampled, np.arange(-30, 30.25, .25))
+    np.testing.assert_allclose(sampled.time, flap[:, 0], rtol=0, atol=1e-10)
+    np.testing.assert_allclose(sampled.elevation, wave[:, 1], rtol=0, atol=1e-12)
+    source_heading = np.array([bank.heading(angle) for angle in flap[:, 6]])
+    np.testing.assert_array_equal(source_heading, selected[:, 2])
+    source_path_force = np.stack([
+        bank.force(t, angle) for t, angle in zip(flap[:, 0], flap[:, 6])
+    ])
+    assert np.max(np.abs(source_path_force - flap[:, 19:25])) < 1e-6
+    np.testing.assert_allclose(pto[:, 17], -120000 * pto[:, 11],
+                               rtol=0, atol=1e-5)
+
+
 def _check_bank_against_pinned_matlab(prefix, case, headings):
     applications = Path(os.environ["WEC_SIM_APPLICATIONS_DIR"])
     source = Path(os.environ["WEC_SIM_MATLAB_MODEL_OUTPUT_DIR"])

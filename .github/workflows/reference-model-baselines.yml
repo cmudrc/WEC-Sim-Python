@@ -664,6 +664,11 @@ jobs:
         env:
           WEC_SIM_APPLICATIONS_DIR: applications
           WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
+      - run: python -m pytest -q tests/test_variable_yaw_heading_bank.py -k irregular_600s
+        if: matrix.model == 'OSWEC_VARIABLE_YAW_IRREGULAR_600S'
+        env:
+          WEC_SIM_APPLICATIONS_DIR: applications
+          WEC_SIM_MATLAB_MODEL_OUTPUT_DIR: matlab-reference-model-output
       - run: python -m pytest -q tests/test_sphere_pto_config_parity.py
         if: matrix.model == 'Sphere_PTO_Config'
         env:
