@@ -480,6 +480,9 @@ coefficient hold and snap to a nearby tabulated BEM heading. A zero threshold
 keeps continuous interpolation. The sampled setting is available for PM waves
 with one incident direction; small trajectory differences can change its
 update sample and accumulate over long runs.
+A three-seed paired diagnostic that prescribes only MATLAB's heading-update
+schedule recovers tight yaw and PTO-work agreement while Python advances its
+own motion. Native long-trajectory parity for the one-degree hold remains open.
 
 For the published `Variable_Hydro/Passive_Yaw` regular-wave case, pass
 `yaw_heading_bank=range(-40, 41, 2)` alongside `passive_yaw=True` on the

@@ -75,8 +75,10 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path, seed):
     )
     _max_error(sampled.elevation, wave[:, 1], 1e-11, "wave elevation")
     held = HeldPassiveYawExcitation(sampled, threshold=1)
-    for at_time, angle in zip(flap[:, 0], flap[:, 6]):
+    source_headings = np.empty(len(flap))
+    for index, (at_time, angle) in enumerate(zip(flap[:, 0], flap[:, 6])):
         held.commit(at_time, np.array([angle]))
+        source_headings[index] = held.last_heading
     _max_error(np.asarray(held.force_history), flap[:, 19:25], 1e-6,
                "published held-heading excitation on MATLAB yaw")
 
@@ -118,6 +120,34 @@ def test_published_irregular_passive_yaw_with_source_force(tmp_path, seed):
     source_work = -np.trapezoid(pto[:, 23], flap[:, 0])
     python_work = np.trapezoid(hinge.absorbed_power, result.time)
     assert abs(python_work - source_work) / source_work < .001
+
+    class LoggedSourceHeading:
+        elevation = sampled.elevation
+
+        def force(self, at_time, yaw):
+            index = round(at_time / .01)
+            coefficient_yaw = np.deg2rad(
+                sampled.incident_directions[0] - source_headings[index]
+            )
+            return sampled.force(at_time, yaw,
+                                 coefficient_yaw=coefficient_yaw)
+
+    # Hold only the coefficient heading at the source's saved update times.
+    # Python still evaluates the wave force at its independently advanced yaw.
+    with patch.object(SampledPassiveYawExcitation, "from_hydro_data",
+                      return_value=LoggedSourceHeading()):
+        heading_result = wec.run(
+            PMWave(2.5, 8, direction=10, phase_file=phases),
+            dt=.01, end_time=250, ramp_time=100, radiation_memory=40,
+        )
+    _max_error(heading_result.bodies["flap"].position[:, 5], flap[:, 6],
+               .003, "source-heading flap yaw")
+    _max_error(heading_result.bodies["flap"].velocity[:, 5], flap[:, 12],
+               .0002, "source-heading yaw speed")
+    heading_work = np.trapezoid(
+        heading_result.ptos["hinge"].absorbed_power, heading_result.time,
+    )
+    assert abs(heading_work - source_work) / source_work < .001
     _max_error(pto[:, 17], -120000 * pto[:, 11], 1e-5,
                "source PTO damping law")
 
