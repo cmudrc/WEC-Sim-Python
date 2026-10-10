@@ -127,3 +127,15 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         result.rotor.generator_torque, source["generator_torque"].ravel(),
         rtol=0, atol=1000,
     )
+    if developed_sea:
+        expected_load = source["blade_aero_load"]
+        assert result.rotor.blade_root_load.shape == expected_load.shape == (
+            len(time), 6, 3,
+        )
+        component_peak = np.max(np.abs(expected_load), axis=(0, 2))
+        component_error = np.max(
+            np.abs(result.rotor.blade_root_load - expected_load), axis=(0, 2),
+        )
+        assert np.all(component_error < 0.04 * component_peak), (
+            component_error, component_peak,
+        )

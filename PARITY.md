@@ -188,6 +188,13 @@ diagnostic transfer calculation reduces the negative zero-frequency values
 to −3.01 and −3.45 kN s/m, but does not make the fits passive. This is a
 low-frequency fit problem consistent with the drift, not proof that the
 full nonlinear trajectory has only one cause.
+The saved MATLAB radiation-force and velocity histories also constrain that
+interpretation: integrating the logged resisting-force dot velocity over all
+12 body coordinates gives **positive** 71.7 MJ in Case 5 and 70.7 MJ in
+Case 6 (8.3 and 10.7 MJ from surge alone). Thus radiation removes net energy
+over each published oscillatory trajectory even as the surge offset grows.
+Negative zero-frequency damping identifies a problematic slow mode; it does
+not mean the fitted radiation supplies net energy over these 400 s runs.
 The diagnostic fixture and a freshly BEMIO-generated HDF5 from the pinned
 RM3 Applications input have identical 260 frequency samples and source BEM
 damping. Their common-surge fitted transfer curves differ by at most
@@ -419,7 +426,10 @@ units. Against the regenerated source, maximum position differences are
 are 0.0255 mm/s surge, 0.0685 mm/s sway, 0.0443 mm/s heave,
 `8.26e-6` rad/s roll, `8.12e-7` rad/s pitch, and `7.29e-6` rad/s yaw.
 Rotor speed, azimuth, and generator torque differ by at most `0.000219`
-rpm, `0.000299` rad, and 686 N m. The 30 s gates use 0.6 mm surge,
+rpm, `0.000299` rad, and 686 N m. The independently coupled three-blade
+root loads now have a paired 4%-of-source-peak gate for each of their six
+force/moment components; the largest observed component difference is 3.33%
+of its source peak. The 30 s gates use 0.6 mm surge,
 `1e-5` rad/s yaw speed, and `4e-4` rad azimuth; other trajectory gates
 remain as in the 10 s test. The longer
 source trace exposed a frame error: its angular velocity is expressed in
