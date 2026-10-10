@@ -511,8 +511,11 @@ The full 600 s regular-wave yaw, six excitation channels, and PTO work pair
 with MATLAB. The same bank
 works with a single-direction `PMWave`; a derived 120 s irregular case pairs
 the source excitation within `1e-6` N or N m and the independent yaw within
-`0.002` rad. The first full-length MATLAB irregular run exceeded the CI hour
-limit; full-length irregular trajectory parity remains open. The source generates a
+`0.002` rad. A longer MATLAB job completed the published 600 s irregular
+case: source-heading selection and excitation pair, while independent Python
+yaw differs by up to `0.1103` rad and PTO work by `9.05%`. Prescribing only
+MATLAB's heading choices cuts the work difference to `0.0081%`; native
+full-length trajectory parity remains open. The source generates a
 finer 0.05° set of HDF5 files, but its input reads only the selected 0.25°
 headings. The paired baseline generates those same selected files with the
 pinned interpolation rule; see [`PARITY.md`](PARITY.md).
