@@ -6,7 +6,6 @@ from pathlib import Path
 import struct
 
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
 
 
 _HEADER = struct.Struct("<h4i12fi")
@@ -77,6 +76,12 @@ class MostWindField:
     def __init__(self, wind: TurbSimWind, speed: float = 8.0):
         if not np.isfinite(speed) or speed <= 0:
             raise ValueError("wind advection speed must be positive and finite")
+        y = np.asarray(wind.y, dtype=float)
+        z = np.asarray(wind.z, dtype=float)
+        if (y.ndim != 1 or z.ndim != 1 or not len(y) or not len(z)
+                or not np.isfinite(y).all() or not np.isfinite(z).all()
+                or np.any(np.diff(y) <= 0) or np.any(np.diff(z) <= 0)):
+            raise ValueError("MOST wind coordinates must increase")
         self.wind = wind
         self.speed = float(speed)
         self.x = np.arange(-30.0, 61.0, 10.0)
@@ -109,12 +114,45 @@ class MostWindField:
         MATLAB BEM block's ``interp3`` call does.
         """
         values = self.at_index(index).transpose(1, 2, 3, 0)
-        interpolator = RegularGridInterpolator(
-            (self.x, self.wind.y, self.wind.z), values,
-            bounds_error=False, fill_value=np.nan,
-        )
+        return self._sampler_from_values(values)
+
+    def _sampler_from_values(self, values):
+        """Interpolate one blade-element position without grid-object overhead."""
+        grids = (self.x, self.wind.y, self.wind.z)
+
         def sample(position):
-            return interpolator(np.asarray(position, dtype=float).reshape(1, 3))[0]
+            point = np.asarray(position, dtype=float)
+            if point.shape != (3,):
+                raise ValueError("MOST wind position must be a three-vector")
+            if (not np.isfinite(point).all()
+                    or any(point[axis] < grid[0] or point[axis] > grid[-1]
+                           for axis, grid in enumerate(grids))):
+                return np.full(3, np.nan)
+            indices = []
+            fractions = []
+            for axis, grid in enumerate(grids):
+                if len(grid) == 1:
+                    indices.append((0, 0))
+                    fractions.append(0.0)
+                    continue
+                lower = min(int(np.searchsorted(grid, point[axis], side="right")) - 1,
+                            len(grid) - 2)
+                indices.append((lower, lower + 1))
+                fractions.append((point[axis] - grid[lower])
+                                 / (grid[lower + 1] - grid[lower]))
+            (x0, x1), (y0, y1), (z0, z1) = indices
+            x, y, z = fractions
+            return (
+                (1-x)*(1-y)*(1-z)*values[x0, y0, z0]
+                + (1-x)*(1-y)*z*values[x0, y0, z1]
+                + (1-x)*y*(1-z)*values[x0, y1, z0]
+                + (1-x)*y*z*values[x0, y1, z1]
+                + x*(1-y)*(1-z)*values[x1, y0, z0]
+                + x*(1-y)*z*values[x1, y0, z1]
+                + x*y*(1-z)*values[x1, y1, z0]
+                + x*y*z*values[x1, y1, z1]
+            )
+
         return sample
 
     def sampler_at(self, time: float):
@@ -133,13 +171,7 @@ class MostWindField:
             return self.sampler(before)
         values = ((1 - weight) * self.at_index(before)
                   + weight * self.at_index(after)).transpose(1, 2, 3, 0)
-        interpolator = RegularGridInterpolator(
-            (self.x, self.wind.y, self.wind.z), values,
-            bounds_error=False, fill_value=np.nan,
-        )
-        def sample(position):
-            return interpolator(np.asarray(position, dtype=float).reshape(1, 3))[0]
-        return sample
+        return self._sampler_from_values(values)
 
 
 def read_turbsim_bts(path: str | Path) -> TurbSimWind:
