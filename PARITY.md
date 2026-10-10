@@ -541,7 +541,8 @@ source and identical per-channel gates. Its local maximum position and speed
 differences are 0.305 mm and 0.101 mm/s; rotor speed, azimuth, torque, and
 blade pitch differ by at most `0.000389` rpm, `0.000151` rad, 1.71 kN m, and
 `7.19e-6` rad. Its largest blade-root component error is 0.085% of the source
-peak. The fresh-source CI gate for this causal path is pending.
+peak. The [fresh-source CI gate](https://github.com/cmudrc/wec-sim-python/actions/runs/38075809652)
+passed both coupling methods against the same generated controller.
 The case starts with a nonzero steady-state pitch setting and exercises pitch
 control, but rotor speed subsequently falls and pitch returns to zero. It
 covers ten seconds of the 20 s wave ramp, not sustained above-rated operation
