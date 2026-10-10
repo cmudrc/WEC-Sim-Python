@@ -50,18 +50,42 @@ def finite_depth_wavenumber(
     return k
 
 
+def _validate_current(speed, direction, profile, depth):
+    if (not np.isfinite([speed, direction]).all() or speed < 0
+            or not -360 <= direction <= 360
+            or profile not in ("uniform", "power", "linear")
+            or (profile != "uniform" and
+                (depth is None or not np.isfinite(depth) or depth <= 0))):
+        raise ValueError("regular Morison current settings are invalid")
+
+
+def _current_speed_at_depth(z, time, ramp_time, speed, profile, depth):
+    if not speed:
+        return 0.0
+    if profile != "uniform":
+        if z <= -depth:
+            return 0.0
+        fraction = 1 + z / depth
+        speed *= fraction ** (1 / 7 if profile == "power" else 1)
+    if ramp_time and time < ramp_time:
+        speed *= (1 - np.cos(np.pi * time / ramp_time)) / 2
+    return speed
+
+
 def regular_morison_source_force(
     elements: Sequence[MorisonElement], *, time: float,
     position: Sequence[float], velocity: Sequence[float],
     acceleration: Sequence[float], wave_height: float, wave_period: float,
     direction: float, water_depth: float, ramp_time: float,
     rho: float = 1025.0, g: float = 9.81,
+    current_speed: float = 0.0, current_direction: float = 0.0,
+    current_profile: str = "uniform", current_depth: float | None = None,
 ) -> np.ndarray:
     """Evaluate pinned ``regWaveMorison.m`` option 1 at a moving-body state.
 
     The six state components are surge, sway, heave, roll, pitch, and yaw.
-    The current speed is zero. This source-law diagnostic does not solve a
-    coupled WEC trajectory. It retains the source's rotation and local-point
+    This source-law diagnostic does not solve a coupled WEC trajectory. It
+    retains the source's rotation and local-point
     angular kinematics so that
     a comparison can expose, rather than conceal, source-specific behavior.
     """
@@ -75,6 +99,8 @@ def regular_morison_source_force(
             or time < 0 or wave_height < 0 or wave_period <= 0
             or water_depth <= 0 or ramp_time < 0 or rho <= 0 or g <= 0):
         raise ValueError("regular Morison wave and fluid settings are invalid")
+    _validate_current(current_speed, current_direction,
+                      current_profile, current_depth)
     if not elements:
         raise ValueError("regular Morison force needs at least one element")
 
@@ -133,6 +159,11 @@ def regular_morison_source_force(
         horizontal_acceleration = -amplitude * horizontal * np.sin(phase) * g * k
         vertical_acceleration = -amplitude * vertical * np.cos(phase) * g * k
         fluid_velocity = np.r_[horizontal_velocity * wave_axis, vertical_velocity]
+        fluid_velocity[:2] += _current_speed_at_depth(
+            world[2], time, ramp_time, current_speed, current_profile,
+            current_depth,
+        ) * np.array([np.cos(np.deg2rad(current_direction)),
+                      np.sin(np.deg2rad(current_direction))])
         fluid_acceleration = np.r_[horizontal_acceleration * wave_axis,
                                    vertical_acceleration]
         relative_velocity = fluid_velocity - body_velocity
@@ -340,6 +371,8 @@ def regular_wave_axial_morison_terms(
     velocity: Sequence[float], time: float, wave_height: float,
     wave_period: float, ramp_time: float, water_depth: float,
     rho: float, g: float = 9.81,
+    current_speed: float = 0.0, current_direction: float = 0.0,
+    current_profile: str = "uniform", current_depth: float | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Physical axial-element wrench and added mass for surge/heave/pitch.
 
@@ -362,6 +395,8 @@ def regular_wave_axial_morison_terms(
             or not (np.isfinite(water_depth) or np.isposinf(water_depth))
             or water_depth <= 0):
         raise ValueError("regular-wave Morison settings are invalid")
+    _validate_current(current_speed, current_direction,
+                      current_profile, current_depth)
     omega = 2 * np.pi / wave_period
     k = (omega * omega / g if np.isposinf(water_depth) else
          finite_depth_wavenumber(
@@ -395,6 +430,11 @@ def regular_wave_axial_morison_terms(
             wave_speed * horizontal * np.cos(phase), 0.0,
             -wave_speed * vertical * np.sin(phase),
         ])
+        fluid_velocity[:2] += _current_speed_at_depth(
+            world[2], time, ramp_time, current_speed, current_profile,
+            current_depth,
+        ) * np.array([np.cos(np.deg2rad(current_direction)),
+                      np.sin(np.deg2rad(current_direction))])
         fluid_acceleration = np.array([
             -wave_acceleration * horizontal * np.sin(phase), 0.0,
             -wave_acceleration * vertical * np.cos(phase),

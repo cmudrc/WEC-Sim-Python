@@ -405,7 +405,7 @@ Supported combinations are:
 | `fixed_hinge` | `spectrumImportFullDir` | Hydrodynamic flap, optional fixed hydrodynamic base, pitch PTO | Imported frequency-dependent directional spectrum and radiation convolution |
 | `fixed_hinge` | `regular` | One hydrodynamic flap, optional fixed nonhydrodynamic base, pitch PTO | Regular-wave excitation and constant-frequency radiation |
 | `fixed_morison` | `pm` | Stationary bodies without HDF5; body-local Cartesian Morison elements; no PTO | Directional irregular-wave velocity, acceleration, and six-component Morison force; optional single-heading current |
-| `linear_subspace` | `none` or zero-heading `regular` | One hydrodynamic body with axial body-local Morison elements; pure heave, or surge/heave/pitch in regular waves; no PTO | Radiation convolution or constant-frequency radiation, relative-fluid drag, fluid inertia, and Morison added mass in the acceleration solve |
+| `linear_subspace` | `none` or zero-heading `regular` | One hydrodynamic body with axial body-local Morison elements; pure heave, or surge/heave/pitch in regular waves; no PTO | Radiation convolution or constant-frequency radiation, relative-fluid drag, fluid inertia, and Morison added mass in the acceleration solve; optional regular-wave current for surge/heave/pitch |
 | `floating_joint` | `regular` or `regularCIC` | Two equilibrium-mass bodies, pitch inertias, relative-heave PTO; optional `body_to_body` | Constant-frequency radiation, impulse-response convolution, or sampled FIR radiation |
 | `floating_joint` | `elevationImport` | Two equilibrium-mass bodies, relative-heave PTO, optional joint surge spring | Imported MAT elevation and radiation convolution |
 | `floating_joint` | `none` | Two equilibrium-mass bodies, named initial coordinates and speeds, relative-heave PTO | Radiation convolution for paired free decay; sampled FIR is also available |
@@ -559,7 +559,7 @@ result = wec.run(sea, dt=.01, end_time=20, ramp_time=10)
 `profile` may be `"uniform"`, `"power"` (the one-seventh law), or `"linear"`.
 The latter two require `depth`. Active current with multiple wave headings
 raises an error because the pinned MATLAB force function adds the current
-once per heading. Moving-body current loading is not yet supported.
+once per heading.
 
 The pinned MATLAB function uses the first phase column for Morison force at
 every heading, while wave elevation uses each heading's own phase.
@@ -572,7 +572,7 @@ fluid inertia, and added mass. For the published Sphere's surge, heave, and
 pitch joint in zero-heading regular waves:
 
 ```python
-from wecsim import RegularWave, WEC
+from wecsim import Current, RegularWave, WEC
 
 wec = WEC("Sphere with axial Morison element")
 sphere = wec.body("sphere", "sphere.h5",
@@ -588,12 +588,18 @@ result = wec.run(RegularWave(1, 8), dt=.01, end_time=40, ramp_time=10,
 morison_wrench = result.body_forces["sphere"]  # time × 6, N and N m
 ```
 
+The same surge/heave/pitch layout accepts a regular-wave current, for example
+`RegularWave(1, 8, current=Current(.8, 45, "power", 30))`. Current loads the
+moving element through relative velocity and drag; it adds no fluid
+acceleration. The direct source force law is paired for three current profiles.
+A coupled moving-current trajectory is not yet paired to MATLAB.
+
 For pure heave, define only the heave coordinate. Still-water free decay
 uses `NoWave()` and `radiation_memory=15`. These moving-body layouts have
 no PTO; regular waves require zero heading and a body centered at x=y=0.
 The three-DOF Morison force uses a proper pitch rotation and does not copy
 the pinned MATLAB source function's nonorthogonal rotation. Other moving
-Morison layouts, moving-body currents, and the normal/tangential coefficient
+Morison layouts, moving-current wave types, and the normal/tangential coefficient
 mode remain unsupported.
 
 For a heave or other `linear_subspace` device, `JONSWAPWave(2.5, 8,
