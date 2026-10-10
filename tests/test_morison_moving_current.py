@@ -1,8 +1,9 @@
 """Current loading on a tilted body-local axial element."""
 
+from pathlib import Path
+
 import numpy as np
 import pytest
-from pathlib import Path
 
 from wecsim import Current, RegularWave, WEC
 from wecsim.morison import MorisonElement, regular_wave_axial_morison_terms
