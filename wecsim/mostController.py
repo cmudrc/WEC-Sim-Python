@@ -172,8 +172,7 @@ class MostBaselineController:
         # The source State-Space block has A=[-5,-5;1,0], B=[1;0], C=[0,5]
         # and initial state [0, omega0/5]. Its PI integrator starts at zero.
         state = np.array([0.0, self.initial_omega/5, 0.0])
-        torque[0], _ = self._command(state, self.initial_pitch)
-        pitch[0] = self.initial_pitch
+        torque[0], pitch[0] = self._command(state, self.initial_pitch)
         for index in range(1, len(time)):
             state, torque[index], pitch[index] = self._advance(
                 state, speed[index-1], speed[index],

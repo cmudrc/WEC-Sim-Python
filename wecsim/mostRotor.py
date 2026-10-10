@@ -104,10 +104,9 @@ class MostRotor:
         speed[0] = self.controller.initial_omega
         azimuth[0] = self.initial_azimuth
         state = np.array([0.0, speed[0]/5, 0.0])
-        torque[0], _ = self.controller._command(
+        torque[0], pitch[0] = self.controller._command(
             state, self.controller.initial_pitch,
         )
-        pitch[0] = self.controller.initial_pitch
         precone = np.deg2rad(4)
         cosine, sine = np.cos(precone), np.sin(precone)
 

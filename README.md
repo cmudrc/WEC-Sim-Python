@@ -89,6 +89,10 @@ trilinear world-position wind callable for that output time, suitable for
 `MostBEM.loads(hub_state, pitch, sampler)`.
 `MostWindField(wind).sampler_at(time)` also interpolates between advection
 frames at the simulation time in seconds.
+For MOST's constant-wind option, use `wecsim.MostConstantWind(12,
+end_time=10)` in place of `MostWindField`. Its default direction is world
+positive X; `direction` and `domain_sizes` can be configured to match a
+constant-wind MATLAB input.
 `wecsim.MostStaticMooring().force(pose)` evaluates
 the published three-line static catenary load and each fairlead's horizontal
 and vertical tension for a six-coordinate platform pose. For the published
@@ -101,7 +105,7 @@ the published baseline generator torque and blade pitch for a prescribed
 rotor-speed history. `wecsim.MostRotor.from_iea15mw(blade_data_directory)`
 advances the published rotor speed, azimuth, generator torque, and blade pitch
 from a supplied six-DOF platform position and velocity history and a
-`MostWindField`:
+`MostWindField` or `MostConstantWind`:
 
 ```python
 from wecsim import MostRotor
@@ -123,9 +127,11 @@ controller = MostBaselineController.from_matlab_files(
 rotor = MostRotor.from_iea15mw(blade_data_directory, controller=controller)
 ```
 
-Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm. This
-runner takes platform motion as input; turbine mass and aerodynamic loads do
-not yet feed back into independently advanced platform motion.
+Rotor speed in `result` is rad/s. The MATLAB MOST output reports rpm and logs
+blade pitch in degrees after a conversion block; Python blade pitch is in
+radians. This runner takes platform motion as input; turbine mass and
+aerodynamic loads do not yet feed back into independently advanced platform
+motion.
 Its `blade_root_load` array contains the BEM loads at the advanced rotor
 states, in the preconed blade frames.
 
@@ -169,9 +175,9 @@ The runner advances its own rotor, BEM loads, controller, tower reaction, and
 all six platform coordinates until the two trajectories agree within the
 reported `position_residual` and `velocity_residual`. Pass
 `full_six_dof=False` for the earlier surge/heave/pitch reduction. The paired
-six-coordinate gates cover two pinned 10 s MOST seas and one 30 s condition
-that extends 10 s beyond the wave ramp. Longer and different operating
-conditions remain to be validated.
+six-coordinate gates cover two pinned 10 s MOST seas, one 30 s condition
+that extends 10 s beyond the wave ramp, and a derived 10 s constant-wind
+case at 12 m/s. Longer and other operating conditions remain to be validated.
 
 For the published RM3 floating joint, configure the two bodies in HDF5 order:
 
