@@ -300,8 +300,8 @@ def run_case(case: Mapping, *, base_dir: str | Path = ".") -> CaseResponse:
                            "pitch_drag_area", "column_height",
                            "column_diameter", "initial_rotor_speed",
                            "chamber", "turbine"})
-    if "current" in wave and constraint["kind"] != "fixed_morison":
-        raise ValueError("wave.current currently requires fixed_morison")
+    if "current" in wave and constraint["kind"] not in ("fixed_morison", "linear_subspace"):
+        raise ValueError("wave.current requires fixed_morison or moving Morison")
     bodies = case["bodies"]
     if not isinstance(bodies, list) or not bodies:
         raise ValueError("bodies must be a nonempty list")
@@ -1263,6 +1263,24 @@ def _run_variable_heave(case, sim, wave, constraint, bodies, hydro,
     )
 
 
+def _current_settings(wave):
+    if "current" not in wave:
+        return 0.0, 0.0, "uniform", None
+    current = _section(wave["current"], "wave.current",
+                       {"speed", "direction", "profile"},
+                       {"speed", "direction", "profile", "depth"})
+    speed = _number(current["speed"], "wave.current.speed", nonnegative=True)
+    direction = _number(current["direction"], "wave.current.direction")
+    profile = current["profile"]
+    if profile not in ("uniform", "power", "linear"):
+        raise ValueError("wave.current.profile must be uniform, power, or linear")
+    depth = (None if "depth" not in current else
+             _number(current["depth"], "wave.current.depth", positive=True))
+    if profile != "uniform" and depth is None:
+        raise ValueError("depth-varying current needs wave.current.depth")
+    return speed, direction, profile, depth
+
+
 def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
                        b2b, dt, end_time, ramp_time, rho, g, base_dir):
     """Evaluate the published type of stationary, no-HDF5 Morison device."""
@@ -1294,21 +1312,7 @@ def _run_fixed_morison(case, sim, wave, constraint, bodies, hydro,
         if not isinstance(seed, int) or isinstance(seed, bool):
             raise ValueError("wave.seed must be an integer")
     depth = _number(wave["water_depth"], "wave.water_depth", positive=True)
-    if "current" in wave:
-        current = wave["current"]
-        current = _section(current, "wave.current", {"speed", "direction", "profile"},
-                           {"speed", "direction", "profile", "depth"})
-        speed = _number(current["speed"], "wave.current.speed", nonnegative=True)
-        current_direction = _number(current["direction"], "wave.current.direction")
-        profile = current["profile"]
-        if profile not in ("uniform", "power", "linear"):
-            raise ValueError("wave.current.profile must be uniform, power, or linear")
-        current_depth = (None if "depth" not in current else
-                         _number(current["depth"], "wave.current.depth", positive=True))
-        if profile != "uniform" and current_depth is None:
-            raise ValueError("depth-varying current needs wave.current.depth")
-    else:
-        speed, current_direction, profile, current_depth = 0.0, 0.0, "uniform", None
+    speed, current_direction, profile, current_depth = _current_settings(wave)
     components = pm_equal_energy_components(
         None,
         significant_height=_number(wave.get("height"), "wave.height", positive=True),
@@ -1501,6 +1505,8 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
     )
     moving_elements = ()
     moving_terms = None
+    if "current" in wave and not moving_morison:
+        raise ValueError("regular-wave current needs a moving Morison element")
     if moving_morison:
         heave_map = np.zeros((6, 1))
         heave_map[2, 0] = 1
@@ -1527,6 +1533,9 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
         if (wave["type"] == "regular"
                 and not np.allclose(centers[0][:2], 0, rtol=0, atol=1e-10)):
             raise ValueError("moving Morison needs a body centered at x=y=0")
+        if "current" in wave and not surge_heave_pitch:
+            raise ValueError("moving Morison current needs regular-wave surge/heave/pitch")
+        current_settings = _current_settings(wave)
         moving_elements = _morison_elements(bodies[0]["morison_elements"])
         if wave["type"] == "regular":
             raw_depth = loaded_bodies[0].hydroData[
@@ -1542,6 +1551,10 @@ def _run_linear_subspace(case, sim, wave, constraint, bodies, hydro,
                         moving_elements, position=pose, velocity=velocity,
                         time=at_time, wave_height=height, wave_period=period,
                         ramp_time=ramp_time, water_depth=depth, rho=rho, g=g,
+                        current_speed=current_settings[0],
+                        current_direction=current_settings[1],
+                        current_profile=current_settings[2],
+                        current_depth=current_settings[3],
                     )
             else:
                 def moving_terms(at_time, coordinate, speed):

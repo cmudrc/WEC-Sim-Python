@@ -201,10 +201,16 @@ class RegularWave:
     height: float
     period: float
     direction: float = 0.0
+    current: Current | None = None
 
     def as_case(self) -> dict:
-        return {"type": "regular", "height": self.height,
+        wave = {"type": "regular", "height": self.height,
                 "period": self.period, "direction": self.direction}
+        if self.current is not None:
+            if not isinstance(self.current, Current):
+                raise TypeError("RegularWave.current must be Current")
+            wave["current"] = self.current.as_case()
+        return wave
 
     def elevation_at(
         self, time: Sequence[float], locations: Sequence[Sequence[float]], *,
@@ -264,7 +270,7 @@ class RegularCICWave:
 
 @dataclass(frozen=True)
 class Current:
-    """Horizontal current for a fixed Morison body in a single-heading sea.
+    """Horizontal current for supported fixed or moving Morison bodies.
 
     ``profile`` is ``uniform``, ``power`` (the 1/7 law), or ``linear``.
     The latter two profiles need the current depth in metres.

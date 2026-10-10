@@ -1,0 +1,44 @@
+"""Current loading on a tilted body-local axial element."""
+
+import numpy as np
+import pytest
+
+from wecsim import Current, RegularWave
+from wecsim.morison import MorisonElement, regular_wave_axial_morison_terms
+
+
+ELEMENT = MorisonElement(
+    point=(0, 0, -2), drag_coefficient=(0, 0, 1),
+    added_mass_coefficient=(0, 0, 0), area=(0, 0, 2), volume=1,
+)
+
+
+def _force(time, profile="uniform", depth=None, pitch=np.pi / 6):
+    return regular_wave_axial_morison_terms(
+        [ELEMENT], position=(0, 0, -2, 0, pitch, 0),
+        velocity=np.zeros(6), time=time, wave_height=0, wave_period=8,
+        ramp_time=10, water_depth=30, rho=1000,
+        current_speed=1, current_direction=0,
+        current_profile=profile, current_depth=depth,
+    )
+
+
+def test_tilted_axial_element_projects_horizontal_current():
+    force, added = _force(10)
+    axis = np.array([.5, 0, np.sqrt(3) / 2])
+    np.testing.assert_allclose(force[:3], 250 * axis, atol=1e-12)
+    np.testing.assert_allclose(force[3:], 0, atol=1e-12)
+    np.testing.assert_array_equal(added, 0)
+    np.testing.assert_allclose(_force(5)[0], force / 4, atol=1e-12)
+    np.testing.assert_array_equal(_force(10, pitch=0)[0], 0)
+
+
+def test_depth_profiles_and_public_wave_configuration():
+    uniform = _force(10)[0]
+    linear = _force(10, "linear", 30)[0]
+    power = _force(10, "power", 30)[0]
+    assert np.linalg.norm(uniform) > np.linalg.norm(power) > np.linalg.norm(linear)
+    assert RegularWave(1, 8, current=Current(1, 30, "power", 30)).as_case()[
+        "current"]["profile"] == "power"
+    with pytest.raises(ValueError, match="current settings"):
+        _force(10, "linear")
