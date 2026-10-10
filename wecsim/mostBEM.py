@@ -21,6 +21,15 @@ def _rz(angle):
     return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
 
 
+def _cross3(a, b):
+    """Cross product for the three-vectors used in the MOST inner loops."""
+    return np.array([
+        a[1]*b[2] - a[2]*b[1],
+        a[2]*b[0] - a[0]*b[2],
+        a[0]*b[1] - a[1]*b[0],
+    ])
+
+
 @dataclass(frozen=True)
 class MostBEM:
     """Published BEM rotor using raw IEA 15 MW AeroDyn blade tables.
@@ -226,7 +235,7 @@ class MostBEM:
                 position = q[:3] + root_rotation @ np.array([
                     self.curve[node], self.sweep[node], self.radius[node],
                 ])
-                node_velocity = q[6:9] + np.cross(rotor_velocity, position-q[:3])
+                node_velocity = q[6:9] + _cross3(rotor_velocity, position-q[:3])
                 relative = node_rotation.T @ (
                     np.asarray(wind_at(position), dtype=float)-node_velocity
                 )

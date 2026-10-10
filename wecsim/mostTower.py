@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 from scipy.io import loadmat
 
-from .mostBEM import _rx, _ry
+from .mostBEM import _cross3, _rx, _ry
 from .mostMooring import MostStaticMooring
 
 
@@ -127,17 +127,17 @@ class MostTowerReaction:
                 force = mass * linear_acceleration
                 weight = mass * gravity
                 inertial_force += force
-                inertial_moment += (np.cross(arm, force)
+                inertial_moment += (_cross3(arm, force)
                                     + inertia @ angular_acceleration
-                                    + np.cross(angular_speed,
+                                    + _cross3(angular_speed,
                                                inertia @ angular_speed))
                 gravity_force += weight
-                gravity_moment += np.cross(arm, weight)
+                gravity_moment += _cross3(arm, weight)
 
             def fixed_acceleration(local_pos):
                 arm = rotation @ (np.asarray(local_pos) - self.platform_cg)
-                return (cg_acc + np.cross(alpha, arm)
-                        + np.cross(omega, np.cross(omega, arm)))
+                return (cg_acc + _cross3(alpha, arm)
+                        + _cross3(omega, _cross3(omega, arm)))
 
             for mass, local_pos, inertia in fixed:
                 add_component(mass, local_pos, rotation @ inertia @ rotation.T,
@@ -152,7 +152,7 @@ class MostTowerReaction:
             rotor_acc = ((aero_shaft - torque[i]) / p["Inertia_Rotor_cogHub"]
                          - np.dot(alpha, shaft))
             rotor_omega = omega + spin
-            rotor_alpha = alpha + rotor_acc*shaft + np.cross(omega, spin)
+            rotor_alpha = alpha + rotor_acc*shaft + _cross3(omega, spin)
             hub_acc = fixed_acceleration(hub_pos)
             hub_rotation = rotation @ tilt
             add_component(hub["mass"], hub_pos,
@@ -167,9 +167,9 @@ class MostTowerReaction:
                 relative_blade_pos = world_root @ blade_arm
                 blade_pos = hub_pos + local_root @ blade_arm
                 blade_acc = (hub_acc
-                             + np.cross(rotor_alpha, relative_blade_pos)
-                             + np.cross(rotor_omega,
-                                        np.cross(rotor_omega, relative_blade_pos)))
+                             + _cross3(rotor_alpha, relative_blade_pos)
+                             + _cross3(rotor_omega,
+                                       _cross3(rotor_omega, relative_blade_pos)))
                 add_component(blade["mass"], blade_pos,
                               world_root @ blade_inertia @ world_root.T,
                               rotor_omega, rotor_alpha, blade_acc)
@@ -177,8 +177,8 @@ class MostTowerReaction:
                 moment = world_root @ loads[i, 3:, blade_index]
                 root_pos = hub_pos + local_root @ root_arm
                 aero_force += force
-                aero_moment += moment + np.cross(rotation @ (root_pos - base),
-                                                  force)
+                aero_moment += moment + _cross3(rotation @ (root_pos - base),
+                                                force)
 
             result[i, :3] = rotation.T @ (
                 aero_force + gravity_force - inertial_force
