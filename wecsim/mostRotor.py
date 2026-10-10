@@ -37,8 +37,13 @@ class MostRotor:
     initial_azimuth: float = 0.0
 
     @classmethod
-    def from_iea15mw(cls, blade_directory: str | Path) -> "MostRotor":
+    def from_iea15mw(cls, blade_directory: str | Path,
+                     controller: MostBaselineController | None = None) -> "MostRotor":
         """Use the pinned MOST VolturnUS geometry and IEA 15 MW rotor."""
+        if controller is None:
+            controller = MostBaselineController.iea15mw()
+        elif not isinstance(controller, MostBaselineController):
+            raise TypeError("controller must be MostBaselineController")
         tilt = np.deg2rad(6)
         precone = np.deg2rad(4)
         blade_mass = 68507.602
@@ -50,7 +55,7 @@ class MostRotor:
         ))
         return cls(
             bem=MostBEM.from_iea15mw(blade_directory),
-            controller=MostBaselineController.iea15mw(),
+            controller=controller,
             inertia=float(inertia),
             hub_offset=np.array([
                 -12.098 * np.cos(tilt), 0.0,

@@ -1,5 +1,8 @@
-function most_wind_advection_baseline
-% Run the published MOST wind preprocessor on a 1000-frame BTS excerpt.
+function most_wind_advection_baseline(frames)
+% Run the published MOST wind preprocessor on a bounded BTS excerpt.
+if nargin == 0
+    frames = 1000;
+end
 root = pwd;
 source_dir = fullfile(root, 'applications', 'MOST', 'mostData', 'turbSim');
 output_dir = fullfile(root, 'matlab-most-advection');
@@ -16,7 +19,6 @@ nchar = double(typecast(header(67:70), 'int32'));
 nz = double(typecast(header(3:6), 'int32'));
 ny = double(typecast(header(7:10), 'int32'));
 ntwr = double(typecast(header(11:14), 'int32'));
-frames = 1000;
 body = fread(fid, nchar + frames*2*3*(ny*nz + ntwr), '*uint8');
 fclose(fid);
 assert(numel(body) == nchar + frames*2*3*(ny*nz + ntwr));
