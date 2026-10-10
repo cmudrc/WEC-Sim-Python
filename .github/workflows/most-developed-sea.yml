@@ -45,7 +45,17 @@ on:
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - end_time: 30
+            wind_frames: 1500
+            wind_times: 749
+          - end_time: 60
+            wind_frames: 2000
+            wind_times: 1249
     steps:
       - uses: actions/checkout@v7
       - uses: actions/checkout@v7
@@ -74,7 +84,7 @@ jobs:
           command: cd('applications/MOST/mostData/windTurbine/turbine_properties'); WTproperties_IEA15MW; BladeData_IEA15MW; cd('../control'); Steady_States_IEA15MW; Controller_IEA15MW; cd('../../../../..')
       - uses: matlab-actions/run-command@v3
         with:
-          command: addpath(genpath(fullfile(pwd,'matlab-ref','source'))); addpath(fullfile(pwd,'tests','matlab')); most_wind_advection_baseline(1500); most_developed_sea_source_baseline
+          command: addpath(genpath(fullfile(pwd,'matlab-ref','source'))); addpath(fullfile(pwd,'tests','matlab')); most_wind_advection_baseline(${{ matrix.wind_frames }}); most_developed_sea_source_baseline(${{ matrix.end_time }})
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
@@ -82,7 +92,7 @@ jobs:
       - run: python -m pytest -q tests/test_most_wind_advection.py
         env:
           WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
-          WEC_SIM_MOST_EXPECTED_WIND_TIMES: '749'
+          WEC_SIM_MOST_EXPECTED_WIND_TIMES: ${{ matrix.wind_times }}
       - run: python -m pytest -q tests/test_most_coupled_source.py
         env:
           WEC_SIM_MOST_SHORT_BASELINE: matlab-most-developed-sea.mat
@@ -95,11 +105,11 @@ jobs:
           WEC_SIM_MOST_ADVECTION_DIR: matlab-most-advection
           WEC_SIM_MOST_WAVE_HEIGHT: '6'
           WEC_SIM_MOST_PHASE_SEED: '2'
-          WEC_SIM_MOST_END_TIME: '30'
+          WEC_SIM_MOST_END_TIME: ${{ matrix.end_time }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: matlab-most-developed-sea
+          name: matlab-most-developed-sea-${{ matrix.end_time }}s
           path: |
             matlab-most-developed-sea.mat
             matlab-most-advection.mat

@@ -9,7 +9,7 @@ from scipy.io import loadmat
 
 from wecsim import (
     MostBaselineController, MostCoupled, MostPlatformHydrodynamics, MostRotor,
-    MostTowerReaction, MostWindField, read_turbsim_bts,
+    MostStaticMooring, MostTowerReaction, MostWindField, read_turbsim_bts,
 )
 from wecsim.irregularWave import (
     jonswap_equal_energy_components, synthesize_irregular_response,
@@ -54,10 +54,11 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         phase_generator="matlab",
     )
     end_time = float(os.environ.get("WEC_SIM_MOST_END_TIME", "10"))
-    assert end_time in (10, 30)
-    developed_sea = end_time == 30
+    assert end_time in (10, 30, 60)
+    developed_sea = end_time >= 30
+    extended_sea = end_time == 60
     if developed_sea:
-        assert controller is not None, "30 s case needs its generated MATLAB controller"
+        assert controller is not None, "developed-sea case needs its generated MATLAB controller"
     wave = synthesize_irregular_response(
         h5_file, sea, dt=.01, end_time=end_time, ramp_time=20,
         rho=1025, g=9.80665,
@@ -101,10 +102,10 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
     assert result.velocity_residual <= 1e-6
     for axis, position_gate, velocity_gate in (
         (0, 6e-4 if developed_sea else 2e-4, 5e-5),  # surge, m and m/s
-        (1, 5e-4, 2e-4),    # sway, m and m/s
+        (1, 7.5e-4 if extended_sea else 5e-4, 2e-4),  # sway, m and m/s
         (2, 1.5e-4, 7e-5),  # heave, m and m/s
-        (3, 4e-5, 2e-5),    # roll, rad and rad/s
-        (4, 5e-6, 2e-6),    # pitch, rad and rad/s
+        (3, 6e-5 if extended_sea else 4e-5, 2e-5),  # roll, rad and rad/s
+        (4, 8e-6 if extended_sea else 5e-6, 2e-6),  # pitch, rad and rad/s
         (5, 1.5e-4, 1e-5 if developed_sea else 3e-6),  # yaw, rad and rad/s
     ):
         np.testing.assert_allclose(
@@ -139,3 +140,62 @@ def test_most_six_dof_coupled_trajectory_against_pinned_source():
         assert np.all(component_error < 0.04 * component_peak), (
             component_error, component_peak,
         )
+
+
+@pytest.mark.skipif(
+    not all(os.environ.get(name) for name in (
+        "WEC_SIM_MOST_SHORT_BASELINE", "WEC_SIM_MOST_H5",
+        "WEC_SIM_MOST_MASS_PROPERTIES", "WEC_SIM_MOST_PROPERTIES",
+    )),
+    reason="pinned MATLAB MOST force history not provided",
+)
+def test_most_source_motion_force_laws_against_pinned_source():
+    """Replay 30/60 s force laws on saved source motion, independent of solve."""
+    source = loadmat(os.environ["WEC_SIM_MOST_SHORT_BASELINE"])
+    platform = MostPlatformHydrodynamics.from_volturnus(
+        os.environ["WEC_SIM_MOST_H5"],
+        os.environ["WEC_SIM_MOST_MASS_PROPERTIES"],
+    )
+    np.testing.assert_allclose(
+        platform.restoring_force(source["body_position"]),
+        source["body_force_restoring"], rtol=0, atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        platform.drag_force(source["body_velocity"]),
+        source["body_force_viscous"], rtol=0, atol=1e-7,
+    )
+    np.testing.assert_allclose(
+        platform.radiation_force(source["body_velocity"], .01),
+        source["body_force_radiation"], rtol=0, atol=1e-6,
+    )
+    mooring = MostStaticMooring()
+    mooring_force = np.array([
+        mooring.force(pose)[0] for pose in source["mooring_position"]
+    ])
+    np.testing.assert_allclose(
+        mooring_force[:, :3], source["mooring_force"][:, :3],
+        rtol=0, atol=1e-3,
+    )
+    np.testing.assert_allclose(
+        mooring_force[:, 3:], source["mooring_force"][:, 3:],
+        rtol=0, atol=1e-2,
+    )
+    tower = MostTowerReaction.from_iea15mw(
+        os.environ["WEC_SIM_MOST_PROPERTIES"],
+        platform_cg=platform.equilibrium_pose[:3],
+    )
+    tower_force = tower.evaluate(
+        source["body_position"], source["body_velocity"],
+        source["body_acceleration"],
+        source["rotor_speed"].ravel()*2*np.pi/60,
+        source["azimuth"].ravel(), source["generator_torque"].ravel(),
+        source["blade_aero_load"],
+    )
+    np.testing.assert_allclose(
+        tower_force[:, :3], source["tower_base_load"][:, :3],
+        rtol=0, atol=1e-5,
+    )
+    np.testing.assert_allclose(
+        tower_force[:, 3:], source["tower_base_load"][:, 3:],
+        rtol=0, atol=0.1,
+    )
